@@ -23,7 +23,7 @@ require (
 	github.com/lestrrat-go/httprc/v3 v3.0.5
 	github.com/lestrrat-go/jwx/v3 v3.1.0
 	github.com/prometheus/client_golang v1.23.2
-	github.com/rs/zerolog v1.35.0
+	github.com/rs/zerolog v1.35.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
@@ -32,8 +32,8 @@ require (
 	go.opentelemetry.io/otel/exporters/prometheus v0.65.0
 	go.opentelemetry.io/otel/metric v1.43.0
 	go.opentelemetry.io/otel/sdk/metric v1.43.0
-	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478
+	google.golang.org/genproto/googleapis/api v0.0.0-20260420184626-e10c466a9529
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260420184626-e10c466a9529
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
 )
@@ -52,7 +52,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.16 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.20 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.42.0 // indirect
-	github.com/aws/smithy-go v1.25.0 // indirect
+	github.com/aws/smithy-go v1.25.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2 // indirect
