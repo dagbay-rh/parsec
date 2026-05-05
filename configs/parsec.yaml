@@ -49,8 +49,8 @@ issuers:
 
   # Red Hat identity token issuer
   - token_type: "urn:redhat:params:oauth:token-type:rh-identity"
-    type: rh_identity
-    # Claim mappers build the identity structure
+    type: unsigned
+    # Claim mappers build the full x-rh-identity envelope (identity + entitlements)
     claim_mappers:
       - type: cel
         name: redhat-identity-mapper

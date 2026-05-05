@@ -57,6 +57,13 @@ func (i *UnsignedIssuer) Issue(ctx context.Context, issueCtx *service.IssueConte
 		return nil, fmt.Errorf("failed to map claims: %w", err)
 	}
 
+	// CEL scripts signal mapping failures by returning an "error" key instead
+	// of a valid claims structure. Catch this early so the caller (ext_authz)
+	// returns DENY rather than forwarding a broken token as 200 OK.
+	if v, ok := mappedClaims["error"]; ok {
+		return nil, fmt.Errorf("claim mapping produced error: %v", v)
+	}
+
 	// Serialize mapped claims to JSON
 	claimsJSON, err := json.Marshal(mappedClaims)
 	if err != nil {

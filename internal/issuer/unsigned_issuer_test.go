@@ -172,6 +172,34 @@ func TestUnsignedIssuer_Issue_NilTransactionContext(t *testing.T) {
 	}
 }
 
+
+
+func TestUnsignedIssuer_Issue_ErrorClaimDenied(t *testing.T) {
+	testMapper := service.NewStubClaimMapper(claims.Claims{
+		"error": "unsupported_token_type",
+	})
+	iss := NewUnsignedIssuer(UnsignedIssuerConfig{
+		TokenType:    "test-token-type",
+		ClaimMappers: []service.ClaimMapper{testMapper},
+	})
+
+	issueCtx := &service.IssueContext{
+		Subject: &trust.Result{
+			Subject: "test-subject",
+		},
+		Audience:           "test-audience",
+		DataSourceRegistry: service.NewDataSourceRegistry(),
+	}
+
+	token, err := iss.Issue(context.Background(), issueCtx)
+	if err == nil {
+		t.Fatal("Expected Issue() to return error when claims contain 'error' key, got nil")
+	}
+	if token != nil {
+		t.Errorf("Expected nil token on error, got %v", token)
+	}
+}
+
 func TestUnsignedIssuer_PublicKeys(t *testing.T) {
 	issuer := NewUnsignedIssuer(UnsignedIssuerConfig{
 		TokenType:    "test-token-type",
