@@ -172,8 +172,6 @@ func TestUnsignedIssuer_Issue_NilTransactionContext(t *testing.T) {
 	}
 }
 
-
-
 func TestUnsignedIssuer_Issue_ErrorClaimDenied(t *testing.T) {
 	testMapper := service.NewStubClaimMapper(claims.Claims{
 		"error": "unsupported_token_type",
