@@ -120,6 +120,17 @@ func (m *CELMapper) Map(ctx context.Context, input *service.MapperInput) (claims
 		return nil, fmt.Errorf("CEL expression must evaluate to a map, got: %T", resultValue)
 	}
 
+	// CEL scripts signal mapping failures with both "error" and "error_code".
+	// A lone "error" claim is valid for some payloads (see configs/scripts/*.cel).
+	if mappingFailureMsg, ok := resultMap["error"].(string); ok {
+		if code, hasCode := resultMap["error_code"]; hasCode {
+			return nil, &service.ClaimMappingError{
+				Code:    fmt.Sprintf("%v", code),
+				Message: mappingFailureMsg,
+			}
+		}
+	}
+
 	return claims.Claims(resultMap), nil
 }
 

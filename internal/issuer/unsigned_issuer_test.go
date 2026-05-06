@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/project-kessel/parsec/internal/claims"
+	"github.com/project-kessel/parsec/internal/mapper"
 	"github.com/project-kessel/parsec/internal/service"
 	"github.com/project-kessel/parsec/internal/trust"
 )
@@ -173,13 +175,14 @@ func TestUnsignedIssuer_Issue_NilTransactionContext(t *testing.T) {
 }
 
 func TestUnsignedIssuer_Issue_MapperFailureDenied(t *testing.T) {
-	testMapper := service.NewStubClaimMapper(claims.Claims{
-		"error":      "unsupported_token_type",
-		"error_code": 0,
-	})
+	celMapper, err := mapper.NewCELMapper(`{"error": "unsupported_token_type", "error_code": 0}`)
+	if err != nil {
+		t.Fatalf("failed to create CEL mapper: %v", err)
+	}
+
 	iss := NewUnsignedIssuer(UnsignedIssuerConfig{
 		TokenType:    "test-token-type",
-		ClaimMappers: []service.ClaimMapper{testMapper},
+		ClaimMappers: []service.ClaimMapper{celMapper},
 	})
 
 	issueCtx := &service.IssueContext{
@@ -190,26 +193,39 @@ func TestUnsignedIssuer_Issue_MapperFailureDenied(t *testing.T) {
 		DataSourceRegistry: service.NewDataSourceRegistry(),
 	}
 
-	token, err := iss.Issue(context.Background(), issueCtx)
-	if err == nil {
-		t.Fatal("Expected Issue() to return error when claims look like mapper failure, got nil")
+	token, issueErr := iss.Issue(context.Background(), issueCtx)
+	if issueErr == nil {
+		t.Fatal("expected Issue() to return error for mapper failure, got nil")
 	}
 	if token != nil {
-		t.Errorf("Expected nil token on error, got %v", token)
+		t.Errorf("expected nil token on error, got %v", token)
 	}
-	wantMsg := "claim mapping produced error: unsupported_token_type (code: 0)"
-	if err.Error() != wantMsg {
-		t.Errorf("Issue() error = %q, want %q", err.Error(), wantMsg)
+
+	if !errors.Is(issueErr, service.ErrClaimMapping) {
+		t.Fatalf("expected errors.Is(err, ErrClaimMapping), got: %v", issueErr)
+	}
+
+	var mappingErr *service.ClaimMappingError
+	if !errors.As(issueErr, &mappingErr) {
+		t.Fatalf("expected errors.As to unwrap ClaimMappingError, got: %T", issueErr)
+	}
+	if mappingErr.Message != "unsupported_token_type" {
+		t.Errorf("expected message %q, got %q", "unsupported_token_type", mappingErr.Message)
+	}
+	if mappingErr.Code != "0" {
+		t.Errorf("expected code %q, got %q", "0", mappingErr.Code)
 	}
 }
 
 func TestUnsignedIssuer_Issue_ErrorClaimOnly_Allowed(t *testing.T) {
-	testMapper := service.NewStubClaimMapper(claims.Claims{
-		"error": "not_a_mapper_failure",
-	})
+	celMapper, err := mapper.NewCELMapper(`{"error": "not_a_mapper_failure"}`)
+	if err != nil {
+		t.Fatalf("failed to create CEL mapper: %v", err)
+	}
+
 	iss := NewUnsignedIssuer(UnsignedIssuerConfig{
 		TokenType:    "test-token-type",
-		ClaimMappers: []service.ClaimMapper{testMapper},
+		ClaimMappers: []service.ClaimMapper{celMapper},
 	})
 
 	issueCtx := &service.IssueContext{
@@ -220,9 +236,9 @@ func TestUnsignedIssuer_Issue_ErrorClaimOnly_Allowed(t *testing.T) {
 		DataSourceRegistry: service.NewDataSourceRegistry(),
 	}
 
-	token, err := iss.Issue(context.Background(), issueCtx)
-	if err != nil {
-		t.Fatalf("Issue() should allow claims with only top-level error (no error_code): %v", err)
+	token, issueErr := iss.Issue(context.Background(), issueCtx)
+	if issueErr != nil {
+		t.Fatalf("Issue() should allow claims with only top-level error (no error_code): %v", issueErr)
 	}
 	if token == nil || token.Value == "" {
 		t.Fatal("expected non-empty token")

@@ -3,6 +3,7 @@ package mapper
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -563,4 +564,79 @@ func TestCELMapper_Map(t *testing.T) {
 			t.Errorf("expected other_field=value, got %v", result["other_field"])
 		}
 	})
+}
+
+func TestCELMapper_ErrorSentinel(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("error and error_code returns ClaimMappingError", func(t *testing.T) {
+		m, err := NewCELMapper(`{"error": "denied", "error_code": 403}`)
+		if err != nil {
+			t.Fatalf("failed to create mapper: %v", err)
+		}
+
+		input := &service.MapperInput{}
+		_, mapErr := m.Map(ctx, input)
+		if mapErr == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		if !errors.Is(mapErr, service.ErrClaimMapping) {
+			t.Fatalf("expected errors.Is(err, ErrClaimMapping), got: %v", mapErr)
+		}
+
+		var mappingErr *service.ClaimMappingError
+		if !errors.As(mapErr, &mappingErr) {
+			t.Fatalf("expected errors.As to unwrap ClaimMappingError, got: %T", mapErr)
+		}
+		if mappingErr.Message != "denied" {
+			t.Errorf("expected message %q, got %q", "denied", mappingErr.Message)
+		}
+		if mappingErr.Code != "403" {
+			t.Errorf("expected code %q, got %q", "403", mappingErr.Code)
+		}
+	})
+
+	t.Run("error_code zero returns ClaimMappingError", func(t *testing.T) {
+		m, err := NewCELMapper(`{"error": "unsupported_token_type", "error_code": 0}`)
+		if err != nil {
+			t.Fatalf("failed to create mapper: %v", err)
+		}
+
+		input := &service.MapperInput{}
+		_, mapErr := m.Map(ctx, input)
+		if !errors.Is(mapErr, service.ErrClaimMapping) {
+			t.Fatalf("expected ErrClaimMapping for error_code=0, got: %v", mapErr)
+		}
+
+		var mappingErr *service.ClaimMappingError
+		if !errors.As(mapErr, &mappingErr) {
+			t.Fatalf("expected errors.As to unwrap ClaimMappingError, got: %T", mapErr)
+		}
+		if mappingErr.Code != "0" {
+			t.Errorf("expected code %q, got %q", "0", mappingErr.Code)
+		}
+	})
+}
+
+func TestCELMapper_ErrorClaimOnly_NotAnError(t *testing.T) {
+	ctx := context.Background()
+
+	m, err := NewCELMapper(`{"error": "some_value", "other": "data"}`)
+	if err != nil {
+		t.Fatalf("failed to create mapper: %v", err)
+	}
+
+	input := &service.MapperInput{}
+	result, mapErr := m.Map(ctx, input)
+	if mapErr != nil {
+		t.Fatalf("unexpected error: %v", mapErr)
+	}
+
+	if result["error"] != "some_value" {
+		t.Errorf("expected error claim preserved as %q, got %v", "some_value", result["error"])
+	}
+	if result["other"] != "data" {
+		t.Errorf("expected other claim preserved as %q, got %v", "data", result["other"])
+	}
 }

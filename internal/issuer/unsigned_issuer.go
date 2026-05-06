@@ -57,14 +57,6 @@ func (i *UnsignedIssuer) Issue(ctx context.Context, issueCtx *service.IssueConte
 		return nil, fmt.Errorf("failed to map claims: %w", err)
 	}
 
-	// CEL scripts signal mapping failures with both "error" and "error_code"
-	// (see configs/scripts/*.cel). A lone "error" claim is valid for some payloads.
-	if vErr, ok := mappedClaims["error"].(string); ok {
-		if _, hasCode := mappedClaims["error_code"]; hasCode {
-			return nil, fmt.Errorf("claim mapping produced error: %s (code: %v)", vErr, mappedClaims["error_code"])
-		}
-	}
-
 	// Serialize mapped claims to JSON
 	claimsJSON, err := json.Marshal(mappedClaims)
 	if err != nil {
