@@ -172,9 +172,10 @@ func TestUnsignedIssuer_Issue_NilTransactionContext(t *testing.T) {
 	}
 }
 
-func TestUnsignedIssuer_Issue_ErrorClaimDenied(t *testing.T) {
+func TestUnsignedIssuer_Issue_MapperFailureDenied(t *testing.T) {
 	testMapper := service.NewStubClaimMapper(claims.Claims{
-		"error": "unsupported_token_type",
+		"error":      "unsupported_token_type",
+		"error_code": 0,
 	})
 	iss := NewUnsignedIssuer(UnsignedIssuerConfig{
 		TokenType:    "test-token-type",
@@ -191,10 +192,40 @@ func TestUnsignedIssuer_Issue_ErrorClaimDenied(t *testing.T) {
 
 	token, err := iss.Issue(context.Background(), issueCtx)
 	if err == nil {
-		t.Fatal("Expected Issue() to return error when claims contain 'error' key, got nil")
+		t.Fatal("Expected Issue() to return error when claims look like mapper failure, got nil")
 	}
 	if token != nil {
 		t.Errorf("Expected nil token on error, got %v", token)
+	}
+	wantMsg := "claim mapping produced error: unsupported_token_type (code: 0)"
+	if err.Error() != wantMsg {
+		t.Errorf("Issue() error = %q, want %q", err.Error(), wantMsg)
+	}
+}
+
+func TestUnsignedIssuer_Issue_ErrorClaimOnly_Allowed(t *testing.T) {
+	testMapper := service.NewStubClaimMapper(claims.Claims{
+		"error": "not_a_mapper_failure",
+	})
+	iss := NewUnsignedIssuer(UnsignedIssuerConfig{
+		TokenType:    "test-token-type",
+		ClaimMappers: []service.ClaimMapper{testMapper},
+	})
+
+	issueCtx := &service.IssueContext{
+		Subject: &trust.Result{
+			Subject: "test-subject",
+		},
+		Audience:           "test-audience",
+		DataSourceRegistry: service.NewDataSourceRegistry(),
+	}
+
+	token, err := iss.Issue(context.Background(), issueCtx)
+	if err != nil {
+		t.Fatalf("Issue() should allow claims with only top-level error (no error_code): %v", err)
+	}
+	if token == nil || token.Value == "" {
+		t.Fatal("expected non-empty token")
 	}
 }
 
