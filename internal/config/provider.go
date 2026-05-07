@@ -7,8 +7,8 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/project-kessel/parsec/internal/httpfixture"
-	"github.com/project-kessel/parsec/internal/metrics"
 	"github.com/project-kessel/parsec/internal/observer"
+	"github.com/project-kessel/parsec/internal/probe/otel"
 	"github.com/project-kessel/parsec/internal/server"
 	"github.com/project-kessel/parsec/internal/service"
 	"github.com/project-kessel/parsec/internal/trust"
@@ -23,7 +23,7 @@ type Provider struct {
 	obs             observer.Observer
 	obsErr          error
 	obsBuilt        bool
-	metricsProv     *metrics.Provider
+	metricsProv     *otel.Provider
 	metricsErr      error
 	metricsBuilt    bool
 	bootstrapFields map[string]string
@@ -125,7 +125,7 @@ func (p *Provider) buildObserver(cfg *ObservabilityConfig, parentLogCtx *LoggerC
 		}
 		endpoint := "/metrics"
 		p.bootstrapFields["metrics_endpoint"] = endpoint
-		return metrics.NewObserver(mp, endpoint)
+		return otel.NewObserver(mp, endpoint)
 
 	case "composite":
 		return p.buildCompositeObserver(cfg, parentLogCtx)
@@ -294,13 +294,13 @@ func (p *Provider) TokenService() (*service.TokenService, error) {
 // cached. Returns (nil, nil) when called for a non-metrics observer type;
 // the caller decides whether that's an error. The creation result (including
 // errors) is cached so repeated calls return the same outcome.
-func (p *Provider) metricsProvider() (*metrics.Provider, error) {
+func (p *Provider) metricsProvider() (*otel.Provider, error) {
 	if p.metricsBuilt {
 		return p.metricsProv, p.metricsErr
 	}
 	p.metricsBuilt = true
 
-	mp, err := metrics.New()
+	mp, err := otel.New()
 	if err != nil {
 		p.metricsErr = fmt.Errorf("failed to create metrics provider: %w", err)
 		return nil, p.metricsErr

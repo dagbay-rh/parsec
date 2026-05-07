@@ -9,7 +9,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/project-kessel/parsec/internal/observer"
-	"github.com/project-kessel/parsec/internal/probe"
+	"github.com/project-kessel/parsec/internal/probe/zlog"
 )
 
 // LoggerContext couples a zerolog logger with its destination writer so
@@ -74,7 +74,7 @@ func newLoggingObserver(cfg *ObservabilityConfig, logCtx LoggerContext) (observe
 		return nil, err
 	}
 
-	app := probe.NewLoggingObserverWithConfig(probe.LoggingObserverConfig{
+	app := zlog.NewLoggingObserverWithConfig(zlog.LoggingObserverConfig{
 		TokenIssuanceLogger: tiLog,
 		TokenExchangeLogger: teLog,
 		AuthzCheckLogger:    acLog,
@@ -82,10 +82,10 @@ func newLoggingObserver(cfg *ObservabilityConfig, logCtx LoggerContext) (observe
 
 	return observer.Compose(
 		app,
-		probe.NewLoggingDataSourceObserver(dcLog, luaLog),
-		probe.NewLoggingKeysObserver(krLog, kpLog),
-		probe.NewLoggingTrustObserver(tvLog),
-		probe.NewLoggingServerObserver(jcLog, slLog),
+		zlog.NewLoggingDataSourceObserver(dcLog, luaLog),
+		zlog.NewLoggingKeysObserver(krLog, kpLog),
+		zlog.NewLoggingTrustObserver(tvLog),
+		zlog.NewLoggingServerObserver(jcLog, slLog),
 	), nil
 }
 
