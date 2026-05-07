@@ -10,6 +10,11 @@ import (
 	"github.com/project-kessel/parsec/internal/server"
 )
 
+var (
+	grpcServeFailedAttrs = metric.WithAttributeSet(attribute.NewSet(attribute.String("transport", "grpc")))
+	httpServeFailedAttrs = metric.WithAttributeSet(attribute.NewSet(attribute.String("transport", "http")))
+)
+
 type serverObserver struct {
 	server.NoOpServerObserver
 
@@ -82,7 +87,7 @@ type initPopulationProbe struct {
 }
 
 func (p *initPopulationProbe) InitialCachePopulationFailed(error) { p.markFailed() }
-func (p *initPopulationProbe) End()                               { p.record() }
+func (p *initPopulationProbe) End()                               { p.recordWithStatusOnly() }
 
 // --- cache refresh probe ---
 
@@ -102,7 +107,7 @@ type cacheRefreshProbe struct {
 
 func (p *cacheRefreshProbe) CacheRefreshFailed(error)          { p.markFailed() }
 func (p *cacheRefreshProbe) KeyConversionFailed(string, error) { p.markFailed() }
-func (p *cacheRefreshProbe) End()                              { p.record() }
+func (p *cacheRefreshProbe) End()                              { p.recordWithStatusOnly() }
 
 // --- serve failed (fire-and-forget, counter only) ---
 // context.Background() is intentional: the upstream LifecycleObserver interface
@@ -110,13 +115,11 @@ func (p *cacheRefreshProbe) End()                              { p.record() }
 // fired from server-serve goroutines, not request-scoped operations.
 
 func (o *serverObserver) GRPCServeFailed(_ error) {
-	o.serveFailedTotal.Add(context.Background(), 1,
-		metric.WithAttributes(attribute.String("transport", "grpc")))
+	o.serveFailedTotal.Add(context.Background(), 1, grpcServeFailedAttrs)
 }
 
 func (o *serverObserver) HTTPServeFailed(_ error) {
-	o.serveFailedTotal.Add(context.Background(), 1,
-		metric.WithAttributes(attribute.String("transport", "http")))
+	o.serveFailedTotal.Add(context.Background(), 1, httpServeFailedAttrs)
 }
 
 var (

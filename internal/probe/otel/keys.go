@@ -125,7 +125,7 @@ type rotationCheckProbe struct {
 }
 
 func (p *rotationCheckProbe) RotationCheckFailed(error) { p.markFailed() }
-func (p *rotationCheckProbe) End()                      { p.record() }
+func (p *rotationCheckProbe) End()                      { p.recordWithStatusOnly() }
 
 // --- key cache update probe ---
 
@@ -149,7 +149,7 @@ func (p *keyCacheUpdateProbe) KeyHandleFailed(string, error)      { p.markFailed
 func (p *keyCacheUpdateProbe) PublicKeyFailed(string, error)      { p.markFailed() }
 func (p *keyCacheUpdateProbe) ThumbprintFailed(string, error)     { p.markFailed() }
 func (p *keyCacheUpdateProbe) MetadataFailed(string, error)       { p.markFailed() }
-func (p *keyCacheUpdateProbe) End()                               { p.record() }
+func (p *keyCacheUpdateProbe) End()                               { p.recordWithStatusOnly() }
 
 // --- KMS rotate probe ---
 
@@ -161,7 +161,8 @@ func (o *keysObserver) KMSRotateStarted(ctx context.Context, _, _, keyName strin
 			histogram: o.kmsRotateDuration,
 			startTime: time.Now(),
 		},
-		keyName: keyName,
+		successAttrs: metric.WithAttributeSet(attribute.NewSet(successStatusAttr, attribute.String("key_name", keyName))),
+		errorAttrs:   metric.WithAttributeSet(attribute.NewSet(errorStatusAttr, attribute.String("key_name", keyName))),
 	}
 }
 
@@ -171,7 +172,8 @@ func (o *keysObserver) KMSRotateStarted(ctx context.Context, _, _, keyName strin
 type kmsRotateProbe struct {
 	keys.NoOpKMSRotateProbe
 	metricProbe
-	keyName string
+	successAttrs metric.MeasurementOption
+	errorAttrs   metric.MeasurementOption
 }
 
 func (p *kmsRotateProbe) CreateKeyFailed(error)              { p.markFailed() }
@@ -179,7 +181,11 @@ func (p *kmsRotateProbe) AliasCheckFailed(error)             { p.markFailed() }
 func (p *kmsRotateProbe) AliasUpdateFailed(error)            { p.markFailed() }
 func (p *kmsRotateProbe) OldKeyDeletionFailed(string, error) { p.markFailed() }
 func (p *kmsRotateProbe) End() {
-	p.record(attribute.String("key_name", p.keyName))
+	if p.failed {
+		p.record(p.errorAttrs)
+	} else {
+		p.record(p.successAttrs)
+	}
 }
 
 // --- disk rotate probe ---
@@ -192,7 +198,8 @@ func (o *keysObserver) DiskRotateStarted(ctx context.Context, _, _, keyName stri
 			histogram: o.diskRotateDuration,
 			startTime: time.Now(),
 		},
-		keyName: keyName,
+		successAttrs: metric.WithAttributeSet(attribute.NewSet(successStatusAttr, attribute.String("key_name", keyName))),
+		errorAttrs:   metric.WithAttributeSet(attribute.NewSet(errorStatusAttr, attribute.String("key_name", keyName))),
 	}
 }
 
@@ -202,13 +209,18 @@ func (o *keysObserver) DiskRotateStarted(ctx context.Context, _, _, keyName stri
 type diskRotateProbe struct {
 	keys.NoOpDiskRotateProbe
 	metricProbe
-	keyName string
+	successAttrs metric.MeasurementOption
+	errorAttrs   metric.MeasurementOption
 }
 
 func (p *diskRotateProbe) KeyGenerationFailed(error) { p.markFailed() }
 func (p *diskRotateProbe) KeyWriteFailed(error)      { p.markFailed() }
 func (p *diskRotateProbe) End() {
-	p.record(attribute.String("key_name", p.keyName))
+	if p.failed {
+		p.record(p.errorAttrs)
+	} else {
+		p.record(p.successAttrs)
+	}
 }
 
 // --- memory rotate probe ---
@@ -228,7 +240,7 @@ type memoryRotateProbe struct {
 }
 
 func (p *memoryRotateProbe) KeyGenerationFailed(error) { p.markFailed() }
-func (p *memoryRotateProbe) End()                      { p.record() }
+func (p *memoryRotateProbe) End()                      { p.recordWithStatusOnly() }
 
 var (
 	_ keys.KeysObserver        = (*keysObserver)(nil)

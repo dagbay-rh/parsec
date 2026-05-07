@@ -191,6 +191,18 @@ Neither method is on per-package aggregate interfaces to avoid Go embedding ambi
 - The central composite and composition logic lives in `internal/observer/`
 - Observer construction dispatch lives in `internal/config.Provider`, not in standalone constructors
 
+## OTel Metrics: Attribute Performance
+
+When implementing metric probes (`internal/probe/otel/`), use `metric.WithAttributeSet` with pre-built `attribute.Set` values — never `metric.WithAttributes` with variadic key-values. The latter allocates and sorts on every `Add`/`Record` call.
+
+**Strategies by probe type:**
+
+1. **Status-only probes** (no extra attributes): Use the package-level `successStatusAttrSet` / `errorStatusAttrSet` via `recordWithStatusOnly()`. Zero allocations at record time.
+
+2. **Known-at-start attributes** (e.g. `issuer`, `key_name`, `datasource`): Pre-build both `successAttrs` and `errorAttrs` as `metric.MeasurementOption` in the `*Started` method. The probe's `End()` picks the right one based on `p.failed`. Zero allocations at record time.
+
+3. **Mid-flight attributes** (e.g. `result` determined during the operation): Build the `attribute.Set` once in `End()` using `metric.WithAttributeSet(attribute.NewSet(...))`. One allocation at record time, but avoids the extra variadic-to-slice copy that `WithAttributes` adds.
+
 ## Key Principles
 
 - Always use `defer p.End()` for timing accuracy

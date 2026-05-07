@@ -75,7 +75,8 @@ func (o *dataSourceObserver) LuaFetchStarted(ctx context.Context, dataSourceName
 			histogram: o.luaFetchDuration,
 			startTime: time.Now(),
 		},
-		dataSourceName: dataSourceName,
+		successAttrs: metric.WithAttributeSet(attribute.NewSet(successStatusAttr, attribute.String("datasource", dataSourceName))),
+		errorAttrs:   metric.WithAttributeSet(attribute.NewSet(errorStatusAttr, attribute.String("datasource", dataSourceName))),
 	}
 }
 
@@ -98,16 +99,18 @@ func (p *cacheFetchProbe) End() {
 	if p.result == "" {
 		p.result = "unknown"
 	}
-	p.record(
+	p.record(metric.WithAttributeSet(attribute.NewSet(
+		p.statusAttr(),
 		attribute.String("datasource", p.dataSourceName),
 		attribute.String("result", p.result),
-	)
+	)))
 }
 
 type luaFetchProbe struct {
 	datasource.NoOpLuaFetchProbe
 	metricProbe
-	dataSourceName string
+	successAttrs metric.MeasurementOption
+	errorAttrs   metric.MeasurementOption
 }
 
 func (p *luaFetchProbe) ScriptLoadFailed(error)       { p.markFailed() }
@@ -116,7 +119,11 @@ func (p *luaFetchProbe) InvalidReturnType(string)     { p.markFailed() }
 func (p *luaFetchProbe) ResultConversionFailed(error) { p.markFailed() }
 
 func (p *luaFetchProbe) End() {
-	p.record(attribute.String("datasource", p.dataSourceName))
+	if p.failed {
+		p.record(p.errorAttrs)
+	} else {
+		p.record(p.successAttrs)
+	}
 }
 
 var (

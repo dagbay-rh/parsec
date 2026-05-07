@@ -87,7 +87,7 @@ type validationProbe struct {
 }
 
 func (p *validationProbe) AllValidatorsFailed(_ trust.CredentialType, _ int, _ error) { p.markFailed() }
-func (p *validationProbe) End()                                                       { p.record() }
+func (p *validationProbe) End()                                                       { p.recordWithStatusOnly() }
 
 // --- JWT validate probe ---
 
@@ -99,7 +99,8 @@ func (o *trustObserver) JWTValidateStarted(ctx context.Context, issuer string) (
 			histogram: o.jwtValidateDuration,
 			startTime: time.Now(),
 		},
-		issuer: issuer,
+		successAttrs: metric.WithAttributeSet(attribute.NewSet(successStatusAttr, attribute.String("issuer", issuer))),
+		errorAttrs:   metric.WithAttributeSet(attribute.NewSet(errorStatusAttr, attribute.String("issuer", issuer))),
 	}
 }
 
@@ -109,7 +110,8 @@ func (o *trustObserver) JWTValidateStarted(ctx context.Context, issuer string) (
 type jwtValidateProbe struct {
 	trust.NoOpJWTValidateProbe
 	metricProbe
-	issuer string
+	successAttrs metric.MeasurementOption
+	errorAttrs   metric.MeasurementOption
 }
 
 func (p *jwtValidateProbe) JWKSLookupFailed(error)       { p.markFailed() }
@@ -117,7 +119,11 @@ func (p *jwtValidateProbe) TokenExpired()                { p.markFailed() }
 func (p *jwtValidateProbe) TokenInvalid(error)           { p.markFailed() }
 func (p *jwtValidateProbe) ClaimsExtractionFailed(error) { p.markFailed() }
 func (p *jwtValidateProbe) End() {
-	p.record(attribute.String("issuer", p.issuer))
+	if p.failed {
+		p.record(p.errorAttrs)
+	} else {
+		p.record(p.successAttrs)
+	}
 }
 
 // --- actor filter probe ---
@@ -137,7 +143,7 @@ type forActorProbe struct {
 }
 
 func (p *forActorProbe) FilterEvaluationFailed(string, error) { p.markFailed() }
-func (p *forActorProbe) End()                                 { p.record() }
+func (p *forActorProbe) End()                                 { p.recordWithStatusOnly() }
 
 var (
 	_ trust.TrustObserver    = (*trustObserver)(nil)

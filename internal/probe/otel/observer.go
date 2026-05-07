@@ -13,6 +13,13 @@ import (
 
 const meterName = "github.com/project-kessel/parsec"
 
+var (
+	successStatusAttr    = attribute.String("status", "success")
+	errorStatusAttr      = attribute.String("status", "error")
+	successStatusAttrSet = metric.WithAttributeSet(attribute.NewSet(successStatusAttr))
+	errorStatusAttrSet   = metric.WithAttributeSet(attribute.NewSet(errorStatusAttr))
+)
+
 // metricProbe is the shared base for probes that record a counter+histogram
 // pair with a success/error status attribute.
 type metricProbe struct {
@@ -25,15 +32,24 @@ type metricProbe struct {
 
 func (p *metricProbe) markFailed() { p.failed = true }
 
-func (p *metricProbe) record(extraAttrs ...attribute.KeyValue) {
-	status := "success"
+func (p *metricProbe) statusAttr() attribute.KeyValue {
 	if p.failed {
-		status = "error"
+		return errorStatusAttr
 	}
-	all := append([]attribute.KeyValue{attribute.String("status", status)}, extraAttrs...)
-	attrs := metric.WithAttributes(all...)
+	return successStatusAttr
+}
+
+func (p *metricProbe) record(attrs metric.MeasurementOption) {
 	p.counter.Add(p.ctx, 1, attrs)
 	p.histogram.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+}
+
+func (p *metricProbe) recordWithStatusOnly() {
+	if p.failed {
+		p.record(errorStatusAttrSet)
+	} else {
+		p.record(successStatusAttrSet)
+	}
 }
 
 // serviceObserver implements service.ServiceObserver using OTel counters and histograms.
@@ -149,7 +165,7 @@ type tokenIssuanceProbe struct {
 
 func (p *tokenIssuanceProbe) TokenTypeIssuanceFailed(_ service.TokenType, _ error) { p.markFailed() }
 func (p *tokenIssuanceProbe) IssuerNotFound(_ service.TokenType, _ error)          { p.markFailed() }
-func (p *tokenIssuanceProbe) End()                                                 { p.record() }
+func (p *tokenIssuanceProbe) End()                                                 { p.recordWithStatusOnly() }
 
 // --- token exchange probe ---
 
@@ -161,7 +177,7 @@ type tokenExchangeProbe struct {
 func (p *tokenExchangeProbe) ActorValidationFailed(_ error)        { p.markFailed() }
 func (p *tokenExchangeProbe) RequestContextParseFailed(_ error)    { p.markFailed() }
 func (p *tokenExchangeProbe) SubjectTokenValidationFailed(_ error) { p.markFailed() }
-func (p *tokenExchangeProbe) End()                                 { p.record() }
+func (p *tokenExchangeProbe) End()                                 { p.recordWithStatusOnly() }
 
 // --- authz check probe ---
 
@@ -173,7 +189,7 @@ type authzCheckProbe struct {
 func (p *authzCheckProbe) ActorValidationFailed(_ error)             { p.markFailed() }
 func (p *authzCheckProbe) SubjectCredentialExtractionFailed(_ error) { p.markFailed() }
 func (p *authzCheckProbe) SubjectValidationFailed(_ error)           { p.markFailed() }
-func (p *authzCheckProbe) End()                                      { p.record() }
+func (p *authzCheckProbe) End()                                      { p.recordWithStatusOnly() }
 
 var (
 	_ service.ServiceObserver    = (*serviceObserver)(nil)
