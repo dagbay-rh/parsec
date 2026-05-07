@@ -87,21 +87,19 @@ type validationProbe struct {
 }
 
 func (p *validationProbe) AllValidatorsFailed(_ trust.CredentialType, _ int, _ error) { p.markFailed() }
-func (p *validationProbe) End()                                                       { p.recordWithStatusOnly() }
+func (p *validationProbe) End()                                                       { p.finish() }
 
 // --- JWT validate probe ---
 
 func (o *trustObserver) JWTValidateStarted(ctx context.Context, issuer string) (context.Context, trust.JWTValidateProbe) {
-	return ctx, &jwtValidateProbe{
-		metricProbe: metricProbe{
-			ctx:       ctx,
-			counter:   o.jwtValidateTotal,
-			histogram: o.jwtValidateDuration,
-			startTime: time.Now(),
-		},
+	return ctx, &jwtValidateProbe{metricProbe: metricProbe{
+		ctx:          ctx,
+		counter:      o.jwtValidateTotal,
+		histogram:    o.jwtValidateDuration,
+		startTime:    time.Now(),
 		successAttrs: metric.WithAttributeSet(attribute.NewSet(successStatusAttr, attribute.String("issuer", issuer))),
 		errorAttrs:   metric.WithAttributeSet(attribute.NewSet(errorStatusAttr, attribute.String("issuer", issuer))),
-	}
+	}}
 }
 
 // jwtValidateProbe records metrics for a single JWT validation.
@@ -110,21 +108,13 @@ func (o *trustObserver) JWTValidateStarted(ctx context.Context, issuer string) (
 type jwtValidateProbe struct {
 	trust.NoOpJWTValidateProbe
 	metricProbe
-	successAttrs metric.MeasurementOption
-	errorAttrs   metric.MeasurementOption
 }
 
 func (p *jwtValidateProbe) JWKSLookupFailed(error)       { p.markFailed() }
 func (p *jwtValidateProbe) TokenExpired()                { p.markFailed() }
 func (p *jwtValidateProbe) TokenInvalid(error)           { p.markFailed() }
 func (p *jwtValidateProbe) ClaimsExtractionFailed(error) { p.markFailed() }
-func (p *jwtValidateProbe) End() {
-	if p.failed {
-		p.record(p.errorAttrs)
-	} else {
-		p.record(p.successAttrs)
-	}
-}
+func (p *jwtValidateProbe) End()                         { p.finish() }
 
 // --- actor filter probe ---
 
@@ -143,7 +133,7 @@ type forActorProbe struct {
 }
 
 func (p *forActorProbe) FilterEvaluationFailed(string, error) { p.markFailed() }
-func (p *forActorProbe) End()                                 { p.recordWithStatusOnly() }
+func (p *forActorProbe) End()                                 { p.finish() }
 
 var (
 	_ trust.TrustObserver    = (*trustObserver)(nil)

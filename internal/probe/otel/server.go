@@ -87,7 +87,7 @@ type initPopulationProbe struct {
 }
 
 func (p *initPopulationProbe) InitialCachePopulationFailed(error) { p.markFailed() }
-func (p *initPopulationProbe) End()                               { p.recordWithStatusOnly() }
+func (p *initPopulationProbe) End()                               { p.finish() }
 
 // --- cache refresh probe ---
 
@@ -107,7 +107,7 @@ type cacheRefreshProbe struct {
 
 func (p *cacheRefreshProbe) CacheRefreshFailed(error)          { p.markFailed() }
 func (p *cacheRefreshProbe) KeyConversionFailed(string, error) { p.markFailed() }
-func (p *cacheRefreshProbe) End()                              { p.recordWithStatusOnly() }
+func (p *cacheRefreshProbe) End()                              { p.finish() }
 
 // --- serve failed (fire-and-forget, counter only) ---
 // context.Background() is intentional: the upstream LifecycleObserver interface

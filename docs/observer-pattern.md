@@ -195,13 +195,23 @@ Neither method is on per-package aggregate interfaces to avoid Go embedding ambi
 
 When implementing metric probes (`internal/probe/otel/`), use `metric.WithAttributeSet` with pre-built `attribute.Set` values — never `metric.WithAttributes` with variadic key-values. The latter allocates and sorts on every `Add`/`Record` call.
 
-**Strategies by probe type:**
+### Unified `finish()` pattern
 
-1. **Status-only probes** (no extra attributes): Use the package-level `successStatusAttrSet` / `errorStatusAttrSet` via `recordWithStatusOnly()`. Zero allocations at record time.
+All metric probes end the same way: their `End()` calls `p.finish()`. The `metricProbe` base type owns `successAttrs`, `errorAttrs`, and `dynamicAttrs` fields, and `finish()` resolves which attribute set to use via `resolveAttrs()`. Individual probes never branch on status or build attribute sets themselves.
 
-2. **Known-at-start attributes** (e.g. `issuer`, `key_name`, `datasource`): Pre-build both `successAttrs` and `errorAttrs` as `metric.MeasurementOption` in the `*Started` method. The probe's `End()` picks the right one based on `p.failed`. Zero allocations at record time.
+**How to set up a probe based on when attributes are known:**
 
-3. **Mid-flight attributes** (e.g. `result` determined during the operation): Build the `attribute.Set` once in `End()` using `metric.WithAttributeSet(attribute.NewSet(...))`. One allocation at record time, but avoids the extra variadic-to-slice copy that `WithAttributes` adds.
+1. **Status-only** (no extra attributes): Leave `successAttrs`/`errorAttrs`/`dynamicAttrs` at their zero values. `resolveAttrs()` falls through to the package-level pre-built sets. Zero allocations at `End()`.
+
+2. **Known-at-start attributes** (e.g. `issuer`, `key_name`, `datasource`): Set `successAttrs` and `errorAttrs` on the `metricProbe` in `*Started`. Zero allocations at `End()`.
+
+3. **Mid-flight attributes** (e.g. `result` determined during the operation): Pre-allocate `dynamicAttrs` with known-at-start values and sufficient capacity in `*Started`. Append dynamic values during probe methods. `resolveAttrs()` appends the status attribute and builds a single `attribute.NewSet`. One allocation at `End()`.
+
+In all cases, the probe's `End()` method is simply:
+
+```go
+func (p *myProbe) End() { p.finish() }
+```
 
 ## Key Principles
 

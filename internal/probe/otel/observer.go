@@ -22,34 +22,50 @@ var (
 
 // metricProbe is the shared base for probes that record a counter+histogram
 // pair with a success/error status attribute.
+//
+// All probes call finish() in their End() method. The attribute set used for
+// recording is determined by how the probe was constructed:
+//
+//   - No extra attrs: leave successAttrs/errorAttrs nil → uses package-level status-only sets
+//   - Known-at-start attrs: set successAttrs/errorAttrs in *Started → zero alloc at finish
+//   - Mid-flight attrs: append to dynamicAttrs during the operation → one NewSet call at finish
 type metricProbe struct {
-	ctx       context.Context
-	counter   metric.Int64Counter
-	histogram metric.Float64Histogram
-	startTime time.Time
-	failed    bool
+	ctx          context.Context
+	counter      metric.Int64Counter
+	histogram    metric.Float64Histogram
+	startTime    time.Time
+	failed       bool
+	successAttrs metric.MeasurementOption
+	errorAttrs   metric.MeasurementOption
+	dynamicAttrs []attribute.KeyValue
 }
 
 func (p *metricProbe) markFailed() { p.failed = true }
 
-func (p *metricProbe) statusAttr() attribute.KeyValue {
-	if p.failed {
-		return errorStatusAttr
-	}
-	return successStatusAttr
-}
-
-func (p *metricProbe) record(attrs metric.MeasurementOption) {
+func (p *metricProbe) finish() {
+	attrs := p.resolveAttrs()
 	p.counter.Add(p.ctx, 1, attrs)
 	p.histogram.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
 }
 
-func (p *metricProbe) recordWithStatusOnly() {
-	if p.failed {
-		p.record(errorStatusAttrSet)
-	} else {
-		p.record(successStatusAttrSet)
+func (p *metricProbe) resolveAttrs() metric.MeasurementOption {
+	if p.dynamicAttrs != nil {
+		statusAttr := successStatusAttr
+		if p.failed {
+			statusAttr = errorStatusAttr
+		}
+		return metric.WithAttributeSet(attribute.NewSet(append(p.dynamicAttrs, statusAttr)...))
 	}
+	if p.failed {
+		if p.errorAttrs != nil {
+			return p.errorAttrs
+		}
+		return errorStatusAttrSet
+	}
+	if p.successAttrs != nil {
+		return p.successAttrs
+	}
+	return successStatusAttrSet
 }
 
 // serviceObserver implements service.ServiceObserver using OTel counters and histograms.
@@ -165,7 +181,7 @@ type tokenIssuanceProbe struct {
 
 func (p *tokenIssuanceProbe) TokenTypeIssuanceFailed(_ service.TokenType, _ error) { p.markFailed() }
 func (p *tokenIssuanceProbe) IssuerNotFound(_ service.TokenType, _ error)          { p.markFailed() }
-func (p *tokenIssuanceProbe) End()                                                 { p.recordWithStatusOnly() }
+func (p *tokenIssuanceProbe) End()                                                 { p.finish() }
 
 // --- token exchange probe ---
 
@@ -177,7 +193,7 @@ type tokenExchangeProbe struct {
 func (p *tokenExchangeProbe) ActorValidationFailed(_ error)        { p.markFailed() }
 func (p *tokenExchangeProbe) RequestContextParseFailed(_ error)    { p.markFailed() }
 func (p *tokenExchangeProbe) SubjectTokenValidationFailed(_ error) { p.markFailed() }
-func (p *tokenExchangeProbe) End()                                 { p.recordWithStatusOnly() }
+func (p *tokenExchangeProbe) End()                                 { p.finish() }
 
 // --- authz check probe ---
 
@@ -189,7 +205,7 @@ type authzCheckProbe struct {
 func (p *authzCheckProbe) ActorValidationFailed(_ error)             { p.markFailed() }
 func (p *authzCheckProbe) SubjectCredentialExtractionFailed(_ error) { p.markFailed() }
 func (p *authzCheckProbe) SubjectValidationFailed(_ error)           { p.markFailed() }
-func (p *authzCheckProbe) End()                                      { p.recordWithStatusOnly() }
+func (p *authzCheckProbe) End()                                      { p.finish() }
 
 var (
 	_ service.ServiceObserver    = (*serviceObserver)(nil)
