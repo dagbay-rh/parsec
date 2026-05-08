@@ -94,6 +94,28 @@ func TestNewCELMapper(t *testing.T) {
 func TestCELMapper_Map(t *testing.T) {
 	ctx := context.Background()
 
+	t.Run("now_ms returns current epoch millis", func(t *testing.T) {
+		mapper, err := NewCELMapper(`{"ts": now_ms()}`)
+		if err != nil {
+			t.Fatalf("failed to create mapper: %v", err)
+		}
+
+		before := time.Now().UnixMilli()
+		result, err := mapper.Map(ctx, &service.MapperInput{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		after := time.Now().UnixMilli()
+
+		ts, ok := result["ts"].(int64)
+		if !ok {
+			t.Fatalf("expected ts int64, got %T %v", result["ts"], result["ts"])
+		}
+		if ts < before || ts > after {
+			t.Fatalf("ts %d not in [%d, %d]", ts, before, after)
+		}
+	})
+
 	t.Run("simple static map", func(t *testing.T) {
 		mapper, err := NewCELMapper(`{"user": "alice", "role": "admin"}`)
 		if err != nil {

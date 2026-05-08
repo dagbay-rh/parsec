@@ -3,6 +3,7 @@ package cel
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
@@ -21,6 +22,7 @@ type DataSourceRegistry interface {
 //
 // This provides compile-time declarations for:
 //   - datasource(name) - function to fetch data from a named data source
+//   - now_ms() - current Unix time in milliseconds (wall clock at evaluation)
 //   - subject, actor, request - variables containing identity and request data
 //
 // Pass nil for registry to create a test/validation environment.
@@ -48,6 +50,15 @@ func (lib *mapperInputLib) CompileOptions() []cel.EnvOption {
 				[]*cel.Type{cel.StringType},
 				cel.DynType,
 				cel.UnaryBinding(lib.fetchDatasource),
+			),
+		),
+		cel.Function("now_ms",
+			cel.Overload("now_ms",
+				[]*cel.Type{},
+				cel.IntType,
+				cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+					return types.Int(time.Now().UnixMilli())
+				}),
 			),
 		),
 		// Declare other variables as dynamic types

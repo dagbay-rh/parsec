@@ -17,6 +17,7 @@ import (
 //
 // The CEL expression has access to the following variables:
 //   - datasource(name) - function to fetch data from a named data source
+//   - now_ms() - current Unix time in milliseconds
 //   - subject - the subject identity information as a map
 //   - actor - the actor identity information as a map
 //   - request - the request attributes as a map

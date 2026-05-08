@@ -33,7 +33,7 @@ isServiceAccountToken(subject.claims) ? {
                 (has(subject.claims.organization) && has(subject.claims.organization.id) ?
                  subject.claims.organization.id : ""),
       "cross_access": false,
-      "auth_time": has(subject.claims.iat) ? int(subject.claims.iat) * 1000 : 0
+      "auth_time": has(subject.claims.iat) ? int(subject.claims.iat) * 1000 : now_ms()
     }
   },
   "entitlements": {}
@@ -61,7 +61,7 @@ isServiceAccountToken(subject.claims) ? {
         "org_id": has(subject.claims.organization) && has(subject.claims.organization.id) ?
                   subject.claims.organization.id : "",
         "cross_access": false,
-        "auth_time": has(subject.claims.iat) ? int(subject.claims.iat) * 1000 : 0
+        "auth_time": has(subject.claims.iat) ? int(subject.claims.iat) * 1000 : now_ms()
       }
     },
     "entitlements": {}
