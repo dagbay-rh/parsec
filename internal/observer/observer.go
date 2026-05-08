@@ -1,6 +1,9 @@
 package observer
 
 import (
+	"context"
+	"net/http"
+
 	"github.com/project-kessel/parsec/internal/datasource"
 	"github.com/project-kessel/parsec/internal/keys"
 	"github.com/project-kessel/parsec/internal/server"
@@ -17,6 +20,10 @@ import (
 // observer interface (e.g. service.ServiceObserver, datasource.CacheObserver,
 // keys.DualSlotRotatingSignerObserver) via Go structural typing.
 //
+// Observer also owns the lifecycle of any resources held by its
+// implementations (e.g. an OTel MeterProvider). Call Shutdown during
+// graceful shutdown to flush and release those resources.
+//
 // Config reload logging is intentionally excluded from the Observer interface.
 type Observer interface {
 	service.ServiceObserver
@@ -24,6 +31,31 @@ type Observer interface {
 	keys.KeysObserver
 	trust.TrustObserver
 	server.ServerObserver
+
+	// Shutdown flushes pending data and releases resources held by the
+	// observer tree. Composite observers cascade Shutdown to all children.
+	Shutdown(ctx context.Context) error
+
+	// ConfigureHTTPMux registers any HTTP handlers the observer
+	// implementation requires (e.g. a /metrics endpoint for Prometheus
+	// scraping). Composite observers cascade to all children.
+	// Implementations with no HTTP needs should no-op.
+	ConfigureHTTPMux(mux *http.ServeMux)
+}
+
+// ComposeOption configures a [composed] observer built by [Compose].
+type ComposeOption func(*composed)
+
+// WithShutdown attaches a shutdown function that is called when the
+// composed observer's Shutdown method is invoked.
+func WithShutdown(fn func(context.Context) error) ComposeOption {
+	return func(c *composed) { c.shutdownFn = fn }
+}
+
+// WithHTTPMux attaches an HTTP mux configuration function that is called
+// when the composed observer's ConfigureHTTPMux method is invoked.
+func WithHTTPMux(fn func(*http.ServeMux)) ComposeOption {
+	return func(c *composed) { c.configureMux = fn }
 }
 
 // composed holds per-package aggregate observers and satisfies Observer
@@ -34,6 +66,22 @@ type composed struct {
 	keys.KeysObserver
 	trust.TrustObserver
 	server.ServerObserver
+
+	shutdownFn   func(context.Context) error
+	configureMux func(*http.ServeMux)
+}
+
+func (c *composed) Shutdown(ctx context.Context) error {
+	if c.shutdownFn != nil {
+		return c.shutdownFn(ctx)
+	}
+	return nil
+}
+
+func (c *composed) ConfigureHTTPMux(mux *http.ServeMux) {
+	if c.configureMux != nil {
+		c.configureMux(mux)
+	}
 }
 
 // Compose builds an Observer from per-package aggregate observers.
@@ -43,14 +91,19 @@ func Compose(
 	ks keys.KeysObserver,
 	ts trust.TrustObserver,
 	srv server.ServerObserver,
+	opts ...ComposeOption,
 ) Observer {
-	return &composed{
+	c := &composed{
 		ServiceObserver:    app,
 		DataSourceObserver: ds,
 		KeysObserver:       ks,
 		TrustObserver:      ts,
 		ServerObserver:     srv,
 	}
+	for _, o := range opts {
+		o(c)
+	}
+	return c
 }
 
 // NoOp returns an Observer where every method is a no-op.
@@ -65,6 +118,9 @@ type noopObserver struct {
 	trust.NoOpTrustObserver
 	server.NoOpServerObserver
 }
+
+func (*noopObserver) Shutdown(context.Context) error  { return nil }
+func (*noopObserver) ConfigureHTTPMux(*http.ServeMux) {}
 
 // Compile-time check: both implementations satisfy Observer.
 var (

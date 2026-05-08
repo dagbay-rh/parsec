@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
@@ -83,7 +84,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// 3. Create provider and build components
 	provider := config.NewProvider(cfg)
 
-	logger, err := provider.Observer()
+	obs, err := provider.Observer()
 	if err != nil {
 		return fmt.Errorf("failed to create observer: %w", err)
 	}
@@ -114,11 +115,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// 4. Create service handlers
-	authzServer := server.NewAuthzServer(trustStore, tokenService, authzTokenTypes, logger)
-	exchangeServer := server.NewExchangeServer(trustStore, tokenService, claimsFilterRegistry, logger)
+	authzServer := server.NewAuthzServer(trustStore, tokenService, authzTokenTypes, obs)
+	exchangeServer := server.NewExchangeServer(trustStore, tokenService, claimsFilterRegistry, obs)
 	jwksServer := server.NewJWKSServer(server.JWKSServerConfig{
 		IssuerRegistry: issuerRegistry,
-		Observer:       logger,
+		Observer:       obs,
 	})
 
 	if err := jwksServer.Start(ctx); err != nil {
@@ -146,7 +147,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 		AuthzServer:    authzServer,
 		ExchangeServer: exchangeServer,
 		JWKSServer:     jwksServer,
-		Observer:       logger,
+		Observer:       obs,
+		MuxConfigurer:  obs.ConfigureHTTPMux,
 	})
 	if err := srv.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start server: %w", err)
@@ -154,9 +156,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	srv.SetReady()
 
+	// 7. Log startup information
 	grpcAddr := grpcListener.Addr().String()
 	httpAddr := httpListener.Addr().String()
-	bootstrapLog.Info().
+	logEvent := bootstrapLog.Info().
 		Str("grpc_addr", grpcAddr).
 		Str("http_addr", httpAddr).
 		Str("token_exchange_url", "http://"+httpAddr+"/v1/token").
@@ -164,17 +167,28 @@ func runServe(cmd *cobra.Command, args []string) error {
 		Str("jwks_wellknown_url", "http://"+httpAddr+"/.well-known/jwks.json").
 		Str("health_grpc", grpcAddr+" (grpc.health.v1.Health)").
 		Str("trust_domain", provider.TrustDomain()).
-		Str("config", configPath).
-		Msg("parsec is running")
+		Str("config", configPath)
+	for k, v := range provider.BootstrapFields() {
+		logEvent = logEvent.Str(k, v)
+	}
+	logEvent.Msg("parsec is running")
 
-	// 7. Wait for interrupt signal
+	// 8. Wait for interrupt signal
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	<-sigCh
 
 	bootstrapLog.Info().Msg("Shutting down")
 
-	// 8. Graceful shutdown
+	// 9. Graceful shutdown
+	// Flush observer resources (e.g. metrics) while the HTTP server is
+	// still running so Prometheus can perform a final scrape.
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	if err := obs.Shutdown(shutdownCtx); err != nil {
+		bootstrapLog.Warn().Err(err).Msg("observer shutdown error")
+	}
+
 	if err := srv.Stop(ctx); err != nil {
 		return fmt.Errorf("error during shutdown: %w", err)
 	}

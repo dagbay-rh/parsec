@@ -3,6 +3,7 @@ package observer
 import (
 	"context"
 	"errors"
+	"net/http"
 	"sync/atomic"
 	"testing"
 
@@ -135,6 +136,134 @@ func TestNoOp_AllProbeMethodsCallable(t *testing.T) {
 	{
 		_, p := obs.StopStarted(ctx)
 		p.End()
+	}
+	if err := obs.Shutdown(ctx); err != nil {
+		t.Errorf("noop Shutdown should return nil, got %v", err)
+	}
+	obs.ConfigureHTTPMux(http.NewServeMux())
+}
+
+func TestCompose_ShutdownCallsShutdownFn(t *testing.T) {
+	var called atomic.Int32
+	obs := Compose(
+		service.NoOpServiceObserver{},
+		datasource.NoOpDataSourceObserver{},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
+		WithShutdown(func(context.Context) error {
+			called.Add(1)
+			return nil
+		}),
+	)
+
+	if err := obs.Shutdown(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if called.Load() != 1 {
+		t.Errorf("expected shutdown fn called once, got %d", called.Load())
+	}
+}
+
+func TestCompose_ShutdownWithoutOption_ReturnsNil(t *testing.T) {
+	obs := Compose(
+		service.NoOpServiceObserver{},
+		datasource.NoOpDataSourceObserver{},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
+	)
+
+	if err := obs.Shutdown(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCompose_ConfigureHTTPMuxCallsFn(t *testing.T) {
+	var called atomic.Int32
+	obs := Compose(
+		service.NoOpServiceObserver{},
+		datasource.NoOpDataSourceObserver{},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
+		WithHTTPMux(func(*http.ServeMux) {
+			called.Add(1)
+		}),
+	)
+
+	obs.ConfigureHTTPMux(http.NewServeMux())
+	if called.Load() != 1 {
+		t.Errorf("expected mux fn called once, got %d", called.Load())
+	}
+}
+
+func TestCompositeAll_ConfigureHTTPMuxCascadesToAllChildren(t *testing.T) {
+	var c1, c2 atomic.Int32
+	child1 := Compose(
+		service.NoOpServiceObserver{},
+		datasource.NoOpDataSourceObserver{},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
+		WithHTTPMux(func(*http.ServeMux) { c1.Add(1) }),
+	)
+	child2 := Compose(
+		service.NoOpServiceObserver{},
+		datasource.NoOpDataSourceObserver{},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
+		WithHTTPMux(func(*http.ServeMux) { c2.Add(1) }),
+	)
+
+	composite := CompositeAll([]Observer{child1, child2})
+	composite.ConfigureHTTPMux(http.NewServeMux())
+
+	if c1.Load() != 1 {
+		t.Errorf("child1: expected 1 call, got %d", c1.Load())
+	}
+	if c2.Load() != 1 {
+		t.Errorf("child2: expected 1 call, got %d", c2.Load())
+	}
+}
+
+func TestCompositeAll_ShutdownCascadesToAllChildren(t *testing.T) {
+	var c1, c2 atomic.Int32
+	child1 := Compose(
+		service.NoOpServiceObserver{},
+		datasource.NoOpDataSourceObserver{},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
+		WithShutdown(func(context.Context) error {
+			c1.Add(1)
+			return nil
+		}),
+	)
+	child2 := Compose(
+		service.NoOpServiceObserver{},
+		datasource.NoOpDataSourceObserver{},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
+		WithShutdown(func(context.Context) error {
+			c2.Add(1)
+			return errors.New("child2 error")
+		}),
+	)
+
+	composite := CompositeAll([]Observer{child1, child2})
+	err := composite.Shutdown(context.Background())
+
+	if c1.Load() != 1 {
+		t.Errorf("child1 shutdown: expected 1 call, got %d", c1.Load())
+	}
+	if c2.Load() != 1 {
+		t.Errorf("child2 shutdown: expected 1 call, got %d", c2.Load())
+	}
+	if err == nil || !errors.Is(err, errors.New("")) && err.Error() != "child2 error" {
+		t.Errorf("expected child2 error to propagate, got %v", err)
 	}
 }
 

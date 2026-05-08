@@ -21,6 +21,40 @@ Observability is often untested or awkward to test. Take advantage of the [Domai
 
 For real world examples in a Go codebase, see [this](https://github.com/project-kessel/parsec/blob/main/internal/service/observer.go) and [this](https://github.com/alechenninger/falcon/blob/main/internal/domain/observer.go).
 
+## Benchmarks
+
+Benchmarks live alongside tests in `*_bench_test.go` files and use the standard `testing.B` API with `b.ReportAllocs()`.
+
+### Running benchmarks
+
+```bash
+# Run all benchmarks in a package
+go test ./internal/probe/otel/ -bench=. -benchmem
+
+# Run a specific benchmark by name (regex)
+go test ./internal/probe/otel/ -bench=BenchmarkProbeRecord_StatusOnly -benchmem
+
+# Run with multiple iterations for stability
+go test ./internal/probe/otel/ -bench=. -benchmem -count=5
+```
+
+Benchmarks do NOT run with a plain `go test` — the `-bench` flag is required.
+
+### OTel metric probe benchmarks
+
+`internal/probe/otel/observer_bench_test.go` verifies that the `WithAttributeSet` attribute strategy keeps per-recording allocations minimal. The benchmarks cover all three strategies:
+
+| Benchmark | Strategy | Expected behavior |
+|-----------|----------|-------------------|
+| `BenchmarkProbeRecord_StatusOnly` | Package-level pre-built attribute set | Zero attribute allocs at `End()` |
+| `BenchmarkProbeRecord_StatusOnly_Error` | Same, error path | Zero attribute allocs at `End()` |
+| `BenchmarkProbeRecord_KnownAtStartAttrs` | Attribute set built in `*Started` | Zero attribute allocs at `End()` (cost amortized in probe creation) |
+| `BenchmarkProbeRecord_KnownAtStartAttrs_Error` | Same, error path | Zero attribute allocs at `End()` |
+| `BenchmarkProbeRecord_MidFlightAttrs` | `attribute.NewSet` built in `End()` | One set construction (unavoidable for dynamic values) |
+| `BenchmarkProbeRecord_ServeFailedStatic` | Package-level static set, counter only | Near-zero overhead |
+
+Any remaining allocations (typically 1–4 per op) originate from the OTel SDK's internal recording pipeline, not from attribute construction.
+
 ## Deterministic concurrency
 
 Coordinating threads / goroutines is sometimes necessary in tests. To do this deterministically and cleanly, take advantage of the [Domain Oriented Observability](https://martinfowler.com/articles/domain-oriented-observability.html) pattern. The main code is coupled on to an interface with certain probe points. Then, an implementation of this injected at test time uses these probes to block, or signal waiting code.

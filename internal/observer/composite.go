@@ -2,6 +2,8 @@ package observer
 
 import (
 	"context"
+	"errors"
+	"net/http"
 
 	"github.com/project-kessel/parsec/internal/datasource"
 	"github.com/project-kessel/parsec/internal/keys"
@@ -183,6 +185,22 @@ func (c *compositeAll) StopStarted(ctx context.Context) (context.Context, server
 		ctx, probes[i] = ch.StopStarted(ctx)
 	}
 	return ctx, &compositeStopProbe{probes}
+}
+
+func (c *compositeAll) Shutdown(ctx context.Context) error {
+	var errs []error
+	for _, ch := range c.children {
+		if err := ch.Shutdown(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (c *compositeAll) ConfigureHTTPMux(mux *http.ServeMux) {
+	for _, ch := range c.children {
+		ch.ConfigureHTTPMux(mux)
+	}
 }
 
 // --- composite probes: fan out each event to all children ---
