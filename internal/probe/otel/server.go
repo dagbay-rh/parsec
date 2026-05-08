@@ -18,31 +18,15 @@ var (
 type serverObserver struct {
 	server.NoOpServerObserver
 
-	initPopTotal    metric.Int64Counter
-	initPopDuration metric.Float64Histogram
-
-	cacheRefreshTotal    metric.Int64Counter
+	initPopDuration      metric.Float64Histogram
 	cacheRefreshDuration metric.Float64Histogram
-
-	serveFailedTotal metric.Int64Counter
+	serveFailedTotal     metric.Int64Counter
 }
 
 func newServerObserver(m metric.Meter) (*serverObserver, error) {
-	ipt, err := m.Int64Counter("parsec.server.jwks.init.total",
-		metric.WithDescription("Total JWKS initial population operations"),
-	)
-	if err != nil {
-		return nil, err
-	}
 	ipd, err := m.Float64Histogram("parsec.server.jwks.init.duration",
 		metric.WithDescription("JWKS initial population duration in seconds"),
 		metric.WithUnit("s"),
-	)
-	if err != nil {
-		return nil, err
-	}
-	crt, err := m.Int64Counter("parsec.server.jwks.refresh.total",
-		metric.WithDescription("Total JWKS cache refresh operations"),
 	)
 	if err != nil {
 		return nil, err
@@ -62,9 +46,7 @@ func newServerObserver(m metric.Meter) (*serverObserver, error) {
 	}
 
 	return &serverObserver{
-		initPopTotal:         ipt,
 		initPopDuration:      ipd,
-		cacheRefreshTotal:    crt,
 		cacheRefreshDuration: crd,
 		serveFailedTotal:     sft,
 	}, nil
@@ -73,41 +55,49 @@ func newServerObserver(m metric.Meter) (*serverObserver, error) {
 // --- init population probe ---
 
 func (o *serverObserver) InitPopulationStarted(ctx context.Context) (context.Context, server.InitPopulationProbe) {
-	return ctx, &initPopulationProbe{metricProbe: metricProbe{
-		ctx:       ctx,
-		counter:   o.initPopTotal,
-		histogram: o.initPopDuration,
-		startTime: time.Now(),
-	}}
+	return ctx, &initPopulationProbe{
+		obs: o, ctx: ctx, startTime: time.Now(),
+		status: successStatusAttr,
+	}
 }
 
 type initPopulationProbe struct {
 	server.NoOpInitPopulationProbe
-	metricProbe
+	obs       *serverObserver
+	ctx       context.Context
+	startTime time.Time
+	status    attribute.KeyValue
 }
 
-func (p *initPopulationProbe) InitialCachePopulationFailed(error) { p.markFailed() }
-func (p *initPopulationProbe) End()                               { p.finish() }
+func (p *initPopulationProbe) InitialCachePopulationFailed(_ error) { p.status = errorStatusAttr }
+func (p *initPopulationProbe) End() {
+	attrs := metric.WithAttributeSet(attribute.NewSet(p.status))
+	p.obs.initPopDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+}
 
 // --- cache refresh probe ---
 
 func (o *serverObserver) CacheRefreshStarted(ctx context.Context) (context.Context, server.CacheRefreshProbe) {
-	return ctx, &cacheRefreshProbe{metricProbe: metricProbe{
-		ctx:       ctx,
-		counter:   o.cacheRefreshTotal,
-		histogram: o.cacheRefreshDuration,
-		startTime: time.Now(),
-	}}
+	return ctx, &cacheRefreshProbe{
+		obs: o, ctx: ctx, startTime: time.Now(),
+		status: successStatusAttr,
+	}
 }
 
 type cacheRefreshProbe struct {
 	server.NoOpCacheRefreshProbe
-	metricProbe
+	obs       *serverObserver
+	ctx       context.Context
+	startTime time.Time
+	status    attribute.KeyValue
 }
 
-func (p *cacheRefreshProbe) CacheRefreshFailed(error)          { p.markFailed() }
-func (p *cacheRefreshProbe) KeyConversionFailed(string, error) { p.markFailed() }
-func (p *cacheRefreshProbe) End()                              { p.finish() }
+func (p *cacheRefreshProbe) CacheRefreshFailed(_ error)           { p.status = errorStatusAttr }
+func (p *cacheRefreshProbe) KeyConversionFailed(_ string, _ error) { p.status = errorStatusAttr }
+func (p *cacheRefreshProbe) End() {
+	attrs := metric.WithAttributeSet(attribute.NewSet(p.status))
+	p.obs.cacheRefreshDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+}
 
 // --- serve failed (fire-and-forget, counter only) ---
 // context.Background() is intentional: the upstream LifecycleObserver interface

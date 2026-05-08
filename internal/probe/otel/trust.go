@@ -10,24 +10,22 @@ import (
 	"github.com/project-kessel/parsec/internal/trust"
 )
 
+var (
+	jwtResultJWKSLookupFailed       = attribute.String("result", "jwks_lookup_failed")
+	jwtResultTokenExpired           = attribute.String("result", "token_expired")
+	jwtResultTokenInvalid           = attribute.String("result", "token_invalid")
+	jwtResultClaimsExtractionFailed = attribute.String("result", "claims_extraction_failed")
+)
+
 type trustObserver struct {
 	trust.NoOpTrustObserver
 
-	validationTotal     metric.Int64Counter
 	validationDuration  metric.Float64Histogram
-	jwtValidateTotal    metric.Int64Counter
 	jwtValidateDuration metric.Float64Histogram
-	actorFilterTotal    metric.Int64Counter
 	actorFilterDuration metric.Float64Histogram
 }
 
 func newTrustObserver(m metric.Meter) (*trustObserver, error) {
-	vt, err := m.Int64Counter("parsec.trust.validation.total",
-		metric.WithDescription("Total trust validation operations"),
-	)
-	if err != nil {
-		return nil, err
-	}
 	vd, err := m.Float64Histogram("parsec.trust.validation.duration",
 		metric.WithDescription("Trust validation duration in seconds"),
 		metric.WithUnit("s"),
@@ -35,21 +33,9 @@ func newTrustObserver(m metric.Meter) (*trustObserver, error) {
 	if err != nil {
 		return nil, err
 	}
-	jvt, err := m.Int64Counter("parsec.trust.jwt.validate.total",
-		metric.WithDescription("Total JWT validation operations"),
-	)
-	if err != nil {
-		return nil, err
-	}
 	jvd, err := m.Float64Histogram("parsec.trust.jwt.validate.duration",
 		metric.WithDescription("JWT validation duration in seconds"),
 		metric.WithUnit("s"),
-	)
-	if err != nil {
-		return nil, err
-	}
-	aft, err := m.Int64Counter("parsec.trust.actor.filter.total",
-		metric.WithDescription("Total actor filter operations"),
 	)
 	if err != nil {
 		return nil, err
@@ -63,43 +49,46 @@ func newTrustObserver(m metric.Meter) (*trustObserver, error) {
 	}
 
 	return &trustObserver{
-		validationTotal:     vt,
 		validationDuration:  vd,
-		jwtValidateTotal:    jvt,
 		jwtValidateDuration: jvd,
-		actorFilterTotal:    aft,
 		actorFilterDuration: afd,
 	}, nil
 }
 
+// --- validation probe ---
+
 func (o *trustObserver) ValidationStarted(ctx context.Context) (context.Context, trust.ValidationProbe) {
-	return ctx, &validationProbe{metricProbe: metricProbe{
-		ctx:       ctx,
-		counter:   o.validationTotal,
-		histogram: o.validationDuration,
-		startTime: time.Now(),
-	}}
+	return ctx, &validationProbe{
+		obs: o, ctx: ctx, startTime: time.Now(),
+		status: successStatusAttr,
+	}
 }
 
 type validationProbe struct {
 	trust.NoOpValidationProbe
-	metricProbe
+	obs       *trustObserver
+	ctx       context.Context
+	startTime time.Time
+	status    attribute.KeyValue
 }
 
-func (p *validationProbe) AllValidatorsFailed(_ trust.CredentialType, _ int, _ error) { p.markFailed() }
-func (p *validationProbe) End()                                                       { p.finish() }
+func (p *validationProbe) AllValidatorsFailed(_ trust.CredentialType, _ int, _ error) {
+	p.status = errorStatusAttr
+}
+func (p *validationProbe) End() {
+	attrs := metric.WithAttributeSet(attribute.NewSet(p.status))
+	p.obs.validationDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+}
 
 // --- JWT validate probe ---
 
 func (o *trustObserver) JWTValidateStarted(ctx context.Context, issuer string) (context.Context, trust.JWTValidateProbe) {
-	return ctx, &jwtValidateProbe{metricProbe: metricProbe{
-		ctx:          ctx,
-		counter:      o.jwtValidateTotal,
-		histogram:    o.jwtValidateDuration,
-		startTime:    time.Now(),
-		successAttrs: metric.WithAttributeSet(attribute.NewSet(successStatusAttr, attribute.String("issuer", issuer))),
-		errorAttrs:   metric.WithAttributeSet(attribute.NewSet(errorStatusAttr, attribute.String("issuer", issuer))),
-	}}
+	return ctx, &jwtValidateProbe{
+		obs: o, ctx: ctx, startTime: time.Now(),
+		status: successStatusAttr,
+		result: resultSuccess,
+		issuer: attribute.String("issuer", issuer),
+	}
 }
 
 // jwtValidateProbe records metrics for a single JWT validation.
@@ -107,33 +96,57 @@ func (o *trustObserver) JWTValidateStarted(ctx context.Context, issuer string) (
 // bounded by the number of trust_store.validators — not a per-request value.
 type jwtValidateProbe struct {
 	trust.NoOpJWTValidateProbe
-	metricProbe
+	obs       *trustObserver
+	ctx       context.Context
+	startTime time.Time
+	status    attribute.KeyValue
+	result    attribute.KeyValue
+	issuer    attribute.KeyValue
 }
 
-func (p *jwtValidateProbe) JWKSLookupFailed(error)       { p.markFailed() }
-func (p *jwtValidateProbe) TokenExpired()                { p.markFailed() }
-func (p *jwtValidateProbe) TokenInvalid(error)           { p.markFailed() }
-func (p *jwtValidateProbe) ClaimsExtractionFailed(error) { p.markFailed() }
-func (p *jwtValidateProbe) End()                         { p.finish() }
+func (p *jwtValidateProbe) JWKSLookupFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = jwtResultJWKSLookupFailed
+}
+func (p *jwtValidateProbe) TokenExpired() {
+	p.status = errorStatusAttr
+	p.result = jwtResultTokenExpired
+}
+func (p *jwtValidateProbe) TokenInvalid(_ error) {
+	p.status = errorStatusAttr
+	p.result = jwtResultTokenInvalid
+}
+func (p *jwtValidateProbe) ClaimsExtractionFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = jwtResultClaimsExtractionFailed
+}
+func (p *jwtValidateProbe) End() {
+	attrs := metric.WithAttributeSet(attribute.NewSet(p.issuer, p.result, p.status))
+	p.obs.jwtValidateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+}
 
 // --- actor filter probe ---
 
 func (o *trustObserver) ForActorStarted(ctx context.Context) (context.Context, trust.ForActorProbe) {
-	return ctx, &forActorProbe{metricProbe: metricProbe{
-		ctx:       ctx,
-		counter:   o.actorFilterTotal,
-		histogram: o.actorFilterDuration,
-		startTime: time.Now(),
-	}}
+	return ctx, &forActorProbe{
+		obs: o, ctx: ctx, startTime: time.Now(),
+		status: successStatusAttr,
+	}
 }
 
 type forActorProbe struct {
 	trust.NoOpForActorProbe
-	metricProbe
+	obs       *trustObserver
+	ctx       context.Context
+	startTime time.Time
+	status    attribute.KeyValue
 }
 
-func (p *forActorProbe) FilterEvaluationFailed(string, error) { p.markFailed() }
-func (p *forActorProbe) End()                                 { p.finish() }
+func (p *forActorProbe) FilterEvaluationFailed(_ string, _ error) { p.status = errorStatusAttr }
+func (p *forActorProbe) End() {
+	attrs := metric.WithAttributeSet(attribute.NewSet(p.status))
+	p.obs.actorFilterDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+}
 
 var (
 	_ trust.TrustObserver    = (*trustObserver)(nil)

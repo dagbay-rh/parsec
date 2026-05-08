@@ -191,26 +191,35 @@ Neither method is on per-package aggregate interfaces to avoid Go embedding ambi
 - The central composite and composition logic lives in `internal/observer/`
 - Observer construction dispatch lives in `internal/config.Provider`, not in standalone constructors
 
-## OTel Metrics: Attribute Performance
+## OTel Metrics: Implementation
 
-When implementing metric probes (`internal/probe/otel/`), use `metric.WithAttributeSet` with pre-built `attribute.Set` values — never `metric.WithAttributes` with variadic key-values. The latter allocates and sorts on every `Add`/`Record` call.
+When implementing metric probes (`internal/probe/otel/`), use `metric.WithAttributeSet` with pre-built `attribute.Set` values — never `metric.WithAttributes` with variadic key-values. The latter allocates and sorts on every `Record` call.
 
-### Unified `finish()` pattern
+### Instrument convention
 
-All metric probes end the same way: their `End()` calls `p.finish()`. The `metricProbe` base type owns `successAttrs`, `errorAttrs`, and `dynamicAttrs` fields, and `finish()` resolves which attribute set to use via `resolveAttrs()`. Individual probes never branch on status or build attribute sets themselves.
+Each timed probe records a single `Float64Histogram` with unit `"s"`. Histograms provide count, sum, and distribution via Prometheus's `_count`, `_sum`, and `_bucket` suffixes, making separate counters redundant. The only standalone counter is `serveFailedTotal` (fire-and-forget events with no meaningful duration).
 
-**How to set up a probe based on when attributes are known:**
+### Probe structure
 
-1. **Status-only** (no extra attributes): Leave `successAttrs`/`errorAttrs`/`dynamicAttrs` at their zero values. `resolveAttrs()` falls through to the package-level pre-built sets. Zero allocations at `End()`.
+Each probe holds a pointer to its parent observer (to access instruments), a `context.Context`, a `time.Time`, and `attribute.KeyValue` fields for every attribute it records. Probes do not embed a shared base type — each `End()` method is self-contained and records directly to the observer's instrument.
 
-2. **Known-at-start attributes** (e.g. `issuer`, `key_name`, `datasource`): Set `successAttrs` and `errorAttrs` on the `metricProbe` in `*Started`. Zero allocations at `End()`.
+### Attribute fields
 
-3. **Mid-flight attributes** (e.g. `result` determined during the operation): Pre-allocate `dynamicAttrs` with known-at-start values and sufficient capacity in `*Started`. Append dynamic values during probe methods. `resolveAttrs()` appends the status attribute and builds a single `attribute.NewSet`. One allocation at `End()`.
+All probes follow a single, uniform pattern: store attribute values as `attribute.KeyValue` fields, build one `attribute.NewSet` at `End()`.
 
-In all cases, the probe's `End()` method is simply:
+**`status`** — Every probe has a `status attribute.KeyValue` field, initialized to `successStatusAttr`. Failure methods assign `errorStatusAttr` directly — no branching at `End()`.
+
+**`result`** — High-value probes with multiple distinct outcomes also carry a `result attribute.KeyValue` field. Success is the default; lifecycle methods assign specific failure reasons from package-level constants. Since `result` and `status` are perfectly correlated (every result value implies exactly one status value), adding both does not increase time series cardinality.
+
+**Other attributes** — Domain attributes like `issuer`, `key_name`, or `datasource` are stored as `attribute.KeyValue` fields, set at probe creation. Enum-like values (cache `result`, rotation `result`) use pre-allocated package-level constants to avoid per-call allocations.
+
+At `End()`, all fields are combined into a single `attribute.NewSet` and passed via `metric.WithAttributeSet`:
 
 ```go
-func (p *myProbe) End() { p.finish() }
+func (p *jwtValidateProbe) End() {
+    attrs := metric.WithAttributeSet(attribute.NewSet(p.issuer, p.result, p.status))
+    p.obs.jwtValidateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+}
 ```
 
 ## Key Principles

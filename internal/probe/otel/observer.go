@@ -14,79 +14,33 @@ import (
 const meterName = "github.com/project-kessel/parsec"
 
 var (
-	successStatusAttr    = attribute.String("status", "success")
-	errorStatusAttr      = attribute.String("status", "error")
-	successStatusAttrSet = metric.WithAttributeSet(attribute.NewSet(successStatusAttr))
-	errorStatusAttrSet   = metric.WithAttributeSet(attribute.NewSet(errorStatusAttr))
+	successStatusAttr = attribute.String("status", "success")
+	errorStatusAttr   = attribute.String("status", "error")
+
+	resultSuccess = attribute.String("result", "success")
+
+	resultIssuanceFailed = attribute.String("result", "issuance_failed")
+	resultIssuerNotFound = attribute.String("result", "issuer_not_found")
+
+	resultActorValidationFailed            = attribute.String("result", "actor_validation_failed")
+	resultRequestContextParseFailed        = attribute.String("result", "request_context_parse_failed")
+	resultSubjectTokenValidationFailed     = attribute.String("result", "subject_token_validation_failed")
+	resultSubjectCredentialExtractionFailed = attribute.String("result", "subject_credential_extraction_failed")
+	resultSubjectValidationFailed          = attribute.String("result", "subject_validation_failed")
 )
 
-// metricProbe is the shared base for probes that record a counter+histogram
-// pair with a success/error status attribute.
-//
-// All probes call finish() in their End() method. The attribute set used for
-// recording is determined by how the probe was constructed:
-//
-//   - No extra attrs: leave successAttrs/errorAttrs nil → uses package-level status-only sets
-//   - Known-at-start attrs: set successAttrs/errorAttrs in *Started → zero alloc at finish
-//   - Mid-flight attrs: append to dynamicAttrs during the operation → one NewSet call at finish
-type metricProbe struct {
-	ctx          context.Context
-	counter      metric.Int64Counter
-	histogram    metric.Float64Histogram
-	startTime    time.Time
-	failed       bool
-	successAttrs metric.MeasurementOption
-	errorAttrs   metric.MeasurementOption
-	dynamicAttrs []attribute.KeyValue
-}
-
-func (p *metricProbe) markFailed() { p.failed = true }
-
-func (p *metricProbe) finish() {
-	attrs := p.resolveAttrs()
-	p.counter.Add(p.ctx, 1, attrs)
-	p.histogram.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
-}
-
-func (p *metricProbe) resolveAttrs() metric.MeasurementOption {
-	if p.dynamicAttrs != nil {
-		statusAttr := successStatusAttr
-		if p.failed {
-			statusAttr = errorStatusAttr
-		}
-		return metric.WithAttributeSet(attribute.NewSet(append(p.dynamicAttrs, statusAttr)...))
-	}
-	if p.failed {
-		if p.errorAttrs != nil {
-			return p.errorAttrs
-		}
-		return errorStatusAttrSet
-	}
-	if p.successAttrs != nil {
-		return p.successAttrs
-	}
-	return successStatusAttrSet
-}
-
-// serviceObserver implements service.ServiceObserver using OTel counters and histograms.
+// serviceObserver implements [service.ServiceObserver] using OTel histograms.
+// Histogram instruments provide count, sum, and distribution via _count, _sum,
+// and _bucket suffixes, making separate counters redundant.
 type serviceObserver struct {
 	service.NoOpServiceObserver
 
-	issuanceTotal    metric.Int64Counter
 	issuanceDuration metric.Float64Histogram
-	exchangeTotal    metric.Int64Counter
 	exchangeDuration metric.Float64Histogram
-	authzTotal       metric.Int64Counter
 	authzDuration    metric.Float64Histogram
 }
 
 func newServiceObserver(m metric.Meter) (*serviceObserver, error) {
-	it, err := m.Int64Counter("parsec.token.issuance.total",
-		metric.WithDescription("Total token issuance operations"),
-	)
-	if err != nil {
-		return nil, err
-	}
 	id, err := m.Float64Histogram("parsec.token.issuance.duration",
 		metric.WithDescription("Token issuance duration in seconds"),
 		metric.WithUnit("s"),
@@ -94,21 +48,9 @@ func newServiceObserver(m metric.Meter) (*serviceObserver, error) {
 	if err != nil {
 		return nil, err
 	}
-	et, err := m.Int64Counter("parsec.token.exchange.total",
-		metric.WithDescription("Total token exchange operations"),
-	)
-	if err != nil {
-		return nil, err
-	}
 	ed, err := m.Float64Histogram("parsec.token.exchange.duration",
 		metric.WithDescription("Token exchange duration in seconds"),
 		metric.WithUnit("s"),
-	)
-	if err != nil {
-		return nil, err
-	}
-	at, err := m.Int64Counter("parsec.authz.check.total",
-		metric.WithDescription("Total authorization check operations"),
 	)
 	if err != nil {
 		return nil, err
@@ -122,11 +64,8 @@ func newServiceObserver(m metric.Meter) (*serviceObserver, error) {
 	}
 
 	return &serviceObserver{
-		issuanceTotal:    it,
 		issuanceDuration: id,
-		exchangeTotal:    et,
 		exchangeDuration: ed,
-		authzTotal:       at,
 		authzDuration:    ad,
 	}, nil
 }
@@ -138,74 +77,120 @@ func (o *serviceObserver) TokenIssuanceStarted(
 	_ string,
 	_ []service.TokenType,
 ) (context.Context, service.TokenIssuanceProbe) {
-	return ctx, &tokenIssuanceProbe{metricProbe: metricProbe{
-		ctx:       ctx,
-		counter:   o.issuanceTotal,
-		histogram: o.issuanceDuration,
-		startTime: time.Now(),
-	}}
+	return ctx, &tokenIssuanceProbe{
+		obs: o, ctx: ctx, startTime: time.Now(),
+		status: successStatusAttr, result: resultSuccess,
+	}
 }
 
 func (o *serviceObserver) TokenExchangeStarted(
 	ctx context.Context,
-	_ string,
-	_ string,
+	grantType string,
+	requestedTokenType string,
 	_ string,
 	_ string,
 ) (context.Context, service.TokenExchangeProbe) {
-	return ctx, &tokenExchangeProbe{metricProbe: metricProbe{
-		ctx:       ctx,
-		counter:   o.exchangeTotal,
-		histogram: o.exchangeDuration,
-		startTime: time.Now(),
-	}}
+	return ctx, &tokenExchangeProbe{
+		obs: o, ctx: ctx, startTime: time.Now(),
+		status:             successStatusAttr,
+		result:             resultSuccess,
+		grantType:          attribute.String("grant_type", grantType),
+		requestedTokenType: attribute.String("requested_token_type", requestedTokenType),
+	}
 }
 
 func (o *serviceObserver) AuthzCheckStarted(
 	ctx context.Context,
 ) (context.Context, service.AuthzCheckProbe) {
-	return ctx, &authzCheckProbe{metricProbe: metricProbe{
-		ctx:       ctx,
-		counter:   o.authzTotal,
-		histogram: o.authzDuration,
-		startTime: time.Now(),
-	}}
+	return ctx, &authzCheckProbe{
+		obs: o, ctx: ctx, startTime: time.Now(),
+		status: successStatusAttr, result: resultSuccess,
+	}
 }
 
 // --- token issuance probe ---
 
 type tokenIssuanceProbe struct {
 	service.NoOpTokenIssuanceProbe
-	metricProbe
+	obs       *serviceObserver
+	ctx       context.Context
+	startTime time.Time
+	status    attribute.KeyValue
+	result    attribute.KeyValue
 }
 
-func (p *tokenIssuanceProbe) TokenTypeIssuanceFailed(_ service.TokenType, _ error) { p.markFailed() }
-func (p *tokenIssuanceProbe) IssuerNotFound(_ service.TokenType, _ error)          { p.markFailed() }
-func (p *tokenIssuanceProbe) End()                                                 { p.finish() }
+func (p *tokenIssuanceProbe) TokenTypeIssuanceFailed(_ service.TokenType, _ error) {
+	p.status = errorStatusAttr
+	p.result = resultIssuanceFailed
+}
+func (p *tokenIssuanceProbe) IssuerNotFound(_ service.TokenType, _ error) {
+	p.status = errorStatusAttr
+	p.result = resultIssuerNotFound
+}
+func (p *tokenIssuanceProbe) End() {
+	attrs := metric.WithAttributeSet(attribute.NewSet(p.result, p.status))
+	p.obs.issuanceDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+}
 
 // --- token exchange probe ---
+// grant_type and requested_token_type are bounded by the OAuth 2.0 spec.
 
 type tokenExchangeProbe struct {
 	service.NoOpTokenExchangeProbe
-	metricProbe
+	obs                *serviceObserver
+	ctx                context.Context
+	startTime          time.Time
+	status             attribute.KeyValue
+	result             attribute.KeyValue
+	grantType          attribute.KeyValue
+	requestedTokenType attribute.KeyValue
 }
 
-func (p *tokenExchangeProbe) ActorValidationFailed(_ error)        { p.markFailed() }
-func (p *tokenExchangeProbe) RequestContextParseFailed(_ error)    { p.markFailed() }
-func (p *tokenExchangeProbe) SubjectTokenValidationFailed(_ error) { p.markFailed() }
-func (p *tokenExchangeProbe) End()                                 { p.finish() }
+func (p *tokenExchangeProbe) ActorValidationFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = resultActorValidationFailed
+}
+func (p *tokenExchangeProbe) RequestContextParseFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = resultRequestContextParseFailed
+}
+func (p *tokenExchangeProbe) SubjectTokenValidationFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = resultSubjectTokenValidationFailed
+}
+func (p *tokenExchangeProbe) End() {
+	attrs := metric.WithAttributeSet(attribute.NewSet(
+		p.grantType, p.requestedTokenType, p.result, p.status))
+	p.obs.exchangeDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+}
 
 // --- authz check probe ---
 
 type authzCheckProbe struct {
 	service.NoOpAuthzCheckProbe
-	metricProbe
+	obs       *serviceObserver
+	ctx       context.Context
+	startTime time.Time
+	status    attribute.KeyValue
+	result    attribute.KeyValue
 }
 
-func (p *authzCheckProbe) ActorValidationFailed(_ error)             { p.markFailed() }
-func (p *authzCheckProbe) SubjectCredentialExtractionFailed(_ error) { p.markFailed() }
-func (p *authzCheckProbe) SubjectValidationFailed(_ error)           { p.markFailed() }
-func (p *authzCheckProbe) End()                                      { p.finish() }
+func (p *authzCheckProbe) ActorValidationFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = resultActorValidationFailed
+}
+func (p *authzCheckProbe) SubjectCredentialExtractionFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = resultSubjectCredentialExtractionFailed
+}
+func (p *authzCheckProbe) SubjectValidationFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = resultSubjectValidationFailed
+}
+func (p *authzCheckProbe) End() {
+	attrs := metric.WithAttributeSet(attribute.NewSet(p.result, p.status))
+	p.obs.authzDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+}
 
 var (
 	_ service.ServiceObserver    = (*serviceObserver)(nil)

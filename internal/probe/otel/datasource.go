@@ -10,31 +10,33 @@ import (
 	"github.com/project-kessel/parsec/internal/datasource"
 )
 
+var (
+	cacheResultHit     = attribute.String("result", "hit")
+	cacheResultMiss    = attribute.String("result", "miss")
+	cacheResultExpired = attribute.String("result", "expired")
+	cacheResultError   = attribute.String("result", "error")
+	cacheResultUnknown = attribute.String("result", "unknown")
+
+	luaResultCompleted        = attribute.String("result", "completed")
+	luaResultCompletedNil     = attribute.String("result", "completed_nil")
+	luaResultScriptLoadFailed = attribute.String("result", "script_load_failed")
+	luaResultExecutionFailed  = attribute.String("result", "execution_failed")
+	luaResultInvalidReturn    = attribute.String("result", "invalid_return_type")
+	luaResultConversionFailed = attribute.String("result", "conversion_failed")
+	luaResultUnknown          = attribute.String("result", "unknown")
+)
+
 type dataSourceObserver struct {
 	datasource.NoOpDataSourceObserver
 
-	cacheFetchTotal    metric.Int64Counter
 	cacheFetchDuration metric.Float64Histogram
-	luaFetchTotal      metric.Int64Counter
 	luaFetchDuration   metric.Float64Histogram
 }
 
 func newDataSourceObserver(m metric.Meter) (*dataSourceObserver, error) {
-	cft, err := m.Int64Counter("parsec.datasource.cache.fetch.total",
-		metric.WithDescription("Total data source cache fetch operations"),
-	)
-	if err != nil {
-		return nil, err
-	}
 	cfd, err := m.Float64Histogram("parsec.datasource.cache.fetch.duration",
 		metric.WithDescription("Data source cache fetch duration in seconds"),
 		metric.WithUnit("s"),
-	)
-	if err != nil {
-		return nil, err
-	}
-	lft, err := m.Int64Counter("parsec.datasource.lua.fetch.total",
-		metric.WithDescription("Total Lua data source fetch operations"),
 	)
 	if err != nil {
 		return nil, err
@@ -48,74 +50,93 @@ func newDataSourceObserver(m metric.Meter) (*dataSourceObserver, error) {
 	}
 
 	return &dataSourceObserver{
-		cacheFetchTotal:    cft,
 		cacheFetchDuration: cfd,
-		luaFetchTotal:      lft,
 		luaFetchDuration:   lfd,
 	}, nil
 }
 
 func (o *dataSourceObserver) CacheFetchStarted(ctx context.Context, dataSourceName string) (context.Context, datasource.CacheFetchProbe) {
-	attrs := make([]attribute.KeyValue, 1, 3)
-	attrs[0] = attribute.String("datasource", dataSourceName)
 	return ctx, &cacheFetchProbe{
-		metricProbe: metricProbe{
-			ctx:          ctx,
-			counter:      o.cacheFetchTotal,
-			histogram:    o.cacheFetchDuration,
-			startTime:    time.Now(),
-			dynamicAttrs: attrs,
-		},
+		obs: o, ctx: ctx, startTime: time.Now(),
+		status:     successStatusAttr,
+		datasource: attribute.String("datasource", dataSourceName),
 	}
 }
 
 func (o *dataSourceObserver) LuaFetchStarted(ctx context.Context, dataSourceName string) (context.Context, datasource.LuaFetchProbe) {
-	return ctx, &luaFetchProbe{metricProbe: metricProbe{
-		ctx:          ctx,
-		counter:      o.luaFetchTotal,
-		histogram:    o.luaFetchDuration,
-		startTime:    time.Now(),
-		successAttrs: metric.WithAttributeSet(attribute.NewSet(successStatusAttr, attribute.String("datasource", dataSourceName))),
-		errorAttrs:   metric.WithAttributeSet(attribute.NewSet(errorStatusAttr, attribute.String("datasource", dataSourceName))),
-	}}
+	return ctx, &luaFetchProbe{
+		obs: o, ctx: ctx, startTime: time.Now(),
+		status:     successStatusAttr,
+		datasource: attribute.String("datasource", dataSourceName),
+	}
 }
+
+// --- cache fetch probe ---
 
 type cacheFetchProbe struct {
 	datasource.NoOpCacheFetchProbe
-	metricProbe
+	obs        *dataSourceObserver
+	ctx        context.Context
+	startTime  time.Time
+	status     attribute.KeyValue
+	datasource attribute.KeyValue
+	result     attribute.KeyValue
 }
 
-func (p *cacheFetchProbe) CacheHit() {
-	p.dynamicAttrs = append(p.dynamicAttrs, attribute.String("result", "hit"))
-}
-func (p *cacheFetchProbe) CacheMiss() {
-	p.dynamicAttrs = append(p.dynamicAttrs, attribute.String("result", "miss"))
-}
-func (p *cacheFetchProbe) CacheExpired() {
-	p.dynamicAttrs = append(p.dynamicAttrs, attribute.String("result", "expired"))
-}
-func (p *cacheFetchProbe) FetchFailed(error) {
-	p.dynamicAttrs = append(p.dynamicAttrs, attribute.String("result", "error"))
-	p.markFailed()
+func (p *cacheFetchProbe) CacheHit()     { p.result = cacheResultHit }
+func (p *cacheFetchProbe) CacheMiss()    { p.result = cacheResultMiss }
+func (p *cacheFetchProbe) CacheExpired() { p.result = cacheResultExpired }
+func (p *cacheFetchProbe) FetchFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = cacheResultError
 }
 
 func (p *cacheFetchProbe) End() {
-	if len(p.dynamicAttrs) == 1 {
-		p.dynamicAttrs = append(p.dynamicAttrs, attribute.String("result", "unknown"))
+	if p.result == (attribute.KeyValue{}) {
+		p.result = cacheResultUnknown
 	}
-	p.finish()
+	attrs := metric.WithAttributeSet(attribute.NewSet(p.datasource, p.result, p.status))
+	p.obs.cacheFetchDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
 }
+
+// --- lua fetch probe ---
 
 type luaFetchProbe struct {
 	datasource.NoOpLuaFetchProbe
-	metricProbe
+	obs        *dataSourceObserver
+	ctx        context.Context
+	startTime  time.Time
+	status     attribute.KeyValue
+	datasource attribute.KeyValue
+	result     attribute.KeyValue
 }
 
-func (p *luaFetchProbe) ScriptLoadFailed(error)       { p.markFailed() }
-func (p *luaFetchProbe) ScriptExecutionFailed(error)  { p.markFailed() }
-func (p *luaFetchProbe) InvalidReturnType(string)     { p.markFailed() }
-func (p *luaFetchProbe) ResultConversionFailed(error) { p.markFailed() }
-func (p *luaFetchProbe) End()                         { p.finish() }
+func (p *luaFetchProbe) FetchCompleted()    { p.result = luaResultCompleted }
+func (p *luaFetchProbe) FetchCompletedNil() { p.result = luaResultCompletedNil }
+func (p *luaFetchProbe) ScriptLoadFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = luaResultScriptLoadFailed
+}
+func (p *luaFetchProbe) ScriptExecutionFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = luaResultExecutionFailed
+}
+func (p *luaFetchProbe) InvalidReturnType(_ string) {
+	p.status = errorStatusAttr
+	p.result = luaResultInvalidReturn
+}
+func (p *luaFetchProbe) ResultConversionFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = luaResultConversionFailed
+}
+
+func (p *luaFetchProbe) End() {
+	if p.result == (attribute.KeyValue{}) {
+		p.result = luaResultUnknown
+	}
+	attrs := metric.WithAttributeSet(attribute.NewSet(p.datasource, p.result, p.status))
+	p.obs.luaFetchDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+}
 
 var (
 	_ datasource.DataSourceObserver = (*dataSourceObserver)(nil)
