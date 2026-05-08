@@ -92,7 +92,7 @@ type cacheRefreshProbe struct {
 	status    attribute.KeyValue
 }
 
-func (p *cacheRefreshProbe) CacheRefreshFailed(_ error)           { p.status = errorStatusAttr }
+func (p *cacheRefreshProbe) CacheRefreshFailed(_ error)            { p.status = errorStatusAttr }
 func (p *cacheRefreshProbe) KeyConversionFailed(_ string, _ error) { p.status = errorStatusAttr }
 func (p *cacheRefreshProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.status))

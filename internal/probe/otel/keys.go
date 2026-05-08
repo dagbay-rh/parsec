@@ -181,9 +181,9 @@ type kmsRotateProbe struct {
 	keyName   attribute.KeyValue
 }
 
-func (p *kmsRotateProbe) CreateKeyFailed(_ error)               { p.status = errorStatusAttr }
-func (p *kmsRotateProbe) AliasCheckFailed(_ error)              { p.status = errorStatusAttr }
-func (p *kmsRotateProbe) AliasUpdateFailed(_ error)             { p.status = errorStatusAttr }
+func (p *kmsRotateProbe) CreateKeyFailed(_ error)                { p.status = errorStatusAttr }
+func (p *kmsRotateProbe) AliasCheckFailed(_ error)               { p.status = errorStatusAttr }
+func (p *kmsRotateProbe) AliasUpdateFailed(_ error)              { p.status = errorStatusAttr }
 func (p *kmsRotateProbe) OldKeyDeletionFailed(_ string, _ error) { p.status = errorStatusAttr }
 func (p *kmsRotateProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.keyName, p.status))

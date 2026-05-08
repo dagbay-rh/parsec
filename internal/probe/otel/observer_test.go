@@ -464,38 +464,83 @@ func TestKeyCacheUpdateMetrics(t *testing.T) {
 
 func TestJWTValidateMetrics(t *testing.T) {
 	tests := []struct {
-		name       string
-		action     func(probe interface{ End(); JWKSLookupFailed(error); TokenExpired(); TokenInvalid(error); ClaimsExtractionFailed(error) })
+		name   string
+		action func(probe interface {
+			End()
+			JWKSLookupFailed(error)
+			TokenExpired()
+			TokenInvalid(error)
+			ClaimsExtractionFailed(error)
+		})
 		wantResult string
 		wantStatus string
 	}{
 		{
-			name:       "success",
-			action:     func(p interface{ End(); JWKSLookupFailed(error); TokenExpired(); TokenInvalid(error); ClaimsExtractionFailed(error) }) {},
+			name: "success",
+			action: func(p interface {
+				End()
+				JWKSLookupFailed(error)
+				TokenExpired()
+				TokenInvalid(error)
+				ClaimsExtractionFailed(error)
+			}) {
+			},
 			wantResult: `result="success"`,
 			wantStatus: `status="success"`,
 		},
 		{
-			name:       "jwks lookup failed",
-			action:     func(p interface{ End(); JWKSLookupFailed(error); TokenExpired(); TokenInvalid(error); ClaimsExtractionFailed(error) }) { p.JWKSLookupFailed(errors.New("timeout")) },
+			name: "jwks lookup failed",
+			action: func(p interface {
+				End()
+				JWKSLookupFailed(error)
+				TokenExpired()
+				TokenInvalid(error)
+				ClaimsExtractionFailed(error)
+			}) {
+				p.JWKSLookupFailed(errors.New("timeout"))
+			},
 			wantResult: `result="jwks_lookup_failed"`,
 			wantStatus: `status="error"`,
 		},
 		{
-			name:       "token expired",
-			action:     func(p interface{ End(); JWKSLookupFailed(error); TokenExpired(); TokenInvalid(error); ClaimsExtractionFailed(error) }) { p.TokenExpired() },
+			name: "token expired",
+			action: func(p interface {
+				End()
+				JWKSLookupFailed(error)
+				TokenExpired()
+				TokenInvalid(error)
+				ClaimsExtractionFailed(error)
+			}) {
+				p.TokenExpired()
+			},
 			wantResult: `result="token_expired"`,
 			wantStatus: `status="error"`,
 		},
 		{
-			name:       "token invalid",
-			action:     func(p interface{ End(); JWKSLookupFailed(error); TokenExpired(); TokenInvalid(error); ClaimsExtractionFailed(error) }) { p.TokenInvalid(errors.New("bad sig")) },
+			name: "token invalid",
+			action: func(p interface {
+				End()
+				JWKSLookupFailed(error)
+				TokenExpired()
+				TokenInvalid(error)
+				ClaimsExtractionFailed(error)
+			}) {
+				p.TokenInvalid(errors.New("bad sig"))
+			},
 			wantResult: `result="token_invalid"`,
 			wantStatus: `status="error"`,
 		},
 		{
-			name:       "claims extraction failed",
-			action:     func(p interface{ End(); JWKSLookupFailed(error); TokenExpired(); TokenInvalid(error); ClaimsExtractionFailed(error) }) { p.ClaimsExtractionFailed(errors.New("missing iss")) },
+			name: "claims extraction failed",
+			action: func(p interface {
+				End()
+				JWKSLookupFailed(error)
+				TokenExpired()
+				TokenInvalid(error)
+				ClaimsExtractionFailed(error)
+			}) {
+				p.ClaimsExtractionFailed(errors.New("missing iss"))
+			},
 			wantResult: `result="claims_extraction_failed"`,
 			wantStatus: `status="error"`,
 		},

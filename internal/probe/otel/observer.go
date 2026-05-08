@@ -22,11 +22,11 @@ var (
 	resultIssuanceFailed = attribute.String("result", "issuance_failed")
 	resultIssuerNotFound = attribute.String("result", "issuer_not_found")
 
-	resultActorValidationFailed            = attribute.String("result", "actor_validation_failed")
-	resultRequestContextParseFailed        = attribute.String("result", "request_context_parse_failed")
-	resultSubjectTokenValidationFailed     = attribute.String("result", "subject_token_validation_failed")
+	resultActorValidationFailed             = attribute.String("result", "actor_validation_failed")
+	resultRequestContextParseFailed         = attribute.String("result", "request_context_parse_failed")
+	resultSubjectTokenValidationFailed      = attribute.String("result", "subject_token_validation_failed")
 	resultSubjectCredentialExtractionFailed = attribute.String("result", "subject_credential_extraction_failed")
-	resultSubjectValidationFailed          = attribute.String("result", "subject_validation_failed")
+	resultSubjectValidationFailed           = attribute.String("result", "subject_validation_failed")
 )
 
 // serviceObserver implements [service.ServiceObserver] using OTel histograms.
