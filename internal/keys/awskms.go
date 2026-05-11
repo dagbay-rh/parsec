@@ -167,7 +167,10 @@ func (m *AWSKMSKeyProvider) getKeyIDFromAlias(ctx context.Context, aliasName str
 	if err != nil {
 		return "", err
 	}
-	return aws.ToString(resp.KeyMetadata.KeyId), nil
+	// Use ARN, not KeyId. Despite the name, KeyMetadata.KeyId returns a UUID
+	// while Sign's resp.KeyId returns a full ARN. We use ARN consistently
+	// so the contextSigner mismatch check compares like with like.
+	return aws.ToString(resp.KeyMetadata.Arn), nil
 }
 
 func (m *AWSKMSKeyProvider) aliasName(trustDomain, namespace, keyName string) string {
