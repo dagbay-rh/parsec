@@ -4,9 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
-	"encoding/asn1"
 	"fmt"
-	"math/big"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -224,19 +222,10 @@ func (h *awsKeyHandle) Sign(ctx context.Context, digest []byte, opts crypto.Sign
 		return nil, "", fmt.Errorf("KMS sign failed: %w", err)
 	}
 
-	usedKeyID := aws.ToString(resp.KeyId)
-
-	var signature []byte
-	if h.manager.algorithm == "ES256" || h.manager.algorithm == "ES384" {
-		signature, err = convertDERToRawECDSA(resp.Signature)
-		if err != nil {
-			return nil, "", err
-		}
-	} else {
-		signature = resp.Signature
-	}
-
-	return signature, usedKeyID, nil
+	// Return the DER-encoded signature as-is.
+	// The JWX library handles DER-to-raw conversion for ECDSA internally
+	// when using the crypto.Signer interface.
+	return resp.Signature, aws.ToString(resp.KeyId), nil
 }
 
 func (h *awsKeyHandle) Metadata(ctx context.Context) (string, string, error) {
@@ -298,33 +287,6 @@ func algorithmFromKeyType(keyType KeyType) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported key type: %s", keyType)
 	}
-}
-
-// convertDERToRawECDSA converts DER-encoded ECDSA signature to raw (r || s) format
-func convertDERToRawECDSA(derSig []byte) ([]byte, error) {
-	var sig struct {
-		R, S *big.Int
-	}
-	if _, err := asn1.Unmarshal(derSig, &sig); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal DER signature: %w", err)
-	}
-
-	// Determine key size (32 bytes for P-256, 48 bytes for P-384)
-	// Approximate logic based on bit len
-	keySize := (sig.R.BitLen() + 7) / 8
-	if keySize < 32 {
-		keySize = 32
-	}
-
-	rBytes := sig.R.Bytes()
-	sBytes := sig.S.Bytes()
-
-	// Pad to key size
-	rawSig := make([]byte, keySize*2)
-	copy(rawSig[keySize-len(rBytes):keySize], rBytes)
-	copy(rawSig[keySize*2-len(sBytes):], sBytes)
-
-	return rawSig, nil
 }
 
 // sanitizeAliasComponent replaces characters not allowed in KMS alias names.
