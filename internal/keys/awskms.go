@@ -174,10 +174,10 @@ func (m *AWSKMSKeyProvider) aliasName(trustDomain, namespace, keyName string) st
 	// Build alias path with separate trust domain and namespace components
 	var parts []string
 	if trustDomain != "" {
-		parts = append(parts, strings.ReplaceAll(trustDomain, ":", "_"))
+		parts = append(parts, sanitizeAliasComponent(trustDomain))
 	}
 	if namespace != "" {
-		parts = append(parts, strings.ReplaceAll(namespace, ":", "_"))
+		parts = append(parts, sanitizeAliasComponent(namespace))
 	}
 	parts = append(parts, keyName)
 
@@ -322,4 +322,12 @@ func convertDERToRawECDSA(derSig []byte) ([]byte, error) {
 	copy(rawSig[keySize*2-len(sBytes):], sBytes)
 
 	return rawSig, nil
+}
+
+// sanitizeAliasComponent replaces characters not allowed in KMS alias names.
+// KMS aliases must match ^[a-zA-Z0-9:/_-]+$
+func sanitizeAliasComponent(s string) string {
+	s = strings.ReplaceAll(s, ":", "_")
+	s = strings.ReplaceAll(s, ".", "_")
+	return s
 }
