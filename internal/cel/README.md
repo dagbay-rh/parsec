@@ -38,13 +38,9 @@ This package provides CEL extensions specifically for claim mapping in Parsec:
   - Returns null if the datasource doesn't exist
   - Results are automatically cached within a single evaluation
 
-- **`fail(message)`** - Rejects the input as invalid
-  - Aborts evaluation and returns a `ClaimMappingError` with kind `invalid`
-  - Use for cases like unrecognised token types
-
-- **`forbidden(message)`** - Rejects the input as forbidden
-  - Aborts evaluation and returns a `ClaimMappingError` with kind `forbidden`
-  - Use when the caller lacks required permissions
+- **`fail(message)`** - Rejects the input
+  - Aborts evaluation and returns a `ClaimMappingError`
+  - Use when the mapper cannot process the input (e.g. unrecognised token type)
 
 ## Example CEL Expressions
 

@@ -591,7 +591,7 @@ func TestCELMapper_Map(t *testing.T) {
 func TestCELMapper_Fail(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("fail returns ClaimMappingError with kind invalid", func(t *testing.T) {
+	t.Run("fail returns ClaimMappingError", func(t *testing.T) {
 		m, err := NewCELMapper(`false ? {"ok": true} : fail("unsupported_token_type")`)
 		if err != nil {
 			t.Fatalf("failed to create mapper: %v", err)
@@ -612,36 +612,6 @@ func TestCELMapper_Fail(t *testing.T) {
 		}
 		if mappingErr.Message != "unsupported_token_type" {
 			t.Errorf("expected message %q, got %q", "unsupported_token_type", mappingErr.Message)
-		}
-		if mappingErr.Kind != service.MappingFailureInvalid {
-			t.Errorf("expected kind %q, got %q", service.MappingFailureInvalid, mappingErr.Kind)
-		}
-	})
-
-	t.Run("forbidden returns ClaimMappingError with kind forbidden", func(t *testing.T) {
-		m, err := NewCELMapper(`false ? {"ok": true} : forbidden("not_allowed")`)
-		if err != nil {
-			t.Fatalf("failed to create mapper: %v", err)
-		}
-
-		_, mapErr := m.Map(ctx, &service.MapperInput{})
-		if mapErr == nil {
-			t.Fatal("expected error, got nil")
-		}
-
-		if !errors.Is(mapErr, service.ErrClaimMapping) {
-			t.Fatalf("expected errors.Is(err, ErrClaimMapping), got: %v", mapErr)
-		}
-
-		var mappingErr *service.ClaimMappingError
-		if !errors.As(mapErr, &mappingErr) {
-			t.Fatalf("expected errors.As to unwrap ClaimMappingError, got: %T", mapErr)
-		}
-		if mappingErr.Message != "not_allowed" {
-			t.Errorf("expected message %q, got %q", "not_allowed", mappingErr.Message)
-		}
-		if mappingErr.Kind != service.MappingFailureForbidden {
-			t.Errorf("expected kind %q, got %q", service.MappingFailureForbidden, mappingErr.Kind)
 		}
 	})
 

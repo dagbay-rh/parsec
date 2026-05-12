@@ -24,8 +24,7 @@ type DataSourceRegistry interface {
 // This provides compile-time declarations for:
 //   - datasource(name) - function to fetch data from a named data source
 //   - now_ms() - current Unix time in milliseconds (wall clock at evaluation)
-//   - fail(message) - reject the input as invalid (returns ClaimMappingError with Kind "invalid")
-//   - forbidden(message) - reject the input as forbidden (returns ClaimMappingError with Kind "forbidden")
+//   - fail(message) - reject the input with a ClaimMappingError
 //   - subject, actor, request - variables containing identity and request data
 //
 // Pass nil for registry to create a test/validation environment.
@@ -68,13 +67,6 @@ func (lib *mapperInputLib) CompileOptions() []cel.EnvOption {
 				[]*cel.Type{cel.StringType},
 				cel.DynType,
 				cel.UnaryBinding(mappingFail),
-			),
-		),
-		cel.Function("forbidden",
-			cel.Overload("forbidden_string",
-				[]*cel.Type{cel.StringType},
-				cel.DynType,
-				cel.UnaryBinding(mappingForbidden),
 			),
 		),
 		cel.Variable("subject", cel.DynType),
@@ -145,25 +137,12 @@ func mappingFail(arg ref.Val) ref.Val {
 		return types.NewErr("fail argument must be a string")
 	}
 	return types.WrapErr(&service.ClaimMappingError{
-		Kind:    service.MappingFailureInvalid,
-		Message: msg,
-	})
-}
-
-func mappingForbidden(arg ref.Val) ref.Val {
-	msg, ok := arg.Value().(string)
-	if !ok {
-		return types.NewErr("forbidden argument must be a string")
-	}
-	return types.WrapErr(&service.ClaimMappingError{
-		Kind:    service.MappingFailureForbidden,
 		Message: msg,
 	})
 }
 
 // UnwrapMappingError extracts a *service.ClaimMappingError from an error chain
-// produced by CEL evaluation. Returns nil when the error is unrelated to
-// fail() / forbidden().
+// produced by CEL evaluation. Returns nil when the error is unrelated to fail().
 func UnwrapMappingError(err error) *service.ClaimMappingError {
 	var me *service.ClaimMappingError
 	if errors.As(err, &me) {

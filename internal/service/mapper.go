@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/project-kessel/parsec/internal/claims"
 	"github.com/project-kessel/parsec/internal/request"
@@ -15,31 +14,14 @@ var (
 	ErrClaimMapping = errors.New("claim mapping failed")
 )
 
-// MappingFailureKind distinguishes categories of claim-mapping failures.
-type MappingFailureKind string
-
-const (
-	// MappingFailureInvalid means the input was not usable for this mapper
-	// (e.g. unrecognised token type). Returned by the CEL fail() function.
-	MappingFailureInvalid MappingFailureKind = "invalid"
-
-	// MappingFailureForbidden means the caller is not permitted to obtain
-	// tokens from this mapper. Returned by the CEL forbidden() function.
-	MappingFailureForbidden MappingFailureKind = "forbidden"
-)
-
 // ClaimMappingError carries detail about a specific claim mapping failure.
 // It satisfies errors.Is(err, ErrClaimMapping) via its Is method.
 type ClaimMappingError struct {
-	Kind    MappingFailureKind
 	Message string
 }
 
 func (e *ClaimMappingError) Error() string {
-	if e.Kind == "" {
-		return e.Message
-	}
-	return fmt.Sprintf("%s (%s)", e.Message, e.Kind)
+	return e.Message
 }
 
 func (e *ClaimMappingError) Is(target error) bool {

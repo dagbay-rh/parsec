@@ -18,14 +18,13 @@ import (
 // The CEL expression has access to the following variables and functions:
 //   - datasource(name) - function to fetch data from a named data source
 //   - now_ms() - current Unix time in milliseconds
-//   - fail(message) - reject the input as invalid (e.g. unrecognised token type)
-//   - forbidden(message) - reject the input as forbidden (e.g. insufficient privilege)
+//   - fail(message) - reject the input with a structured error
 //   - subject - the subject identity information as a map
 //   - actor - the actor identity information as a map
 //   - request - the request attributes as a map
 //
 // The expression should evaluate to a map that will be used as the claims,
-// or call fail() / forbidden() to abort mapping with a structured error.
+// or call fail() to abort mapping with a structured error.
 //
 // Example CEL expressions:
 //

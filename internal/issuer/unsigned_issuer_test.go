@@ -212,9 +212,6 @@ func TestUnsignedIssuer_Issue_MapperFailureDenied(t *testing.T) {
 	if mappingErr.Message != "unsupported_token_type" {
 		t.Errorf("expected message %q, got %q", "unsupported_token_type", mappingErr.Message)
 	}
-	if mappingErr.Kind != service.MappingFailureInvalid {
-		t.Errorf("expected kind %q, got %q", service.MappingFailureInvalid, mappingErr.Kind)
-	}
 }
 
 func TestUnsignedIssuer_PublicKeys(t *testing.T) {
