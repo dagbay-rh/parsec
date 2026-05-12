@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/project-kessel/parsec/internal/claims"
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/request"
 	"github.com/project-kessel/parsec/internal/service"
 	"github.com/project-kessel/parsec/internal/trust"
@@ -94,25 +95,23 @@ func TestNewCELMapper(t *testing.T) {
 func TestCELMapper_Map(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("now_ms returns current epoch millis", func(t *testing.T) {
-		mapper, err := NewCELMapper(`{"ts": now_ms()}`)
+	t.Run("now_ms returns fixture clock time", func(t *testing.T) {
+		fixedTime := time.Date(2024, 6, 15, 10, 0, 0, 0, time.UTC)
+		clk := clock.NewFixtureClock(fixedTime)
+
+		mapper, err := NewCELMapper(`{"ts": now_ms()}`, WithClock(clk))
 		if err != nil {
 			t.Fatalf("failed to create mapper: %v", err)
 		}
 
-		before := time.Now().UnixMilli()
 		result, err := mapper.Map(ctx, &service.MapperInput{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		after := time.Now().UnixMilli()
 
-		ts, ok := result["ts"].(int64)
-		if !ok {
-			t.Fatalf("expected ts int64, got %T %v", result["ts"], result["ts"])
-		}
-		if ts < before || ts > after {
-			t.Fatalf("ts %d not in [%d, %d]", ts, before, after)
+		want := fixedTime.UnixMilli()
+		if result["ts"] != want {
+			t.Errorf("expected ts=%d, got %v", want, result["ts"])
 		}
 	})
 

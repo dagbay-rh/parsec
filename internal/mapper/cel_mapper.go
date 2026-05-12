@@ -8,6 +8,7 @@ import (
 
 	celhelpers "github.com/project-kessel/parsec/internal/cel"
 	"github.com/project-kessel/parsec/internal/claims"
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/service"
 	"github.com/project-kessel/parsec/internal/trust"
 )
@@ -47,19 +48,40 @@ import (
 type CELMapper struct {
 	script string
 	ast    *cel.Ast // Pre-compiled AST
+	clock  clock.Clock
 }
 
-// NewCELMapper creates a new CEL-based claim mapper
-// The script should be a CEL expression that evaluates to a map of claims
-func NewCELMapper(script string) (*CELMapper, error) {
+// CELMapperOption configures a CELMapper.
+type CELMapperOption func(*celMapperConfig)
+
+type celMapperConfig struct {
+	clock clock.Clock
+}
+
+// WithClock sets the clock used by the now_ms() CEL function.
+// Defaults to the system clock.
+func WithClock(clk clock.Clock) CELMapperOption {
+	return func(cfg *celMapperConfig) {
+		cfg.clock = clk
+	}
+}
+
+// NewCELMapper creates a new CEL-based claim mapper.
+// The script should be a CEL expression that evaluates to a map of claims.
+func NewCELMapper(script string, opts ...CELMapperOption) (*CELMapper, error) {
 	if script == "" {
 		return nil, fmt.Errorf("CEL script cannot be empty")
+	}
+
+	cfg := &celMapperConfig{}
+	for _, opt := range opts {
+		opt(cfg)
 	}
 
 	// Compile the script once at construction time
 	// Use a test environment with nil datasources for compilation
 	env, err := cel.NewEnv(
-		celhelpers.MapperInputLibrary(context.Background(), nil, nil),
+		celhelpers.MapperInputLibrary(context.Background(), nil, nil, cfg.clock),
 		celhelpers.RedHatHelpersLibrary(),
 	)
 	if err != nil {
@@ -74,6 +96,7 @@ func NewCELMapper(script string) (*CELMapper, error) {
 	return &CELMapper{
 		script: script,
 		ast:    ast,
+		clock:  cfg.clock,
 	}, nil
 }
 
@@ -88,7 +111,7 @@ func (m *CELMapper) Map(ctx context.Context, input *service.MapperInput) (claims
 	// TODO: this could be at least constructed per token service invocation, rather than per source
 	// TODO: we could also make this constructed once per application, and use macros to bind convenience functions to input
 	env, err := cel.NewEnv(
-		celhelpers.MapperInputLibrary(ctx, input.DataSourceRegistry, input.DataSourceInput),
+		celhelpers.MapperInputLibrary(ctx, input.DataSourceRegistry, input.DataSourceInput, m.clock),
 		celhelpers.RedHatHelpersLibrary(),
 	)
 	if err != nil {
@@ -106,7 +129,7 @@ func (m *CELMapper) Map(ctx context.Context, input *service.MapperInput) (claims
 	activation := m.createActivation(ctx, input)
 
 	// Evaluate the program with the activation.
-	// When a CEL function (fail/forbidden) returns a types.Err, program.Eval
+	// When a CEL function (fail) returns a types.Err, program.Eval
 	// surfaces it through the Go error return.
 	result, _, err := program.Eval(activation)
 	if err != nil {

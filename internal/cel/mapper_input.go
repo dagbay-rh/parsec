@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"time"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/service"
 )
 
@@ -28,12 +28,17 @@ type DataSourceRegistry interface {
 //   - subject, actor, request - variables containing identity and request data
 //
 // Pass nil for registry to create a test/validation environment.
-func MapperInputLibrary(ctx context.Context, registry *service.DataSourceRegistry, dsInput *service.DataSourceInput) cel.EnvOption {
+// Pass nil for clk to use the system clock.
+func MapperInputLibrary(ctx context.Context, registry *service.DataSourceRegistry, dsInput *service.DataSourceInput, clk clock.Clock) cel.EnvOption {
+	if clk == nil {
+		clk = clock.NewSystemClock()
+	}
 	return cel.Lib(&mapperInputLib{
 		ctx:      ctx,
 		registry: registry,
 		dsInput:  dsInput,
 		cache:    make(map[string]any),
+		clock:    clk,
 	})
 }
 
@@ -42,6 +47,7 @@ type mapperInputLib struct {
 	registry *service.DataSourceRegistry
 	dsInput  *service.DataSourceInput
 	cache    map[string]any
+	clock    clock.Clock
 }
 
 func (lib *mapperInputLib) CompileOptions() []cel.EnvOption {
@@ -58,7 +64,7 @@ func (lib *mapperInputLib) CompileOptions() []cel.EnvOption {
 				[]*cel.Type{},
 				cel.IntType,
 				cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-					return types.Int(time.Now().UnixMilli())
+					return types.Int(lib.clock.Now().UnixMilli())
 				}),
 			),
 		),
