@@ -15,25 +15,25 @@ import (
 // CELMapper is a ClaimMapper that uses CEL (Common Expression Language) expressions
 // to produce claims from the MapperInput.
 //
-// The CEL expression has access to the following variables:
+// The CEL expression has access to the following variables and functions:
 //   - datasource(name) - function to fetch data from a named data source
 //   - now_ms() - current Unix time in milliseconds
+//   - fail(message) - reject the input as invalid (e.g. unrecognised token type)
+//   - forbidden(message) - reject the input as forbidden (e.g. insufficient privilege)
 //   - subject - the subject identity information as a map
 //   - actor - the actor identity information as a map
 //   - request - the request attributes as a map
 //
-// The expression should evaluate to a map that will be used as the claims.
+// The expression should evaluate to a map that will be used as the claims,
+// or call fail() / forbidden() to abort mapping with a structured error.
 //
 // Example CEL expressions:
 //
 //	// Simple claim from subject
 //	{"user": subject.subject}
 //
-//	// Fetch from data source
-//	{"roles": datasource("user_roles").roles}
-//
-//	// Conditional logic
-//	subject.trust_domain == "prod" ? {"env": "production"} : {"env": "dev"}
+//	// Reject unrecognised input
+//	condition ? {"user": subject.subject} : fail("unsupported_token_type")
 //
 //	// Complex expressions
 //	{
@@ -103,9 +103,14 @@ func (m *CELMapper) Map(ctx context.Context, input *service.MapperInput) (claims
 	// Create activation with variables for this invocation
 	activation := m.createActivation(ctx, input)
 
-	// Evaluate the program with the activation
+	// Evaluate the program with the activation.
+	// When a CEL function (fail/forbidden) returns a types.Err, program.Eval
+	// surfaces it through the Go error return.
 	result, _, err := program.Eval(activation)
 	if err != nil {
+		if me := celhelpers.UnwrapMappingError(err); me != nil {
+			return nil, me
+		}
 		return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)
 	}
 
@@ -119,17 +124,6 @@ func (m *CELMapper) Map(ctx context.Context, input *service.MapperInput) (claims
 	resultMap, ok := resultValue.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("CEL expression must evaluate to a map, got: %T", resultValue)
-	}
-
-	// CEL scripts signal mapping failures with both "error" and "error_code".
-	// A lone "error" claim is valid for some payloads (see configs/scripts/*.cel).
-	if mappingFailureMsg, ok := resultMap["error"].(string); ok {
-		if code, hasCode := resultMap["error_code"]; hasCode {
-			return nil, &service.ClaimMappingError{
-				Code:    fmt.Sprintf("%v", code),
-				Message: mappingFailureMsg,
-			}
-		}
 	}
 
 	return claims.Claims(resultMap), nil

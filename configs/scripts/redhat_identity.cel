@@ -7,8 +7,8 @@
 //   - Service Account tokens (preferred_username starts with "service-account-")
 //   - Console API tokens (scope contains "api.console")
 //
-// Unrecognized tokens produce {"error": "...", "error_code": ...} (no "identity"
-// key), which causes UnsignedIssuer to return an error → ext_authz DENY.
+// Unrecognized tokens call fail(), which causes UnsignedIssuer to return
+// a ClaimMappingError → ext_authz DENY.
 //
 // Based on: https://github.com/RedHatInsights/insights-3scale
 
@@ -65,8 +65,5 @@ isServiceAccountToken(subject.claims) ? {
       }
     },
     "entitlements": {}
-  } : {
-    "error": "unsupported_token_type",
-    "error_code": 0
-  }
+  } : fail("unsupported_token_type")
 )
