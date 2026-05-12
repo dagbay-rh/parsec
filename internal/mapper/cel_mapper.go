@@ -31,6 +31,9 @@ import (
 //	// Simple claim from subject
 //	{"user": subject.subject}
 //
+//	// Fetch from data source
+//	{"roles": datasource("user_roles").roles}
+//
 //	// Reject unrecognised input
 //	condition ? {"user": subject.subject} : fail("unsupported_token_type")
 //
