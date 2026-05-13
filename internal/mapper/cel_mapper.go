@@ -81,7 +81,7 @@ func NewCELMapper(script string, opts ...CELMapperOption) (*CELMapper, error) {
 	// Compile the script once at construction time
 	// Use a test environment with nil datasources for compilation
 	env, err := cel.NewEnv(
-		celhelpers.MapperInputLibrary(context.Background(), nil, nil, cfg.clock),
+		celhelpers.MapperInputLibrary(context.Background(), nil, nil, nil),
 		celhelpers.RedHatHelpersLibrary(),
 	)
 	if err != nil {
