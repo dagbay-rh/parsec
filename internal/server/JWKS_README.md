@@ -94,10 +94,10 @@ Different issuer types contribute keys differently:
 
 ```bash
 # Using curl
-curl http://localhost:8080/v1/jwks.json
+curl http://localhost:8000/v1/jwks.json
 
 # Or the well-known path
-curl http://localhost:8080/.well-known/jwks.json
+curl http://localhost:8000/.well-known/jwks.json
 ```
 
 ### Verifying Tokens

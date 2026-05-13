@@ -58,7 +58,7 @@ go test -v ./test/integration/
 
 **Form-encoded request (RFC 8693):**
 ```bash
-curl -X POST http://localhost:8080/v1/token \
+curl -X POST http://localhost:8000/v1/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
   -d "subject_token=eyJhbGciOiJIUzI1NiJ9..." \
@@ -68,7 +68,7 @@ curl -X POST http://localhost:8080/v1/token \
 
 **JSON request (also supported):**
 ```bash
-curl -X POST http://localhost:8080/v1/token \
+curl -X POST http://localhost:8000/v1/token \
   -H "Content-Type: application/json" \
   -d '{
     "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",

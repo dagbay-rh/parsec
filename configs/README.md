@@ -130,8 +130,8 @@ Network-level server configuration:
 
 ```yaml
 server:
-  grpc_port: 9090  # gRPC server port (ext_authz, token exchange)
-  http_port: 8080  # HTTP server port (gRPC-gateway transcoding)
+  grpc_port: 9800  # gRPC server port (ext_authz, token exchange)
+  http_port: 8000  # HTTP server port (gRPC-gateway transcoding)
 ```
 
 ### Trust Domain
@@ -383,7 +383,7 @@ Result: All values from config file
 
 ### Example 2: Environment variable override
 ```bash
-# Config has grpc_port: 9090
+# Config has grpc_port: 9800
 # Env var overrides it to 9091
 PARSEC_SERVER__GRPC_PORT=9091 ./bin/parsec serve
 ```
@@ -391,7 +391,7 @@ Result: gRPC on port 9091, everything else from config
 
 ### Example 3: Flag override (highest precedence)
 ```bash
-# Config has grpc_port: 9090
+# Config has grpc_port: 9800
 # Env var sets it to 9091
 # Flag overrides both to 9092
 PARSEC_SERVER__GRPC_PORT=9091 ./bin/parsec serve --server-grpc-port=9092
@@ -402,8 +402,8 @@ Result: gRPC on port 9092 (flag wins)
 ```yaml
 # configs/prod.yaml
 server:
-  grpc_port: 9090
-  http_port: 8080
+  grpc_port: 9800
+  http_port: 8000
 trust_domain: "prod.example.com"
 ```
 
@@ -416,7 +416,7 @@ PARSEC_TRUST_DOMAIN=prod-us.example.com \
 ```
 
 Result:
-- grpc_port: 9090 (from config)
+- grpc_port: 9800 (from config)
 - http_port: 8081 (from flag)
 - trust_domain: prod-us.example.com (from env var)
 

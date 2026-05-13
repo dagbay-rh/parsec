@@ -8,8 +8,8 @@
 # - Top-level fixtures for hermetic testing
 
 server:
-  grpc_port: 9090
-  http_port: 8080
+  grpc_port: 9800
+  http_port: 8000
 
 trust_domain: "parsec.example.com"
 
