@@ -1,0 +1,100 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  name: parsec
+objects:
+  - apiVersion: cloud.redhat.com/v1alpha1
+    kind: ClowdApp
+    metadata:
+      name: parsec
+    spec:
+      envName: ${ENV_NAME}
+      deployments:
+        - name: api
+          replicas: ${{REPLICAS}}
+          podSpec:
+            image: ${PARSEC_IMAGE}:${IMAGE_TAG}
+            command: ["parsec"]
+            args: ["serve", "--config", "/etc/parsec/parsec.yaml"]
+            livenessProbe:
+              httpGet:
+                path: /healthz/live
+                port: 8000
+              timeoutSeconds: 5
+              periodSeconds: 15
+              failureThreshold: 3
+            readinessProbe:
+              httpGet:
+                path: /healthz/ready
+                port: 8000
+              timeoutSeconds: 5
+              periodSeconds: 10
+              failureThreshold: 3
+            resources:
+              requests:
+                memory: ${PARSEC_REQUESTS_MEMORY}
+                cpu: ${PARSEC_REQUESTS_CPU}
+              limits:
+                memory: ${PARSEC_LIMITS_MEMORY}
+                cpu: ${PARSEC_LIMITS_CPU}
+            env:
+              - name: CLOWDER_ENABLED
+                value: "true"
+              - name: PARSEC_CONFIG
+                value: "/etc/parsec/parsec.yaml"
+            volumeMounts:
+              - name: config-volume
+                mountPath: "/etc/parsec/parsec.yaml"
+                subPath: parsec.yaml
+              - name: config-volume
+                mountPath: "/etc/parsec/scripts/redhat_identity.cel"
+                subPath: redhat_identity.cel
+            volumes:
+              - name: config-volume
+                secret:
+                  secretName: ${PARSEC_CONFIG_SECRET}
+          webServices:
+            public:
+              enabled: true
+              h2cEnabled: true
+              h2cTargetPort: 9800
+              apiPath: parsec
+
+  - kind: PodDisruptionBudget
+    apiVersion: policy/v1
+    metadata:
+      name: parsec-api-pdb
+    spec:
+      minAvailable: 1
+      selector:
+        matchLabels:
+          app: parsec
+parameters:
+  - description: ClowdEnvironment name (ephemeral, stage, prod)
+    name: ENV_NAME
+    required: true
+  - description: Parsec container image
+    name: PARSEC_IMAGE
+    value: quay.io/redhat-services-prod/project-kessel-tenant/kessel-parsec
+  - description: Image tag
+    name: IMAGE_TAG
+    required: true
+    value: latest
+  - description: Number of replicas
+    name: REPLICAS
+    value: "1"
+  - description: Name of the K8s secret containing parsec config files (parsec.yaml, CEL scripts, etc.)
+    name: PARSEC_CONFIG_SECRET
+    value: parsec-config
+  - description: Memory request for Parsec service
+    name: PARSEC_REQUESTS_MEMORY
+    value: '256Mi'
+  - description: CPU request for Parsec service
+    name: PARSEC_REQUESTS_CPU
+    value: '250m'
+  - description: Memory limit for Parsec service
+    name: PARSEC_LIMITS_MEMORY
+    value: '512Mi'
+  - description: CPU limit for Parsec service
+    name: PARSEC_LIMITS_CPU
+    value: '500m'
