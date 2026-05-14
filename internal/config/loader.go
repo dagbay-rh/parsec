@@ -53,8 +53,8 @@ func NewLoaderWithFlags(configPath string, flags *pflag.FlagSet) (*Loader, error
 // getDefaults returns the default configuration values
 func getDefaults() map[string]interface{} {
 	return map[string]interface{}{
-		"server.grpc_port": 9800,
-		"server.http_port": 8000,
+		"server.grpc_port": 9090,
+		"server.http_port": 8080,
 		"trust_domain":     "parsec.local",
 		"trust_store.type": "stub_store",
 	}

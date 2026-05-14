@@ -19,11 +19,11 @@ func TestNewLoader_WithoutConfigFile(t *testing.T) {
 	}
 
 	// Verify defaults are applied
-	if cfg.Server.GRPCPort != 9800 {
-		t.Errorf("Expected default GRPC port 9800, got %d", cfg.Server.GRPCPort)
+	if cfg.Server.GRPCPort != 9090 {
+		t.Errorf("Expected default GRPC port 9090, got %d", cfg.Server.GRPCPort)
 	}
-	if cfg.Server.HTTPPort != 8000 {
-		t.Errorf("Expected default HTTP port 8000, got %d", cfg.Server.HTTPPort)
+	if cfg.Server.HTTPPort != 8080 {
+		t.Errorf("Expected default HTTP port 8080, got %d", cfg.Server.HTTPPort)
 	}
 	if cfg.TrustDomain != "parsec.local" {
 		t.Errorf("Expected default trust domain 'parsec.local', got '%s'", cfg.TrustDomain)
@@ -56,8 +56,8 @@ func TestNewLoader_WithEnvironmentVariables(t *testing.T) {
 		t.Errorf("Expected trust domain 'env.test.com' from env, got '%s'", cfg.TrustDomain)
 	}
 	// Verify other defaults still apply
-	if cfg.Server.HTTPPort != 8000 {
-		t.Errorf("Expected default HTTP port 8000, got %d", cfg.Server.HTTPPort)
+	if cfg.Server.HTTPPort != 8080 {
+		t.Errorf("Expected default HTTP port 8080, got %d", cfg.Server.HTTPPort)
 	}
 	if cfg.TrustStore.Type != "stub_store" {
 		t.Errorf("Expected default trust store type 'stub_store', got '%s'", cfg.TrustStore.Type)

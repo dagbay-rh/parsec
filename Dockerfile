@@ -23,8 +23,8 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7-1778072020
 
 COPY --from=builder /workspace/bin/parsec /usr/local/bin/
 
-EXPOSE 9800
-EXPOSE 8000
+EXPOSE 9090
+EXPOSE 8080
 
 USER 1001
 ENV PATH="$PATH:/usr/local/bin"

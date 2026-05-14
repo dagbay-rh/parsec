@@ -130,8 +130,8 @@ Network-level server configuration:
 
 ```yaml
 server:
-  grpc_port: 9800  # gRPC server port (ext_authz, token exchange)
-  http_port: 8000  # HTTP server port (gRPC-gateway transcoding)
+  grpc_port: 9090  # gRPC server port (ext_authz, token exchange)
+  http_port: 8080  # HTTP server port (gRPC-gateway transcoding)
 ```
 
 ### Trust Domain
@@ -325,6 +325,52 @@ The `examples/` directory contains complete configuration examples:
 - **`parsec-minimal.json`** - Minimal config in JSON format
 - **`parsec-minimal.toml`** - Minimal config in TOML format
 
+## OpenShift Deployment
+
+When deploying parsec to OpenShift, the platform requires specific ports that differ from the upstream defaults:
+
+| Port | Upstream default | OpenShift |
+|------|-----------------|-----------|
+| gRPC | 9090 | 9800 |
+| HTTP | 8080 | 8000 |
+| Metrics | (served on HTTP port at `/metrics`) | 9000 (platform convention) |
+
+**The upstream code and config files intentionally retain the original defaults (9090/8080).** Port overrides for OpenShift are applied at the deployment layer, not in application code.
+
+### How ports are overridden
+
+The deployment templates in `deploy/` handle this:
+
+- **Ephemeral environments** (`deploy/parsec-ephem.yaml`): The ConfigMap is defined inline within the template with `grpc_port: 9800` and `http_port: 8000`. Health probes and `h2cTargetPort` match these ports.
+
+- **Stage/Production environments** (`deploy/parsec.yaml`): The config is provided via an external Secret (or ConfigMap created downstream) that specifies the OpenShift ports. The deployment template's probes and `h2cTargetPort` are already set to the OpenShift ports.
+
+This works because koanf loads config with this precedence: **file > defaults**. The mounted config file's port values override the built-in defaults at startup.
+
+### Creating a downstream ConfigMap for non-ephemeral environments
+
+```bash
+# Create a Secret with the production config (ports set to OpenShift values)
+oc create secret generic parsec-config \
+  --from-file=parsec.yaml=path/to/production-parsec.yaml \
+  --from-file=scripts/redhat_identity.cel=configs/scripts/redhat_identity.cel
+```
+
+The production `parsec.yaml` should include:
+```yaml
+server:
+  grpc_port: 9800
+  http_port: 8000
+```
+
+### Local development
+
+For local development, no port overrides are needed. The upstream defaults (9090/8080) work out of the box:
+```bash
+./bin/parsec serve
+# gRPC on :9090, HTTP on :8080
+```
+
 ## Hot Reloading
 
 Configuration hot reloading is supported but not yet enabled by default. The infrastructure is in place in `internal/config/loader.go` with the `Watch()` method.
@@ -383,7 +429,7 @@ Result: All values from config file
 
 ### Example 2: Environment variable override
 ```bash
-# Config has grpc_port: 9800
+# Config has grpc_port: 9090
 # Env var overrides it to 9091
 PARSEC_SERVER__GRPC_PORT=9091 ./bin/parsec serve
 ```
@@ -391,7 +437,7 @@ Result: gRPC on port 9091, everything else from config
 
 ### Example 3: Flag override (highest precedence)
 ```bash
-# Config has grpc_port: 9800
+# Config has grpc_port: 9090
 # Env var sets it to 9091
 # Flag overrides both to 9092
 PARSEC_SERVER__GRPC_PORT=9091 ./bin/parsec serve --server-grpc-port=9092
@@ -402,8 +448,8 @@ Result: gRPC on port 9092 (flag wins)
 ```yaml
 # configs/prod.yaml
 server:
-  grpc_port: 9800
-  http_port: 8000
+  grpc_port: 9090
+  http_port: 8080
 trust_domain: "prod.example.com"
 ```
 
@@ -416,7 +462,7 @@ PARSEC_TRUST_DOMAIN=prod-us.example.com \
 ```
 
 Result:
-- grpc_port: 9800 (from config)
+- grpc_port: 9090 (from config)
 - http_port: 8081 (from flag)
 - trust_domain: prod-us.example.com (from env var)
 

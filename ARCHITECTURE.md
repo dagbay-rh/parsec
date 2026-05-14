@@ -26,12 +26,12 @@ Both services issue transaction tokens following the [draft-ietf-oauth-transacti
                     │   parsec        │
                     │                 │
   gRPC clients ────▶│  gRPC Server    │◀──── Envoy (ext_authz)
-                    │    :9800        │
+                    │    :9090        │
                     │                 │
                     │  ┌───────────┐  │
   HTTP clients ────▶│  │  grpc-    │  │
                     │  │  gateway  │  │
-                    │  │   :8000   │  │
+                    │  │   :8080   │  │
                     │  └─────┬─────┘  │
                     │        │        │
                     │        ▼        │
@@ -75,7 +75,7 @@ The token exchange endpoint supports `application/x-www-form-urlencoded` as requ
 
 Example RFC 8693 request:
 ```bash
-curl -X POST http://localhost:8000/v1/token \
+curl -X POST http://localhost:8080/v1/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
   -d "subject_token=eyJhbGc..." \
@@ -173,8 +173,8 @@ make build
 ```
 
 Server will start on:
-- gRPC: `localhost:9800` (ext_authz, token exchange)
-- HTTP: `localhost:8000` (token exchange via transcoding)
+- gRPC: `localhost:9090` (ext_authz, token exchange)
+- HTTP: `localhost:8080` (token exchange via transcoding)
 
 ## Core Concepts
 
@@ -597,8 +597,8 @@ exchangeServer := server.NewExchangeServer(trustStore, tokenService, claimsFilte
 
 // 9. Create and start server
 srv := server.New(server.Config{
-    GRPCPort:       9800,
-    HTTPPort:       8000,
+    GRPCPort:       9090,
+    HTTPPort:       8080,
     AuthzServer:    authzServer,
     ExchangeServer: exchangeServer,
 })
