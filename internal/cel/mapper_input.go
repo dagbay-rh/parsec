@@ -30,9 +30,6 @@ type DataSourceRegistry interface {
 // Pass nil for registry to create a test/validation environment.
 // Pass nil for clk to use the system clock.
 func MapperInputLibrary(ctx context.Context, registry *service.DataSourceRegistry, dsInput *service.DataSourceInput, clk clock.Clock) cel.EnvOption {
-	if clk == nil {
-		clk = clock.NewSystemClock()
-	}
 	return cel.Lib(&mapperInputLib{
 		ctx:      ctx,
 		registry: registry,
