@@ -325,7 +325,7 @@ The `examples/` directory contains complete configuration examples:
 - **`parsec-minimal.json`** - Minimal config in JSON format
 - **`parsec-minimal.toml`** - Minimal config in TOML format
 
-## OpenShift Deployment
+## OpenShift Deployment - Clowder Envs
 
 When deploying parsec to OpenShift, the platform requires specific ports that differ from the upstream defaults:
 
