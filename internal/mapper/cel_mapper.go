@@ -77,11 +77,14 @@ func NewCELMapper(script string, opts ...CELMapperOption) (*CELMapper, error) {
 	for _, opt := range opts {
 		opt(cfg)
 	}
+	if cfg.clock == nil {
+		cfg.clock = clock.NewSystemClock()
+	}
 
 	// Compile the script once at construction time
 	// Use a test environment with nil datasources for compilation
 	env, err := cel.NewEnv(
-		celhelpers.MapperInputLibrary(context.Background(), nil, nil, nil),
+		celhelpers.MapperInputLibrary(context.Background(), nil, nil, cfg.clock),
 		celhelpers.RedHatHelpersLibrary(),
 	)
 	if err != nil {
