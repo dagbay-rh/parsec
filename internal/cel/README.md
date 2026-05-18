@@ -38,6 +38,10 @@ This package provides CEL extensions specifically for claim mapping in Parsec:
   - Returns null if the datasource doesn't exist
   - Results are automatically cached within a single evaluation
 
+- **`fail(message)`** - Rejects the input
+  - Aborts evaluation and returns a `ClaimMappingError`
+  - Use when the mapper cannot process the input (e.g. unrecognised token type)
+
 ## Example CEL Expressions
 
 ### Simple Claims from Subject
@@ -55,6 +59,14 @@ This package provides CEL extensions specifically for claim mapping in Parsec:
 subject.trust_domain == "prod" 
   ? {"env": "production", "level": "high"} 
   : {"env": "dev", "level": "low"}
+```
+
+### Rejecting Input
+
+```cel
+isSupportedToken(subject.claims)
+  ? { "identity": { ... }, "entitlements": {} }
+  : fail("unsupported_token_type")
 ```
 
 ### Fetching from Data Sources

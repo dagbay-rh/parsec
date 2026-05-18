@@ -3,11 +3,13 @@ package cel
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/service"
 )
 
@@ -21,15 +23,19 @@ type DataSourceRegistry interface {
 //
 // This provides compile-time declarations for:
 //   - datasource(name) - function to fetch data from a named data source
+//   - now_ms() - current Unix time in milliseconds (wall clock at evaluation)
+//   - fail(message) - reject the input with a ClaimMappingError
 //   - subject, actor, request - variables containing identity and request data
 //
 // Pass nil for registry to create a test/validation environment.
-func MapperInputLibrary(ctx context.Context, registry *service.DataSourceRegistry, dsInput *service.DataSourceInput) cel.EnvOption {
+// Pass nil for clk to use the system clock.
+func MapperInputLibrary(ctx context.Context, registry *service.DataSourceRegistry, dsInput *service.DataSourceInput, clk clock.Clock) cel.EnvOption {
 	return cel.Lib(&mapperInputLib{
 		ctx:      ctx,
 		registry: registry,
 		dsInput:  dsInput,
 		cache:    make(map[string]any),
+		clock:    clk,
 	})
 }
 
@@ -38,11 +44,11 @@ type mapperInputLib struct {
 	registry *service.DataSourceRegistry
 	dsInput  *service.DataSourceInput
 	cache    map[string]any
+	clock    clock.Clock
 }
 
 func (lib *mapperInputLib) CompileOptions() []cel.EnvOption {
 	return []cel.EnvOption{
-		// Declare datasource as a function
 		cel.Function("datasource",
 			cel.Overload("datasource_string",
 				[]*cel.Type{cel.StringType},
@@ -50,7 +56,22 @@ func (lib *mapperInputLib) CompileOptions() []cel.EnvOption {
 				cel.UnaryBinding(lib.fetchDatasource),
 			),
 		),
-		// Declare other variables as dynamic types
+		cel.Function("now_ms",
+			cel.Overload("now_ms",
+				[]*cel.Type{},
+				cel.IntType,
+				cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+					return types.Int(lib.clock.Now().UnixMilli())
+				}),
+			),
+		),
+		cel.Function("fail",
+			cel.Overload("fail_string",
+				[]*cel.Type{cel.StringType},
+				cel.DynType,
+				cel.UnaryBinding(mappingFail),
+			),
+		),
 		cel.Variable("subject", cel.DynType),
 		cel.Variable("actor", cel.DynType),
 		cel.Variable("request", cel.DynType),
@@ -111,6 +132,26 @@ func (lib *mapperInputLib) fetchDatasource(arg ref.Val) ref.Val {
 		// Return simple error for unsupported type
 		return types.NewErr("unsupported content type")
 	}
+}
+
+func mappingFail(arg ref.Val) ref.Val {
+	msg, ok := arg.Value().(string)
+	if !ok {
+		return types.NewErr("fail argument must be a string")
+	}
+	return types.WrapErr(&service.ClaimMappingError{
+		Message: msg,
+	})
+}
+
+// UnwrapMappingError extracts a *service.ClaimMappingError from an error chain
+// produced by CEL evaluation. Returns nil when the error is unrelated to fail().
+func UnwrapMappingError(err error) *service.ClaimMappingError {
+	var me *service.ClaimMappingError
+	if errors.As(err, &me) {
+		return me
+	}
+	return nil
 }
 
 // ConvertCELValue converts a CEL ref.Val to a Go native value

@@ -8,6 +8,7 @@ import (
 
 	celhelpers "github.com/project-kessel/parsec/internal/cel"
 	"github.com/project-kessel/parsec/internal/claims"
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/service"
 	"github.com/project-kessel/parsec/internal/trust"
 )
@@ -15,13 +16,16 @@ import (
 // CELMapper is a ClaimMapper that uses CEL (Common Expression Language) expressions
 // to produce claims from the MapperInput.
 //
-// The CEL expression has access to the following variables:
+// The CEL expression has access to the following variables and functions:
 //   - datasource(name) - function to fetch data from a named data source
+//   - now_ms() - current Unix time in milliseconds
+//   - fail(message) - reject the input with a structured error
 //   - subject - the subject identity information as a map
 //   - actor - the actor identity information as a map
 //   - request - the request attributes as a map
 //
-// The expression should evaluate to a map that will be used as the claims.
+// The expression should evaluate to a map that will be used as the claims,
+// or call fail() to abort mapping with a structured error.
 //
 // Example CEL expressions:
 //
@@ -31,8 +35,8 @@ import (
 //	// Fetch from data source
 //	{"roles": datasource("user_roles").roles}
 //
-//	// Conditional logic
-//	subject.trust_domain == "prod" ? {"env": "production"} : {"env": "dev"}
+//	// Reject unrecognised input
+//	condition ? {"user": subject.subject} : fail("unsupported_token_type")
 //
 //	// Complex expressions
 //	{
@@ -44,19 +48,43 @@ import (
 type CELMapper struct {
 	script string
 	ast    *cel.Ast // Pre-compiled AST
+	clock  clock.Clock
 }
 
-// NewCELMapper creates a new CEL-based claim mapper
-// The script should be a CEL expression that evaluates to a map of claims
-func NewCELMapper(script string) (*CELMapper, error) {
+// CELMapperOption configures a CELMapper.
+type CELMapperOption func(*celMapperConfig)
+
+type celMapperConfig struct {
+	clock clock.Clock
+}
+
+// WithClock sets the clock used by the now_ms() CEL function.
+// Defaults to the system clock.
+func WithClock(clk clock.Clock) CELMapperOption {
+	return func(cfg *celMapperConfig) {
+		cfg.clock = clk
+	}
+}
+
+// NewCELMapper creates a new CEL-based claim mapper.
+// The script should be a CEL expression that evaluates to a map of claims.
+func NewCELMapper(script string, opts ...CELMapperOption) (*CELMapper, error) {
 	if script == "" {
 		return nil, fmt.Errorf("CEL script cannot be empty")
+	}
+
+	cfg := &celMapperConfig{}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+	if cfg.clock == nil {
+		cfg.clock = clock.NewSystemClock()
 	}
 
 	// Compile the script once at construction time
 	// Use a test environment with nil datasources for compilation
 	env, err := cel.NewEnv(
-		celhelpers.MapperInputLibrary(context.Background(), nil, nil),
+		celhelpers.MapperInputLibrary(context.Background(), nil, nil, cfg.clock),
 		celhelpers.RedHatHelpersLibrary(),
 	)
 	if err != nil {
@@ -71,6 +99,7 @@ func NewCELMapper(script string) (*CELMapper, error) {
 	return &CELMapper{
 		script: script,
 		ast:    ast,
+		clock:  cfg.clock,
 	}, nil
 }
 
@@ -85,7 +114,7 @@ func (m *CELMapper) Map(ctx context.Context, input *service.MapperInput) (claims
 	// TODO: this could be at least constructed per token service invocation, rather than per source
 	// TODO: we could also make this constructed once per application, and use macros to bind convenience functions to input
 	env, err := cel.NewEnv(
-		celhelpers.MapperInputLibrary(ctx, input.DataSourceRegistry, input.DataSourceInput),
+		celhelpers.MapperInputLibrary(ctx, input.DataSourceRegistry, input.DataSourceInput, m.clock),
 		celhelpers.RedHatHelpersLibrary(),
 	)
 	if err != nil {
@@ -102,9 +131,14 @@ func (m *CELMapper) Map(ctx context.Context, input *service.MapperInput) (claims
 	// Create activation with variables for this invocation
 	activation := m.createActivation(ctx, input)
 
-	// Evaluate the program with the activation
+	// Evaluate the program with the activation.
+	// When a CEL function (fail) returns a types.Err, program.Eval
+	// surfaces it through the Go error return.
 	result, _, err := program.Eval(activation)
 	if err != nil {
+		if me := celhelpers.UnwrapMappingError(err); me != nil {
+			return nil, me
+		}
 		return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)
 	}
 

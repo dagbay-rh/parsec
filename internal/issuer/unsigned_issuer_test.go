@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/project-kessel/parsec/internal/claims"
+	"github.com/project-kessel/parsec/internal/mapper"
 	"github.com/project-kessel/parsec/internal/service"
 	"github.com/project-kessel/parsec/internal/trust"
 )
@@ -169,6 +171,46 @@ func TestUnsignedIssuer_Issue_NilTransactionContext(t *testing.T) {
 	// Should be empty object in JSON
 	if string(decodedJSON) != "{}" {
 		t.Errorf("Expected {}, got %s", string(decodedJSON))
+	}
+}
+
+func TestUnsignedIssuer_Issue_MapperFailureDenied(t *testing.T) {
+	celMapper, err := mapper.NewCELMapper(`false ? {"ok": true} : fail("unsupported_token_type")`)
+	if err != nil {
+		t.Fatalf("failed to create CEL mapper: %v", err)
+	}
+
+	iss := NewUnsignedIssuer(UnsignedIssuerConfig{
+		TokenType:    "test-token-type",
+		ClaimMappers: []service.ClaimMapper{celMapper},
+	})
+
+	issueCtx := &service.IssueContext{
+		Subject: &trust.Result{
+			Subject: "test-subject",
+		},
+		Audience:           "test-audience",
+		DataSourceRegistry: service.NewDataSourceRegistry(),
+	}
+
+	token, issueErr := iss.Issue(context.Background(), issueCtx)
+	if issueErr == nil {
+		t.Fatal("expected Issue() to return error for mapper failure, got nil")
+	}
+	if token != nil {
+		t.Errorf("expected nil token on error, got %v", token)
+	}
+
+	if !errors.Is(issueErr, service.ErrClaimMapping) {
+		t.Fatalf("expected errors.Is(err, ErrClaimMapping), got: %v", issueErr)
+	}
+
+	var mappingErr *service.ClaimMappingError
+	if !errors.As(issueErr, &mappingErr) {
+		t.Fatalf("expected errors.As to unwrap ClaimMappingError, got: %T", issueErr)
+	}
+	if mappingErr.Message != "unsupported_token_type" {
+		t.Errorf("expected message %q, got %q", "unsupported_token_type", mappingErr.Message)
 	}
 }
 

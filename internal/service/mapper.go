@@ -2,11 +2,31 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	"github.com/project-kessel/parsec/internal/claims"
 	"github.com/project-kessel/parsec/internal/request"
 	"github.com/project-kessel/parsec/internal/trust"
 )
+
+var (
+	// ErrClaimMapping is returned when a claim mapper rejects the input
+	ErrClaimMapping = errors.New("claim mapping failed")
+)
+
+// ClaimMappingError carries detail about a specific claim mapping failure.
+// It satisfies errors.Is(err, ErrClaimMapping) via its Is method.
+type ClaimMappingError struct {
+	Message string
+}
+
+func (e *ClaimMappingError) Error() string {
+	return e.Message
+}
+
+func (e *ClaimMappingError) Is(target error) bool {
+	return target == ErrClaimMapping
+}
 
 // ClaimMapper transforms inputs into claims for the token
 // Claim mappers implement policy logic - what information to include in tokens

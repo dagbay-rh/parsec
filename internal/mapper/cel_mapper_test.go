@@ -3,10 +3,12 @@ package mapper
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/project-kessel/parsec/internal/claims"
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/request"
 	"github.com/project-kessel/parsec/internal/service"
 	"github.com/project-kessel/parsec/internal/trust"
@@ -92,6 +94,26 @@ func TestNewCELMapper(t *testing.T) {
 
 func TestCELMapper_Map(t *testing.T) {
 	ctx := context.Background()
+
+	t.Run("now_ms returns fixture clock time", func(t *testing.T) {
+		fixedTime := time.Date(2024, 6, 15, 10, 0, 0, 0, time.UTC)
+		clk := clock.NewFixtureClock(fixedTime)
+
+		mapper, err := NewCELMapper(`{"ts": now_ms()}`, WithClock(clk))
+		if err != nil {
+			t.Fatalf("failed to create mapper: %v", err)
+		}
+
+		result, err := mapper.Map(ctx, &service.MapperInput{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := fixedTime.UnixMilli()
+		if result["ts"] != want {
+			t.Errorf("expected ts=%d, got %v", want, result["ts"])
+		}
+	})
 
 	t.Run("simple static map", func(t *testing.T) {
 		mapper, err := NewCELMapper(`{"user": "alice", "role": "admin"}`)
@@ -563,4 +585,68 @@ func TestCELMapper_Map(t *testing.T) {
 			t.Errorf("expected other_field=value, got %v", result["other_field"])
 		}
 	})
+}
+
+func TestCELMapper_Fail(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("fail returns ClaimMappingError", func(t *testing.T) {
+		m, err := NewCELMapper(`false ? {"ok": true} : fail("unsupported_token_type")`)
+		if err != nil {
+			t.Fatalf("failed to create mapper: %v", err)
+		}
+
+		_, mapErr := m.Map(ctx, &service.MapperInput{})
+		if mapErr == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		if !errors.Is(mapErr, service.ErrClaimMapping) {
+			t.Fatalf("expected errors.Is(err, ErrClaimMapping), got: %v", mapErr)
+		}
+
+		var mappingErr *service.ClaimMappingError
+		if !errors.As(mapErr, &mappingErr) {
+			t.Fatalf("expected errors.As to unwrap ClaimMappingError, got: %T", mapErr)
+		}
+		if mappingErr.Message != "unsupported_token_type" {
+			t.Errorf("expected message %q, got %q", "unsupported_token_type", mappingErr.Message)
+		}
+	})
+
+	t.Run("successful branch does not trigger fail", func(t *testing.T) {
+		m, err := NewCELMapper(`true ? {"ok": true} : fail("should_not_reach")`)
+		if err != nil {
+			t.Fatalf("failed to create mapper: %v", err)
+		}
+
+		result, mapErr := m.Map(ctx, &service.MapperInput{})
+		if mapErr != nil {
+			t.Fatalf("unexpected error: %v", mapErr)
+		}
+		if result["ok"] != true {
+			t.Errorf("expected ok=true, got %v", result["ok"])
+		}
+	})
+}
+
+func TestCELMapper_ErrorClaimAllowedInOutput(t *testing.T) {
+	ctx := context.Background()
+
+	m, err := NewCELMapper(`{"error": "some_value", "error_code": 403, "other": "data"}`)
+	if err != nil {
+		t.Fatalf("failed to create mapper: %v", err)
+	}
+
+	result, mapErr := m.Map(ctx, &service.MapperInput{})
+	if mapErr != nil {
+		t.Fatalf("unexpected error: %v", mapErr)
+	}
+
+	if result["error"] != "some_value" {
+		t.Errorf("expected error claim preserved as %q, got %v", "some_value", result["error"])
+	}
+	if result["other"] != "data" {
+		t.Errorf("expected other claim preserved as %q, got %v", "data", result["other"])
+	}
 }
