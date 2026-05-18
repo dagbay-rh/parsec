@@ -3,7 +3,7 @@ package config
 import (
 	"fmt"
 
-	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwa"
 
 	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/httpfixture"
