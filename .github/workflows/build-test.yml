@@ -39,7 +39,7 @@ jobs:
           path: coverage.txt
       - name: Upload main coverage to Codecov
         id: code-cov-report
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           files: coverage.txt
           flags: main

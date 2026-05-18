@@ -62,14 +62,14 @@ func newLuaDataSource(cfg DataSourceConfig, transport http.RoundTripper, obs obs
 		configSource = luaservices.NewMapConfigSource(cfg.Config)
 	}
 
-	// Build HTTP config
-	var httpConfig *luaservices.HTTPServiceConfig
+	// Build HTTP options
+	var httpOptions []luaservices.HTTPServiceOption
 	if cfg.HTTPConfig != nil {
-		httpCfg, err := buildHTTPConfig(cfg.HTTPConfig, transport)
+		opts, err := buildHTTPOptions(cfg.HTTPConfig, transport)
 		if err != nil {
-			return nil, fmt.Errorf("failed to build HTTP config: %w", err)
+			return nil, fmt.Errorf("failed to build HTTP options: %w", err)
 		}
-		httpConfig = httpCfg
+		httpOptions = opts
 	}
 
 	var baseDS service.DataSource
@@ -88,7 +88,7 @@ func newLuaDataSource(cfg DataSourceConfig, transport http.RoundTripper, obs obs
 			Name:         cfg.Name,
 			Script:       script,
 			ConfigSource: configSource,
-			HTTPConfig:   httpConfig,
+			HTTPOptions:  httpOptions,
 			Observer:     obs,
 			CacheKeyFunc: cfg.CacheKeyFunc,
 			CacheTTL:     cacheTTL,
@@ -102,7 +102,7 @@ func newLuaDataSource(cfg DataSourceConfig, transport http.RoundTripper, obs obs
 			Name:         cfg.Name,
 			Script:       script,
 			ConfigSource: configSource,
-			HTTPConfig:   httpConfig,
+			HTTPOptions:  httpOptions,
 			Observer:     obs,
 		}
 
@@ -120,27 +120,22 @@ func newLuaDataSource(cfg DataSourceConfig, transport http.RoundTripper, obs obs
 	return baseDS, nil
 }
 
-// buildHTTPConfig creates an HTTPServiceConfig from the config structure
-func buildHTTPConfig(cfg *HTTPConfig, transport http.RoundTripper) (*luaservices.HTTPServiceConfig, error) {
-	httpServiceCfg := &luaservices.HTTPServiceConfig{}
+func buildHTTPOptions(cfg *HTTPConfig, transport http.RoundTripper) ([]luaservices.HTTPServiceOption, error) {
+	var opts []luaservices.HTTPServiceOption
 
-	// Parse timeout
 	if cfg.Timeout != "" {
 		duration, err := time.ParseDuration(cfg.Timeout)
 		if err != nil {
 			return nil, fmt.Errorf("invalid http timeout: %w", err)
 		}
-		httpServiceCfg.Timeout = duration
-	} else {
-		httpServiceCfg.Timeout = 30 * time.Second // default
+		opts = append(opts, luaservices.WithTimeout(duration))
 	}
 
-	// Use the provided HTTP transport (from top-level config)
 	if transport != nil {
-		httpServiceCfg.Transport = transport
+		opts = append(opts, luaservices.WithTransport(transport))
 	}
 
-	return httpServiceCfg, nil
+	return opts, nil
 }
 
 // wrapWithCaching wraps a data source with the configured caching layer.

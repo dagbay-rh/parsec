@@ -28,7 +28,7 @@ type DiskKeyProvider struct {
 	algorithm string        // The signing algorithm to use
 	keysPath  string        // Directory path for storing key files
 	fs        fs.FileSystem // Filesystem abstraction for operations
-	observer  KeyProviderObserver
+	observer  DiskProviderObserver
 }
 
 // DiskKeyProviderConfig configures the disk key provider
@@ -46,7 +46,7 @@ type DiskKeyProviderConfig struct {
 	FileSystem fs.FileSystem
 
 	// Observer for disk key rotation events. If nil, a no-op observer is used.
-	Observer KeyProviderObserver
+	Observer DiskProviderObserver
 }
 
 // keyFileData represents the JSON structure stored on disk
@@ -102,7 +102,7 @@ func NewDiskKeyProvider(cfg DiskKeyProviderConfig) (*DiskKeyProvider, error) {
 
 	obs := cfg.Observer
 	if obs == nil {
-		obs = NoOpKeyProviderObserver{}
+		obs = NoOpDiskProviderObserver{}
 	}
 
 	return &DiskKeyProvider{

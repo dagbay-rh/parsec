@@ -48,7 +48,7 @@ type JWKSServerConfig struct {
 	// Clock is used for time operations (defaults to system clock)
 	Clock clock.Clock
 
-	// Observer for JWKS cache events. Defaults to NoOpObserver{} if nil.
+	// Observer for JWKS cache events. Defaults to NoOpServerObserver{} if nil.
 	Observer JWKSObserver
 }
 
@@ -61,7 +61,7 @@ func NewJWKSServer(cfg JWKSServerConfig) *JWKSServer {
 		cfg.Clock = clock.NewSystemClock()
 	}
 	if cfg.Observer == nil {
-		cfg.Observer = NoOpObserver{}
+		cfg.Observer = NoOpServerObserver{}
 	}
 	return &JWKSServer{
 		issuerRegistry:  cfg.IssuerRegistry,

@@ -11,57 +11,60 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
-// RequestOptions is a function that can modify a request before it is sent
+// RequestOptions is a function that can modify a request before it is sent.
 // This can be used to add authentication headers, modify URLs, etc.
 type RequestOptions func(*http.Request) error
 
-// HTTPService provides HTTP client functionality to Lua scripts
-type HTTPService struct {
-	client         *http.Client
+// httpServiceConfig collects option values during construction.
+type httpServiceConfig struct {
 	timeout        time.Duration
+	transport      http.RoundTripper
 	requestOptions RequestOptions
 }
 
-// HTTPServiceConfig configures the HTTP service
-type HTTPServiceConfig struct {
-	// Timeout for HTTP requests (default: 30s)
-	Timeout time.Duration
+// HTTPServiceOption configures optional settings for NewHTTPService.
+type HTTPServiceOption func(*httpServiceConfig)
 
-	// RequestOptions function to process requests before sending
-	// Can be used to add authentication, modify headers, etc.
-	RequestOptions RequestOptions
-
-	// Transport is the HTTP transport to use for requests
-	// If nil, uses http.DefaultTransport
-	Transport http.RoundTripper
+// WithTimeout sets the HTTP request timeout (default: 30s).
+func WithTimeout(d time.Duration) HTTPServiceOption {
+	return func(c *httpServiceConfig) { c.timeout = d }
 }
 
-// NewHTTPService creates a new HTTP service with configurable timeout
-func NewHTTPService(timeout time.Duration) *HTTPService {
-	return NewHTTPServiceWithConfig(HTTPServiceConfig{
-		Timeout: timeout,
-	})
+// WithTransport sets the HTTP transport (default: http.DefaultTransport).
+func WithTransport(rt http.RoundTripper) HTTPServiceOption {
+	return func(c *httpServiceConfig) { c.transport = rt }
 }
 
-// NewHTTPServiceWithConfig creates a new HTTP service with full configuration
-func NewHTTPServiceWithConfig(config HTTPServiceConfig) *HTTPService {
-	if config.Timeout == 0 {
-		config.Timeout = 30 * time.Second
+// WithRequestOptions sets a function that processes requests before sending.
+func WithRequestOptions(ro RequestOptions) HTTPServiceOption {
+	return func(c *httpServiceConfig) { c.requestOptions = ro }
+}
+
+// HTTPService provides HTTP client functionality to Lua scripts.
+type HTTPService struct {
+	ctx            context.Context
+	client         *http.Client
+	requestOptions RequestOptions
+}
+
+// NewHTTPService creates a new HTTP service. ctx is required and propagated
+// to every outgoing request, enabling cancellation, tracing, and request-ID
+// propagation. Optional settings are provided via HTTPServiceOption values.
+func NewHTTPService(ctx context.Context, opts ...HTTPServiceOption) *HTTPService {
+	cfg := httpServiceConfig{timeout: 30 * time.Second}
+	for _, opt := range opts {
+		opt(&cfg)
 	}
 
-	// Use provided transport or default
-	transport := config.Transport
+	transport := cfg.transport
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
 
 	return &HTTPService{
-		client: &http.Client{
-			Timeout:   config.Timeout,
-			Transport: transport,
-		},
-		timeout:        config.Timeout,
-		requestOptions: config.RequestOptions,
+		ctx:            ctx,
+		client:         &http.Client{Timeout: cfg.timeout, Transport: transport},
+		requestOptions: cfg.requestOptions,
 	}
 }
 
@@ -90,8 +93,7 @@ func (s *HTTPService) luaHTTPGet(L *lua.LState) int {
 	url := L.CheckString(1)
 	headers := s.parseHeaders(L, 2)
 
-	req, err := http.NewRequest("GET", url, nil)
-
+	req, err := http.NewRequestWithContext(s.ctx, "GET", url, nil)
 	if err != nil {
 		L.Push(lua.LNil)
 		L.Push(lua.LString(fmt.Sprintf("failed to create request: %v", err)))
@@ -131,7 +133,7 @@ func (s *HTTPService) luaHTTPPost(L *lua.LState) int {
 	body := L.CheckString(2)
 	headers := s.parseHeaders(L, 3)
 
-	req, err := http.NewRequest("POST", url, bytes.NewBufferString(body))
+	req, err := http.NewRequestWithContext(s.ctx, "POST", url, bytes.NewBufferString(body))
 	if err != nil {
 		L.Push(lua.LNil)
 		L.Push(lua.LString(fmt.Sprintf("failed to create request: %v", err)))
@@ -178,7 +180,7 @@ func (s *HTTPService) luaHTTPRequest(L *lua.LState) int {
 
 	headers := s.parseHeaders(L, 4)
 
-	req, err := http.NewRequest(method, url, body)
+	req, err := http.NewRequestWithContext(s.ctx, method, url, body)
 	if err != nil {
 		L.Push(lua.LNil)
 		L.Push(lua.LString(fmt.Sprintf("failed to create request: %v", err)))
@@ -259,11 +261,4 @@ func (s *HTTPService) responseToLua(L *lua.LState, resp *http.Response) *lua.LTa
 	L.SetField(tbl, "headers", headersTbl)
 
 	return tbl
-}
-
-// WithContext allows setting a context for requests (useful for cancellation)
-func (s *HTTPService) WithContext(ctx context.Context) *HTTPService {
-	// Create a new client with context-aware transport
-	// Note: This is a simplified version. For production, you'd want to wrap the transport
-	return s
 }

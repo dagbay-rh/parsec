@@ -13,13 +13,13 @@ import (
 	"github.com/project-kessel/parsec/internal/trust"
 )
 
-// LuaDataSource executes a Lua script to fetch data
-// The script has access to http, config, and json services
+// LuaDataSource executes a Lua script to fetch data.
+// The script has access to http, config, and json services.
 type LuaDataSource struct {
 	name         string
 	script       string
 	configSource luaservices.ConfigSource
-	httpConfig   luaservices.HTTPServiceConfig
+	httpOpts     []luaservices.HTTPServiceOption
 	observer     LuaObserver
 }
 
@@ -46,11 +46,11 @@ type LuaDataSourceConfig struct {
 	// If nil, an empty MapConfigSource will be used
 	ConfigSource luaservices.ConfigSource
 
-	// HTTPConfig provides HTTP service configuration including timeout, fixtures, etc.
-	// If nil, default HTTP config (30s timeout, no fixtures) will be used
-	HTTPConfig *luaservices.HTTPServiceConfig
+	// HTTPOptions provides HTTP service options including timeout, transport, etc.
+	// If nil, default HTTP settings (30s timeout) will be used.
+	HTTPOptions []luaservices.HTTPServiceOption
 
-	// Observer for Lua-specific execution events. Must be non-nil.
+	// Observer for Lua-specific execution events. If nil, defaults to NoOpObserver.
 	Observer LuaObserver
 }
 
@@ -80,27 +80,16 @@ func NewLuaDataSource(config LuaDataSourceConfig) (*LuaDataSource, error) {
 		return nil, fmt.Errorf("script must define a 'fetch' function")
 	}
 
-	// Build HTTP config with defaults if not provided
-	var httpConfig luaservices.HTTPServiceConfig
-	if config.HTTPConfig != nil {
-		httpConfig = *config.HTTPConfig
-	} else {
-		// Default: 30 second timeout, no fixtures
-		httpConfig = luaservices.HTTPServiceConfig{
-			Timeout: 30 * time.Second,
-		}
-	}
-
 	obs := config.Observer
 	if obs == nil {
-		obs = NoOpObserver{}
+		obs = NoOpDataSourceObserver{}
 	}
 
 	return &LuaDataSource{
 		name:         config.Name,
 		script:       config.Script,
 		configSource: config.ConfigSource,
-		httpConfig:   httpConfig,
+		httpOpts:     config.HTTPOptions,
 		observer:     obs,
 	}, nil
 }
@@ -112,15 +101,13 @@ func (ds *LuaDataSource) Name() string {
 
 // Fetch executes the Lua script to fetch data
 func (ds *LuaDataSource) Fetch(ctx context.Context, input *service.DataSourceInput) (*service.DataSourceResult, error) {
-	// TODO(RHCLOUD-45xxx): propagate enriched context through Lua HTTP calls
-	// so request IDs and tracing spans are not lost within data sources.
-	_, p := ds.observer.LuaFetchStarted(ctx, ds.name)
+	ctx, p := ds.observer.LuaFetchStarted(ctx, ds.name)
 	defer p.End()
 
 	L := lua.NewState()
 	defer L.Close()
 
-	httpService := luaservices.NewHTTPServiceWithConfig(ds.httpConfig)
+	httpService := luaservices.NewHTTPService(ctx, ds.httpOpts...)
 	httpService.Register(L)
 
 	configService := luaservices.NewConfigService(ds.configSource)
@@ -364,12 +351,12 @@ type CacheableLuaDataSourceConfig struct {
 	// If nil, an empty MapConfigSource will be used
 	ConfigSource luaservices.ConfigSource
 
-	// HTTPConfig provides HTTP service configuration including timeout, fixtures, etc.
-	// If nil, default HTTP config (30s timeout, no fixtures) will be used
-	HTTPConfig *luaservices.HTTPServiceConfig
+	// HTTPOptions provides HTTP service options including timeout, transport, etc.
+	// If nil, default HTTP settings (30s timeout) will be used.
+	HTTPOptions []luaservices.HTTPServiceOption
 
 	// Observer for Lua-specific execution events on the inner Lua data source.
-	// If nil, NewLuaDataSource substitutes NoOpObserver{}.
+	// If nil, NewLuaDataSource substitutes NoOpDataSourceObserver{}.
 	Observer LuaObserver
 
 	// CacheKeyFunc is the name of the Lua function that generates cache keys
@@ -402,7 +389,7 @@ func NewCacheableLuaDataSource(config CacheableLuaDataSourceConfig) (*CacheableL
 		Name:         config.Name,
 		Script:       config.Script,
 		ConfigSource: config.ConfigSource,
-		HTTPConfig:   config.HTTPConfig,
+		HTTPOptions:  config.HTTPOptions,
 		Observer:     config.Observer,
 	})
 	if err != nil {

@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -15,35 +17,106 @@ import (
 
 func boolPtr(b bool) *bool { return &b }
 
-func TestNewObserverWithLogger_NilConfig_ReturnsNoop(t *testing.T) {
-	obs, err := NewObserverWithLogger(nil, LoggerContext{})
+// providerWithObs is a test helper that builds a Provider with the given
+// ObservabilityConfig and returns its Observer.
+func providerWithObs(t *testing.T, cfg *ObservabilityConfig) *Provider {
+	t.Helper()
+	return NewProvider(&Config{Observability: cfg})
+}
+
+func TestProvider_Observer_NilConfig_ReturnsNoop(t *testing.T) {
+	p := providerWithObs(t, nil)
+	obs, err := p.Observer()
 	require.NoError(t, err)
 	require.NotNil(t, obs)
 
 	ctx := context.Background()
-	_, p := obs.CacheFetchStarted(ctx, "ds")
-	p.CacheHit()
+	_, probe := obs.CacheFetchStarted(ctx, "ds")
+	probe.CacheHit()
 }
 
-func TestNewObserverWithLogger_NoopType(t *testing.T) {
+func TestProvider_Observer_NoopType(t *testing.T) {
 	for _, typ := range []string{"noop", ""} {
 		t.Run("type="+typ, func(t *testing.T) {
-			obs, err := NewObserverWithLogger(&ObservabilityConfig{Type: typ}, LoggerContext{})
+			p := providerWithObs(t, &ObservabilityConfig{Type: typ})
+			obs, err := p.Observer()
 			require.NoError(t, err)
 			require.NotNil(t, obs)
 
 			ctx := context.Background()
-			_, p := obs.RotationCheckStarted(ctx)
-			p.RotationCompleted("slot")
+			_, probe := obs.RotationCheckStarted(ctx)
+			probe.RotationCompleted("slot")
 		})
 	}
 }
 
-func TestNewObserverWithLogger_LoggingType(t *testing.T) {
+func TestProvider_Observer_UnknownType_ReturnsError(t *testing.T) {
+	p := providerWithObs(t, &ObservabilityConfig{Type: "jaeger"})
+	_, err := p.Observer()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown observability type")
+}
+
+func TestProvider_Observer_CompositeEmpty_ReturnsError(t *testing.T) {
+	p := providerWithObs(t, &ObservabilityConfig{
+		Type:      "composite",
+		Observers: nil,
+	})
+	_, err := p.Observer()
+	assert.Error(t, err)
+}
+
+func TestProvider_Observer_MetricsType_ConfiguresHTTPMux(t *testing.T) {
+	p := providerWithObs(t, &ObservabilityConfig{Type: "metrics"})
+	obs, err := p.Observer()
+	require.NoError(t, err)
+	require.NotNil(t, obs)
+
+	assert.Equal(t, "/metrics", p.BootstrapFields()["metrics_endpoint"])
+
+	mux := http.NewServeMux()
+	obs.ConfigureHTTPMux(mux)
+
+	req := httptest.NewRequest("GET", "/metrics", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code, "metrics endpoint should be registered")
+}
+
+func TestProvider_Observer_CompositeWithMetrics_ConfiguresHTTPMux(t *testing.T) {
+	p := providerWithObs(t, &ObservabilityConfig{
+		Type: "composite",
+		Observers: []ObservabilityConfig{
+			{Type: "noop"},
+			{Type: "metrics"},
+		},
+	})
+	obs, err := p.Observer()
+	require.NoError(t, err)
+	require.NotNil(t, obs)
+
+	mux := http.NewServeMux()
+	obs.ConfigureHTTPMux(mux)
+
+	req := httptest.NewRequest("GET", "/metrics", nil)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code, "composite with metrics child should register /metrics")
+}
+
+func TestProvider_Observer_NoopType_NoBootstrapFields(t *testing.T) {
+	p := providerWithObs(t, &ObservabilityConfig{Type: "noop"})
+	_, err := p.Observer()
+	require.NoError(t, err)
+
+	assert.Empty(t, p.BootstrapFields())
+}
+
+func TestNewLoggingObserver_ProducesOutput(t *testing.T) {
 	var buf bytes.Buffer
 	logCtx := jsonLogCtx(&buf)
 
-	obs, err := NewObserverWithLogger(&ObservabilityConfig{Type: "logging"}, logCtx)
+	obs, err := newLoggingObserver(&ObservabilityConfig{Type: "logging"}, logCtx)
 	require.NoError(t, err)
 	require.NotNil(t, obs)
 
@@ -55,42 +128,40 @@ func TestNewObserverWithLogger_LoggingType(t *testing.T) {
 	assert.Contains(t, buf.String(), `"datasource":"test-ds"`)
 }
 
-func TestNewObserverWithLogger_CompositeType(t *testing.T) {
+func TestProvider_Observer_CompositeLogging_FansOut(t *testing.T) {
 	var buf bytes.Buffer
 	logCtx := jsonLogCtx(&buf)
 
-	obs, err := NewObserverWithLogger(&ObservabilityConfig{
+	p := providerWithObs(t, &ObservabilityConfig{
 		Type: "composite",
 		Observers: []ObservabilityConfig{
 			{Type: "logging"},
 			{Type: "logging"},
 		},
-	}, logCtx)
+	})
+	p.logCtx = &logCtx
+
+	obs, err := p.Observer()
 	require.NoError(t, err)
 	require.NotNil(t, obs)
 
 	obs.GRPCServeFailed(errors.New("bind error"))
 
 	output := buf.String()
-	// Two logging children means the message should appear twice
 	first := strings.Index(output, "gRPC server error")
 	require.NotEqual(t, -1, first, "expected at least one gRPC server error log")
 	second := strings.Index(output[first+1:], "gRPC server error")
 	assert.NotEqual(t, -1, second, "composite with 2 logging children should log twice")
 }
 
-func TestNewObserverWithLogger_CompositeEmpty_ReturnsError(t *testing.T) {
-	_, err := NewObserverWithLogger(&ObservabilityConfig{
-		Type:      "composite",
-		Observers: nil,
-	}, LoggerContext{})
-	assert.Error(t, err)
-}
-
-func TestNewObserverWithLogger_UnknownType_ReturnsError(t *testing.T) {
-	_, err := NewObserverWithLogger(&ObservabilityConfig{Type: "prometheus"}, LoggerContext{})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown observability type")
+func TestNewLoggingObserver_InvalidEventConfig_ReturnsError(t *testing.T) {
+	logCtx := jsonLogCtx(&bytes.Buffer{})
+	_, err := newLoggingObserver(&ObservabilityConfig{
+		Type:          "logging",
+		TokenIssuance: &EventLoggingConfig{LogLevel: "verbose"},
+	}, logCtx)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid log_level")
 }
 
 // jsonLogCtx builds a LoggerContext that writes JSON to buf.
@@ -317,14 +388,4 @@ func TestEventLogger_InvalidLogFormat_ReturnsError(t *testing.T) {
 	_, err := EventLogger(logCtx, "test", &EventLoggingConfig{LogFormat: "xml"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid log_format")
-}
-
-func TestNewObserverWithLogger_InvalidEventConfig_ReturnsError(t *testing.T) {
-	logCtx := jsonLogCtx(&bytes.Buffer{})
-	_, err := NewObserverWithLogger(&ObservabilityConfig{
-		Type:          "logging",
-		TokenIssuance: &EventLoggingConfig{LogLevel: "verbose"},
-	}, logCtx)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid log_level")
 }

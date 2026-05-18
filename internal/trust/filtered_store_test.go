@@ -9,11 +9,11 @@ import (
 	"github.com/project-kessel/parsec/internal/claims"
 )
 
-// newTestFilteredStore creates a FilteredStore pre-wired with a NoOpObserver.
+// newTestFilteredStore creates a FilteredStore pre-wired with a NoOpTrustObserver.
 // Callers can pass additional options (e.g. WithCELFilter) as needed.
 func newTestFilteredStore(t *testing.T, opts ...FilteredStoreOption) *FilteredStore {
 	t.Helper()
-	allOpts := append([]FilteredStoreOption{WithObserver(NoOpObserver{})}, opts...)
+	allOpts := append([]FilteredStoreOption{WithObserver(NoOpTrustObserver{})}, opts...)
 	store, err := NewFilteredStore(allOpts...)
 	if err != nil {
 		t.Fatalf("failed to create filtered store: %v", err)
@@ -338,7 +338,7 @@ func TestFilteredStore_InvalidCELScript(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewFilteredStore(WithCELFilter(tt.script), WithObserver(NoOpObserver{}))
+			_, err := NewFilteredStore(WithCELFilter(tt.script), WithObserver(NoOpTrustObserver{}))
 			if err == nil {
 				t.Error("expected error for invalid script, got nil")
 			}

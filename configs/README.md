@@ -324,6 +324,52 @@ The `examples/` directory contains complete configuration examples:
 - **`parsec-minimal.json`** - Minimal config in JSON format
 - **`parsec-minimal.toml`** - Minimal config in TOML format
 
+## OpenShift Deployment - Clowder Envs
+
+When deploying parsec to OpenShift, the platform requires specific ports that differ from the upstream defaults:
+
+| Port | Upstream default | OpenShift |
+|------|-----------------|-----------|
+| gRPC | 9090 | 9800 |
+| HTTP | 8080 | 8000 |
+| Metrics | (served on HTTP port at `/metrics`) | 9000 (platform convention) |
+
+**The upstream code and config files intentionally retain the original defaults (9090/8080).** Port overrides for OpenShift are applied at the deployment layer, not in application code.
+
+### How ports are overridden
+
+The deployment templates in `deploy/` handle this:
+
+- **Ephemeral environments** (`deploy/parsec-ephem.yaml`): The ConfigMap is defined inline within the template with `grpc_port: 9800` and `http_port: 8000`. Health probes and `h2cTargetPort` match these ports.
+
+- **Stage/Production environments** (`deploy/parsec.yaml`): The config is provided via an external Secret (or ConfigMap created downstream) that specifies the OpenShift ports. The deployment template's probes and `h2cTargetPort` are already set to the OpenShift ports.
+
+This works because koanf loads config with this precedence: **file > defaults**. The mounted config file's port values override the built-in defaults at startup.
+
+### Creating a downstream ConfigMap for non-ephemeral environments
+
+```bash
+# Create a Secret with the production config (ports set to OpenShift values)
+oc create secret generic parsec-config \
+  --from-file=parsec.yaml=path/to/production-parsec.yaml \
+  --from-file=scripts/redhat_identity.cel=configs/scripts/redhat_identity.cel
+```
+
+The production `parsec.yaml` should include:
+```yaml
+server:
+  grpc_port: 9800
+  http_port: 8000
+```
+
+### Local development
+
+For local development, no port overrides are needed. The upstream defaults (9090/8080) work out of the box:
+```bash
+./bin/parsec serve
+# gRPC on :9090, HTTP on :8080
+```
+
 ## Hot Reloading
 
 Configuration hot reloading is supported but not yet enabled by default. The infrastructure is in place in `internal/config/loader.go` with the `Watch()` method.

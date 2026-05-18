@@ -29,8 +29,8 @@ func startJWKSTestServer(t *testing.T, issuerRegistry service.Registry) *testEnv
 	return startTestServer(t, Config{
 		AuthzServer:    NewAuthzServer(trustStore, tokenService, nil, nil),
 		ExchangeServer: NewExchangeServer(trustStore, tokenService, claimsFilterRegistry, nil),
-		JWKSServer:     NewJWKSServer(JWKSServerConfig{IssuerRegistry: issuerRegistry, Observer: NoOpObserver{}}),
-		Observer:       NoOpObserver{},
+		JWKSServer:     NewJWKSServer(JWKSServerConfig{IssuerRegistry: issuerRegistry, Observer: NoOpServerObserver{}}),
+		Observer:       NoOpServerObserver{},
 	})
 }
 
@@ -44,7 +44,7 @@ func newTestSigner(t *testing.T, namespace string, keyType keys.KeyType, algo st
 		KeyProviderID:       "test-provider",
 		KeyProviderRegistry: map[string]keys.KeyProvider{"test-provider": kp},
 		SlotStore:           keys.NewInMemoryKeySlotStore(),
-		Observer:            keys.NoOpObserver{},
+		Observer:            keys.NoOpKeysObserver{},
 	})
 	if err := signer.Start(context.Background()); err != nil {
 		t.Fatalf("Failed to start signer: %v", err)

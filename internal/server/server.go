@@ -34,6 +34,11 @@ var healthServices = []string{
 	"parsec.v1.JWKSService",
 }
 
+// MuxConfigurer registers HTTP handlers on the server's mux during startup.
+// Use this to add endpoints like /metrics or /debug/pprof without coupling
+// the server to specific subsystem types.
+type MuxConfigurer func(*http.ServeMux)
+
 // Server manages the gRPC and HTTP servers
 type Server struct {
 	grpcServer   *grpc.Server
@@ -44,6 +49,7 @@ type Server struct {
 	httpListener    net.Listener
 	grpcDialOptions []grpc.DialOption
 	observer        LifecycleObserver
+	muxConfigurer   MuxConfigurer
 
 	authzServer    *AuthzServer
 	exchangeServer *ExchangeServer
@@ -65,21 +71,30 @@ type Config struct {
 	ExchangeServer *ExchangeServer
 	JWKSServer     *JWKSServer
 
-	// Observer for server lifecycle events. Defaults to NoOpObserver{} if nil.
+	// Observer for server lifecycle events. Defaults to NoOpServerObserver{} if nil.
 	Observer LifecycleObserver
+
+	// MuxConfigurer, when non-nil, is applied to the HTTP mux during Start
+	// to register additional handlers (e.g. /metrics for Prometheus scraping).
+	MuxConfigurer MuxConfigurer
 }
 
 // New creates a new server with the given configuration.
 func New(cfg Config) *Server {
 	obs := cfg.Observer
 	if obs == nil {
-		obs = NoOpObserver{}
+		obs = NoOpServerObserver{}
+	}
+	muxCfg := cfg.MuxConfigurer
+	if muxCfg == nil {
+		muxCfg = func(*http.ServeMux) {}
 	}
 	return &Server{
 		grpcListener:    cfg.GRPCListener,
 		httpListener:    cfg.HTTPListener,
 		grpcDialOptions: cfg.GRPCDialOptions,
 		observer:        obs,
+		muxConfigurer:   muxCfg,
 		authzServer:     cfg.AuthzServer,
 		exchangeServer:  cfg.ExchangeServer,
 		jwksServer:      cfg.JWKSServer,
@@ -145,6 +160,7 @@ func (s *Server) Start(ctx context.Context) error {
 	httpMux := http.NewServeMux()
 	httpMux.HandleFunc("GET /healthz/live", s.handleLiveness)
 	httpMux.HandleFunc("GET /healthz/ready", s.handleReadiness)
+	s.muxConfigurer(httpMux)
 	httpMux.Handle("/", gwMux)
 
 	s.httpServer = &http.Server{Handler: httpMux}

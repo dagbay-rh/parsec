@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -35,15 +36,13 @@ func TestHTTPService_WithRequestOptions(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	// Create HTTP service with request options that adds auth header
-	service := NewHTTPServiceWithConfig(HTTPServiceConfig{
-		Timeout: 5 * time.Second,
-		RequestOptions: func(req *http.Request) error {
-			// Automatically add authorization header
+	service := NewHTTPService(context.Background(),
+		WithTimeout(5*time.Second),
+		WithRequestOptions(func(req *http.Request) error {
 			req.Header.Set("Authorization", "Bearer auto-added-token")
 			return nil
-		},
-	})
+		}),
+	)
 	service.Register(L)
 
 	// Lua script adds its own custom header
@@ -76,13 +75,12 @@ func TestHTTPService_RequestOptionsError(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	// Create HTTP service with request options that returns an error
-	service := NewHTTPServiceWithConfig(HTTPServiceConfig{
-		Timeout: 5 * time.Second,
-		RequestOptions: func(req *http.Request) error {
-			return http.ErrServerClosed // arbitrary error
-		},
-	})
+	service := NewHTTPService(context.Background(),
+		WithTimeout(5*time.Second),
+		WithRequestOptions(func(req *http.Request) error {
+			return http.ErrServerClosed
+		}),
+	)
 	service.Register(L)
 
 	script := `
@@ -123,16 +121,15 @@ func TestHTTPService_RequestOptionsModifyURL(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	// Create HTTP service that adds API key as query param
-	service := NewHTTPServiceWithConfig(HTTPServiceConfig{
-		Timeout: 5 * time.Second,
-		RequestOptions: func(req *http.Request) error {
+	service := NewHTTPService(context.Background(),
+		WithTimeout(5*time.Second),
+		WithRequestOptions(func(req *http.Request) error {
 			q := req.URL.Query()
 			q.Add("api_key", "secret123")
 			req.URL.RawQuery = q.Encode()
 			return nil
-		},
-	})
+		}),
+	)
 	service.Register(L)
 
 	script := `
@@ -173,14 +170,13 @@ func TestHTTPService_RequestOptionsAllMethods(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	// Create HTTP service that adds auth to all requests
-	service := NewHTTPServiceWithConfig(HTTPServiceConfig{
-		Timeout: 5 * time.Second,
-		RequestOptions: func(req *http.Request) error {
+	service := NewHTTPService(context.Background(),
+		WithTimeout(5*time.Second),
+		WithRequestOptions(func(req *http.Request) error {
 			req.Header.Set("Authorization", "Bearer token")
 			return nil
-		},
-	})
+		}),
+	)
 	service.Register(L)
 
 	// Test GET

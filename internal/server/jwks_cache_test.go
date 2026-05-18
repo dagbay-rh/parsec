@@ -37,7 +37,7 @@ func TestJWKSServerCaching(t *testing.T) {
 			IssuerRegistry:  registry,
 			RefreshInterval: 1 * time.Minute,
 			Clock:           clk,
-			Observer:        NoOpObserver{},
+			Observer:        NoOpServerObserver{},
 		})
 
 		// Start should populate the cache
@@ -81,7 +81,7 @@ func TestJWKSServerCaching(t *testing.T) {
 
 		jwksServer := NewJWKSServer(JWKSServerConfig{
 			IssuerRegistry: registry,
-			Observer:       NoOpObserver{},
+			Observer:       NoOpServerObserver{},
 		})
 
 		// First request should populate cache
@@ -119,7 +119,7 @@ func TestJWKSServerCaching(t *testing.T) {
 			IssuerRegistry:  registry,
 			RefreshInterval: 1 * time.Hour,
 			Clock:           clk,
-			Observer:        NoOpObserver{},
+			Observer:        NoOpServerObserver{},
 		})
 
 		// Start populates cache
@@ -169,7 +169,7 @@ func TestJWKSServerCaching(t *testing.T) {
 			IssuerRegistry:  registry,
 			RefreshInterval: 1 * time.Minute,
 			Clock:           clk,
-			Observer:        NoOpObserver{},
+			Observer:        NoOpServerObserver{},
 		})
 
 		// Start populates cache and begins background refresh
@@ -222,7 +222,7 @@ func TestJWKSServerCaching(t *testing.T) {
 			IssuerRegistry:  registry,
 			RefreshInterval: 1 * time.Minute,
 			Clock:           clk,
-			Observer:        NoOpObserver{},
+			Observer:        NoOpServerObserver{},
 		})
 
 		// Start populates cache with good data
@@ -268,7 +268,7 @@ func TestJWKSServerCaching(t *testing.T) {
 
 		jwksServer := NewJWKSServer(JWKSServerConfig{
 			IssuerRegistry: registry,
-			Observer:       NoOpObserver{},
+			Observer:       NoOpServerObserver{},
 		})
 
 		// Start will fail to populate cache but shouldn't error

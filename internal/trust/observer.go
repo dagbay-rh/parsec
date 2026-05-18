@@ -107,10 +107,10 @@ type NoOpValidatorObserver struct {
 	NoOpJWTValidatorObserver
 }
 
-// NoOpObserver satisfies TrustObserver with empty probes.
-type NoOpObserver struct {
+// NoOpTrustObserver satisfies TrustObserver with empty probes.
+type NoOpTrustObserver struct {
 	NoOpStoreObserver
 	NoOpValidatorObserver
 }
 
-var _ TrustObserver = NoOpObserver{}
+var _ TrustObserver = NoOpTrustObserver{}

@@ -340,8 +340,8 @@ type FixtureResponse struct {
 // ObservabilityConfig configures application observability
 type ObservabilityConfig struct {
 	// Type selects the observer implementation
-	// Options: "logging", "noop", "composite"
-	Type string `koanf:"type" usage:"observer type: logging, noop, composite"`
+	// Options: "logging", "noop", "metrics", "composite"
+	Type string `koanf:"type" usage:"observer type: logging, noop, metrics, composite"`
 
 	// LogLevel sets the default log level for logging observer
 	// Options: "debug", "info", "warn", "error"

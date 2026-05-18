@@ -9,7 +9,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/project-kessel/parsec/internal/observer"
-	"github.com/project-kessel/parsec/internal/probe"
+	"github.com/project-kessel/parsec/internal/probe/zlog"
 )
 
 // LoggerContext couples a zerolog logger with its destination writer so
@@ -17,37 +17,6 @@ import (
 type LoggerContext struct {
 	Logger zerolog.Logger
 	Writer io.Writer
-}
-
-// NewObserver creates the central observer from configuration.
-// This is a convenience wrapper that creates its own logger from cfg.
-func NewObserver(cfg *ObservabilityConfig) (observer.Observer, error) {
-	logCtx, err := NewLoggerContext(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return NewObserverWithLogger(cfg, logCtx)
-}
-
-// NewObserverWithLogger creates the central observer using the provided logger.
-// Use this when you want the observer to share a logger with other components.
-// The returned Observer satisfies both ServiceObserver and all infra
-// observer interfaces (cache, keys, trust, JWKS, server lifecycle).
-func NewObserverWithLogger(cfg *ObservabilityConfig, logCtx LoggerContext) (observer.Observer, error) {
-	if cfg == nil {
-		return observer.NoOp(), nil
-	}
-
-	switch cfg.Type {
-	case "logging":
-		return newLoggingObserver(cfg, logCtx)
-	case "noop", "":
-		return observer.NoOp(), nil
-	case "composite":
-		return newCompositeObserver(cfg, logCtx)
-	default:
-		return nil, fmt.Errorf("unknown observability type: %s (supported: logging, noop, composite)", cfg.Type)
-	}
 }
 
 // NewLogger creates a structured zerolog logger from the observability configuration.
@@ -105,7 +74,7 @@ func newLoggingObserver(cfg *ObservabilityConfig, logCtx LoggerContext) (observe
 		return nil, err
 	}
 
-	app := probe.NewLoggingObserverWithConfig(probe.LoggingObserverConfig{
+	app := zlog.NewLoggingObserverWithConfig(zlog.LoggingObserverConfig{
 		TokenIssuanceLogger: tiLog,
 		TokenExchangeLogger: teLog,
 		AuthzCheckLogger:    acLog,
@@ -113,10 +82,10 @@ func newLoggingObserver(cfg *ObservabilityConfig, logCtx LoggerContext) (observe
 
 	return observer.Compose(
 		app,
-		probe.NewLoggingDataSourceObserver(dcLog, luaLog),
-		probe.NewLoggingKeysObserver(krLog, kpLog),
-		probe.NewLoggingTrustObserver(tvLog),
-		probe.NewLoggingServerObserver(jcLog, slLog),
+		zlog.NewLoggingDataSourceObserver(dcLog, luaLog),
+		zlog.NewLoggingKeysObserver(krLog, kpLog),
+		zlog.NewLoggingTrustObserver(tvLog),
+		zlog.NewLoggingServerObserver(jcLog, slLog),
 	), nil
 }
 
@@ -144,29 +113,6 @@ func NewLoggerContext(cfg *ObservabilityConfig) (LoggerContext, error) {
 		Logger: zerolog.New(writer).With().Timestamp().Logger().Level(defaultLevel),
 		Writer: rawSink,
 	}, nil
-}
-
-// newCompositeObserver creates a composite observer that fans out every call
-// (both request-scoped and infra) to all child observers.
-func newCompositeObserver(cfg *ObservabilityConfig, logCtx LoggerContext) (observer.Observer, error) {
-	if len(cfg.Observers) == 0 {
-		return nil, fmt.Errorf("composite observer requires at least one sub-observer")
-	}
-
-	var children []observer.Observer
-	for i, subCfg := range cfg.Observers {
-		childLogCtx, err := deriveLoggerContext(logCtx, &subCfg)
-		if err != nil {
-			return nil, fmt.Errorf("observer %d: %w", i, err)
-		}
-		obs, err := NewObserverWithLogger(&subCfg, childLogCtx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create observer %d: %w", i, err)
-		}
-		children = append(children, obs)
-	}
-
-	return observer.CompositeAll(children), nil
 }
 
 // deriveLoggerContext builds a child LoggerContext that shares the parent's

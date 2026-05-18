@@ -2,10 +2,10 @@ package keys
 
 import "context"
 
-// RotationObserver is called at key points during key rotation operations.
-// Implementations should embed NoOpRotationObserver for forward compatibility
+// DualSlotRotatingSignerObserver is called at key points during key rotation operations.
+// Implementations should embed NoOpDualSlotRotatingSignerObserver for forward compatibility
 // with new methods added to this interface.
-type RotationObserver interface {
+type DualSlotRotatingSignerObserver interface {
 	// RotationCheckStarted is called when a rotation check begins.
 	RotationCheckStarted(ctx context.Context) (context.Context, RotationCheckProbe)
 	// KeyCacheUpdateStarted is called when the active key cache is being rebuilt.
@@ -74,10 +74,10 @@ type MemoryRotateProbe interface {
 }
 
 // RotatingSignerObserver mirrors the RotatingSigner component tree.
-// It embeds RotationObserver (DualSlotRotatingSigner level).
+// It embeds DualSlotRotatingSignerObserver (DualSlotRotatingSigner level).
 // Implementations should embed NoOpRotatingSignerObserver for forward compatibility.
 type RotatingSignerObserver interface {
-	RotationObserver
+	DualSlotRotatingSignerObserver
 }
 
 // KeyProviderObserver mirrors the KeyProvider component tree.
@@ -116,14 +116,14 @@ func (NoOpKeyCacheUpdateProbe) ThumbprintFailed(string, error)     {}
 func (NoOpKeyCacheUpdateProbe) MetadataFailed(string, error)       {}
 func (NoOpKeyCacheUpdateProbe) End()                               {}
 
-// NoOpRotationObserver is a no-op implementation of RotationObserver.
-type NoOpRotationObserver struct{}
+// NoOpDualSlotRotatingSignerObserver is a no-op implementation of DualSlotRotatingSignerObserver.
+type NoOpDualSlotRotatingSignerObserver struct{}
 
-func (NoOpRotationObserver) RotationCheckStarted(ctx context.Context) (context.Context, RotationCheckProbe) {
+func (NoOpDualSlotRotatingSignerObserver) RotationCheckStarted(ctx context.Context) (context.Context, RotationCheckProbe) {
 	return ctx, NoOpRotationCheckProbe{}
 }
 
-func (NoOpRotationObserver) KeyCacheUpdateStarted(ctx context.Context) (context.Context, KeyCacheUpdateProbe) {
+func (NoOpDualSlotRotatingSignerObserver) KeyCacheUpdateStarted(ctx context.Context) (context.Context, KeyCacheUpdateProbe) {
 	return ctx, NoOpKeyCacheUpdateProbe{}
 }
 
@@ -165,7 +165,7 @@ func (NoOpInMemoryProviderObserver) MemoryRotateStarted(ctx context.Context) (co
 }
 
 type NoOpRotatingSignerObserver struct {
-	NoOpRotationObserver
+	NoOpDualSlotRotatingSignerObserver
 }
 
 type NoOpKeyProviderObserver struct {
@@ -174,10 +174,10 @@ type NoOpKeyProviderObserver struct {
 	NoOpInMemoryProviderObserver
 }
 
-// NoOpObserver satisfies KeysObserver with empty probes.
-type NoOpObserver struct {
+// NoOpKeysObserver satisfies KeysObserver with empty probes.
+type NoOpKeysObserver struct {
 	NoOpRotatingSignerObserver
 	NoOpKeyProviderObserver
 }
 
-var _ KeysObserver = NoOpObserver{}
+var _ KeysObserver = NoOpKeysObserver{}

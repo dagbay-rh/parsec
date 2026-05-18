@@ -96,11 +96,11 @@ func (NoOpLifecycleObserver) StopStarted(ctx context.Context) (context.Context, 
 	return ctx, NoOpStopProbe{}
 }
 
-// NoOpObserver satisfies both JWKSObserver and LifecycleObserver
+// NoOpServerObserver satisfies both JWKSObserver and LifecycleObserver
 // with empty probes. Useful in tests that don't care about observer events.
-type NoOpObserver struct {
+type NoOpServerObserver struct {
 	NoOpJWKSObserver
 	NoOpLifecycleObserver
 }
 
-var _ ServerObserver = NoOpObserver{}
+var _ ServerObserver = NoOpServerObserver{}

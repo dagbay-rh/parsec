@@ -60,7 +60,7 @@ type DualSlotRotatingSigner struct {
 
 	clock    clock.Clock
 	ticker   clock.Ticker
-	observer RotatingSignerObserver
+	observer DualSlotRotatingSignerObserver
 }
 
 // DualSlotRotatingSignerConfig configures the DualSlotRotatingSigner
@@ -79,8 +79,8 @@ type DualSlotRotatingSignerConfig struct {
 	CheckInterval     time.Duration
 	PrepareTimeout    time.Duration // How long to wait before retrying a stuck "preparing" state (default: 1 minute)
 
-	// Observer must be non-nil; use NoOpObserver{} in tests.
-	Observer RotatingSignerObserver
+	// Observer is optional; if nil, NoOpDualSlotRotatingSignerObserver{} is used.
+	Observer DualSlotRotatingSignerObserver
 }
 
 // NewDualSlotRotatingSigner creates a new dual-slot rotating signer.
@@ -117,7 +117,7 @@ func NewDualSlotRotatingSigner(cfg DualSlotRotatingSignerConfig) *DualSlotRotati
 
 	obs := cfg.Observer
 	if obs == nil {
-		obs = NoOpObserver{}
+		obs = NoOpDualSlotRotatingSignerObserver{}
 	}
 
 	return &DualSlotRotatingSigner{

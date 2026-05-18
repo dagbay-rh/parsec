@@ -4,9 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
-	"encoding/asn1"
 	"fmt"
-	"math/big"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -21,7 +19,7 @@ type AWSKMSKeyProvider struct {
 	keyType     KeyType
 	algorithm   string
 	aliasPrefix string
-	observer    KeyProviderObserver
+	observer    AWSKMSProviderObserver
 }
 
 // AWSKMSConfig configures the AWS KMS key provider
@@ -31,7 +29,7 @@ type AWSKMSConfig struct {
 	Region      string
 	AliasPrefix string
 	Client      *kms.Client
-	Observer    KeyProviderObserver
+	Observer    AWSKMSProviderObserver
 }
 
 // NewAWSKMSKeyProvider creates a new AWS KMS key provider.
@@ -73,7 +71,7 @@ func NewAWSKMSKeyProvider(ctx context.Context, cfg AWSKMSConfig) (*AWSKMSKeyProv
 
 	obs := cfg.Observer
 	if obs == nil {
-		obs = NoOpKeyProviderObserver{}
+		obs = NoOpAWSKMSProviderObserver{}
 	}
 
 	return &AWSKMSKeyProvider{
@@ -167,17 +165,20 @@ func (m *AWSKMSKeyProvider) getKeyIDFromAlias(ctx context.Context, aliasName str
 	if err != nil {
 		return "", err
 	}
-	return aws.ToString(resp.KeyMetadata.KeyId), nil
+	// Use ARN, not KeyId. Despite the name, KeyMetadata.KeyId returns a UUID
+	// while Sign's resp.KeyId returns a full ARN. We use ARN consistently
+	// so the contextSigner mismatch check compares like with like.
+	return aws.ToString(resp.KeyMetadata.Arn), nil
 }
 
 func (m *AWSKMSKeyProvider) aliasName(trustDomain, namespace, keyName string) string {
 	// Build alias path with separate trust domain and namespace components
 	var parts []string
 	if trustDomain != "" {
-		parts = append(parts, strings.ReplaceAll(trustDomain, ":", "_"))
+		parts = append(parts, sanitizeAliasComponent(trustDomain))
 	}
 	if namespace != "" {
-		parts = append(parts, strings.ReplaceAll(namespace, ":", "_"))
+		parts = append(parts, sanitizeAliasComponent(namespace))
 	}
 	parts = append(parts, keyName)
 
@@ -221,19 +222,10 @@ func (h *awsKeyHandle) Sign(ctx context.Context, digest []byte, opts crypto.Sign
 		return nil, "", fmt.Errorf("KMS sign failed: %w", err)
 	}
 
-	usedKeyID := aws.ToString(resp.KeyId)
-
-	var signature []byte
-	if h.manager.algorithm == "ES256" || h.manager.algorithm == "ES384" {
-		signature, err = convertDERToRawECDSA(resp.Signature)
-		if err != nil {
-			return nil, "", err
-		}
-	} else {
-		signature = resp.Signature
-	}
-
-	return signature, usedKeyID, nil
+	// Return the DER-encoded signature as-is.
+	// The JWX library handles DER-to-raw conversion for ECDSA internally
+	// when using the crypto.Signer interface.
+	return resp.Signature, aws.ToString(resp.KeyId), nil
 }
 
 func (h *awsKeyHandle) Metadata(ctx context.Context) (string, string, error) {
@@ -297,29 +289,10 @@ func algorithmFromKeyType(keyType KeyType) (string, error) {
 	}
 }
 
-// convertDERToRawECDSA converts DER-encoded ECDSA signature to raw (r || s) format
-func convertDERToRawECDSA(derSig []byte) ([]byte, error) {
-	var sig struct {
-		R, S *big.Int
-	}
-	if _, err := asn1.Unmarshal(derSig, &sig); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal DER signature: %w", err)
-	}
-
-	// Determine key size (32 bytes for P-256, 48 bytes for P-384)
-	// Approximate logic based on bit len
-	keySize := (sig.R.BitLen() + 7) / 8
-	if keySize < 32 {
-		keySize = 32
-	}
-
-	rBytes := sig.R.Bytes()
-	sBytes := sig.S.Bytes()
-
-	// Pad to key size
-	rawSig := make([]byte, keySize*2)
-	copy(rawSig[keySize-len(rBytes):keySize], rBytes)
-	copy(rawSig[keySize*2-len(sBytes):], sBytes)
-
-	return rawSig, nil
+// sanitizeAliasComponent replaces characters not allowed in KMS alias names.
+// KMS aliases must match ^[a-zA-Z0-9:/_-]+$
+func sanitizeAliasComponent(s string) string {
+	s = strings.ReplaceAll(s, ":", "_")
+	s = strings.ReplaceAll(s, ".", "_")
+	return s
 }

@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -28,7 +29,7 @@ func TestHTTPService_Get(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	service := NewHTTPService(5 * time.Second)
+	service := NewHTTPService(context.Background(), WithTimeout(5*time.Second))
 	service.Register(L)
 
 	script := `
@@ -65,7 +66,7 @@ func TestHTTPService_GetWithHeaders(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	service := NewHTTPService(5 * time.Second)
+	service := NewHTTPService(context.Background(), WithTimeout(5*time.Second))
 	service.Register(L)
 
 	script := `
@@ -117,7 +118,7 @@ func TestHTTPService_Post(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	service := NewHTTPService(5 * time.Second)
+	service := NewHTTPService(context.Background(), WithTimeout(5*time.Second))
 	service.Register(L)
 
 	// Also register JSON service for encoding
@@ -159,7 +160,7 @@ func TestHTTPService_Request(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	service := NewHTTPService(5 * time.Second)
+	service := NewHTTPService(context.Background(), WithTimeout(5*time.Second))
 	service.Register(L)
 
 	script := `
@@ -183,7 +184,7 @@ func TestHTTPService_GetError(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	service := NewHTTPService(1 * time.Second)
+	service := NewHTTPService(context.Background(), WithTimeout(1*time.Second))
 	service.Register(L)
 
 	// Use an invalid URL
@@ -232,7 +233,7 @@ func TestHTTPService_StatusCodes(t *testing.T) {
 			L := lua.NewState()
 			defer L.Close()
 
-			service := NewHTTPService(5 * time.Second)
+			service := NewHTTPService(context.Background(), WithTimeout(5*time.Second))
 			service.Register(L)
 
 			script := `
@@ -271,7 +272,7 @@ func TestHTTPService_ResponseHeaders(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	service := NewHTTPService(5 * time.Second)
+	service := NewHTTPService(context.Background(), WithTimeout(5*time.Second))
 	service.Register(L)
 
 	script := `
@@ -289,5 +290,87 @@ func TestHTTPService_ResponseHeaders(t *testing.T) {
 	expected := "custom-value:application/json"
 	if lua.LVAsString(result) != expected {
 		t.Errorf("headers = %q, want %q", lua.LVAsString(result), expected)
+	}
+}
+
+type ctxKey struct{}
+
+type capturingTransport struct {
+	capturedCtx context.Context
+	wrapped     http.RoundTripper
+}
+
+func (ct *capturingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	ct.capturedCtx = req.Context()
+	return ct.wrapped.RoundTrip(req)
+}
+
+func TestHTTPService_PropagatesContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	tests := []struct {
+		name   string
+		script string
+	}{
+		{"get", `http.get("` + server.URL + `")`},
+		{"post", `http.post("` + server.URL + `", "body")`},
+		{"request", `http.request("PUT", "` + server.URL + `", "body")`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ct := &capturingTransport{wrapped: http.DefaultTransport}
+			ctx := context.WithValue(context.Background(), ctxKey{}, "trace-123")
+
+			svc := NewHTTPService(ctx, WithTimeout(5*time.Second), WithTransport(ct))
+			L := lua.NewState()
+			defer L.Close()
+			svc.Register(L)
+
+			if err := L.DoString(tt.script); err != nil {
+				t.Fatalf("script execution failed: %v", err)
+			}
+
+			if ct.capturedCtx == nil {
+				t.Fatal("transport did not capture a request context")
+			}
+			val, ok := ct.capturedCtx.Value(ctxKey{}).(string)
+			if !ok || val != "trace-123" {
+				t.Errorf("context value not propagated: got %q, want %q", val, "trace-123")
+			}
+		})
+	}
+}
+
+func TestHTTPService_CancelledContextReturnsError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	svc := NewHTTPService(ctx, WithTimeout(5*time.Second))
+	L := lua.NewState()
+	defer L.Close()
+	svc.Register(L)
+
+	script := `
+		local resp, err = http.get("` + server.URL + `")
+		if resp == nil and err ~= nil then return "error" end
+		return "no-error"
+	`
+	if err := L.DoString(script); err != nil {
+		t.Fatalf("script execution failed: %v", err)
+	}
+
+	result := lua.LVAsString(L.Get(-1))
+	L.Pop(1)
+	if result != "error" {
+		t.Errorf("expected error from cancelled context, got %q", result)
 	}
 }

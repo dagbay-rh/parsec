@@ -49,12 +49,12 @@ end
 	ds, err := NewLuaDataSource(LuaDataSourceConfig{
 		Name:   "test",
 		Script: script,
-		HTTPConfig: &luaservices.HTTPServiceConfig{
-			Timeout: 5 * time.Second,
-			Transport: httpfixture.NewTransport(httpfixture.TransportConfig{
+		HTTPOptions: []luaservices.HTTPServiceOption{
+			luaservices.WithTimeout(5 * time.Second),
+			luaservices.WithTransport(httpfixture.NewTransport(httpfixture.TransportConfig{
 				Provider: provider,
 				Strict:   true,
-			}),
+			})),
 		},
 	})
 	if err != nil {
@@ -136,12 +136,12 @@ end
 	ds, err := NewLuaDataSource(LuaDataSourceConfig{
 		Name:   "test",
 		Script: script,
-		HTTPConfig: &luaservices.HTTPServiceConfig{
-			Timeout: 5 * time.Second,
-			Transport: httpfixture.NewTransport(httpfixture.TransportConfig{
+		HTTPOptions: []luaservices.HTTPServiceOption{
+			luaservices.WithTimeout(5 * time.Second),
+			luaservices.WithTransport(httpfixture.NewTransport(httpfixture.TransportConfig{
 				Provider: provider,
 				Strict:   true,
-			}),
+			})),
 		},
 	})
 	if err != nil {
@@ -227,12 +227,12 @@ end
 	ds, err := NewLuaDataSource(LuaDataSourceConfig{
 		Name:   "test",
 		Script: script,
-		HTTPConfig: &luaservices.HTTPServiceConfig{
-			Timeout: 5 * time.Second,
-			Transport: httpfixture.NewTransport(httpfixture.TransportConfig{
+		HTTPOptions: []luaservices.HTTPServiceOption{
+			luaservices.WithTimeout(5 * time.Second),
+			luaservices.WithTransport(httpfixture.NewTransport(httpfixture.TransportConfig{
 				Provider: provider,
 				Strict:   true,
-			}),
+			})),
 		},
 	})
 	if err != nil {
@@ -320,12 +320,12 @@ end
 	ds, err := NewLuaDataSource(LuaDataSourceConfig{
 		Name:   "test",
 		Script: script,
-		HTTPConfig: &luaservices.HTTPServiceConfig{
-			Timeout: 5 * time.Second,
-			Transport: httpfixture.NewTransport(httpfixture.TransportConfig{
+		HTTPOptions: []luaservices.HTTPServiceOption{
+			luaservices.WithTimeout(5 * time.Second),
+			luaservices.WithTransport(httpfixture.NewTransport(httpfixture.TransportConfig{
 				Provider: provider,
 				Strict:   true,
-			}),
+			})),
 		},
 	})
 	if err != nil {
@@ -369,9 +369,8 @@ end
 	ds, err := NewLuaDataSource(LuaDataSourceConfig{
 		Name:   "test",
 		Script: script,
-		HTTPConfig: &luaservices.HTTPServiceConfig{
-			Timeout: 5 * time.Second,
-			// No FixtureProvider - will use real HTTP
+		HTTPOptions: []luaservices.HTTPServiceOption{
+			luaservices.WithTimeout(5 * time.Second),
 		},
 	})
 	if err != nil {
@@ -439,12 +438,12 @@ end
 	ds, err := NewCacheableLuaDataSource(CacheableLuaDataSourceConfig{
 		Name:   "test",
 		Script: script,
-		HTTPConfig: &luaservices.HTTPServiceConfig{
-			Timeout: 5 * time.Second,
-			Transport: httpfixture.NewTransport(httpfixture.TransportConfig{
+		HTTPOptions: []luaservices.HTTPServiceOption{
+			luaservices.WithTimeout(5 * time.Second),
+			luaservices.WithTransport(httpfixture.NewTransport(httpfixture.TransportConfig{
 				Provider: provider,
 				Strict:   true,
-			}),
+			})),
 		},
 		CacheKeyFunc: "cache_key",
 		CacheTTL:     10 * time.Minute,

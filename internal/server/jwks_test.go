@@ -17,7 +17,7 @@ func TestJWKSServer(t *testing.T) {
 		emptyRegistry := service.NewSimpleRegistry()
 		jwksServer := NewJWKSServer(JWKSServerConfig{
 			IssuerRegistry: emptyRegistry,
-			Observer:       NoOpObserver{},
+			Observer:       NoOpServerObserver{},
 		})
 
 		resp, err := jwksServer.GetJWKS(ctx, nil)
@@ -53,7 +53,7 @@ func TestJWKSServer(t *testing.T) {
 
 		jwksServer := NewJWKSServer(JWKSServerConfig{
 			IssuerRegistry: registry,
-			Observer:       NoOpObserver{},
+			Observer:       NoOpServerObserver{},
 		})
 
 		resp, err := jwksServer.GetJWKS(ctx, nil)
@@ -121,7 +121,7 @@ func TestJWKSServer(t *testing.T) {
 
 		jwksServer := NewJWKSServer(JWKSServerConfig{
 			IssuerRegistry: registry,
-			Observer:       NoOpObserver{},
+			Observer:       NoOpServerObserver{},
 		})
 
 		resp, err := jwksServer.GetJWKS(ctx, nil)
@@ -158,7 +158,7 @@ func TestJWKSServer(t *testing.T) {
 
 		jwksServer := NewJWKSServer(JWKSServerConfig{
 			IssuerRegistry: registry,
-			Observer:       NoOpObserver{},
+			Observer:       NoOpServerObserver{},
 		})
 
 		resp, err := jwksServer.GetJWKS(ctx, nil)
@@ -193,7 +193,7 @@ func TestJWKSServer(t *testing.T) {
 
 		jwksServer := NewJWKSServer(JWKSServerConfig{
 			IssuerRegistry: registry,
-			Observer:       NoOpObserver{},
+			Observer:       NoOpServerObserver{},
 		})
 
 		resp, err := jwksServer.GetJWKS(ctx, nil)
@@ -219,7 +219,7 @@ func TestJWKSServer(t *testing.T) {
 
 		jwksServer := NewJWKSServer(JWKSServerConfig{
 			IssuerRegistry: registry,
-			Observer:       NoOpObserver{},
+			Observer:       NoOpServerObserver{},
 		})
 
 		resp, err := jwksServer.GetJWKS(ctx, nil)

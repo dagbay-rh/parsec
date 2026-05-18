@@ -3,6 +3,7 @@ package observer
 import (
 	"context"
 	"errors"
+	"net/http"
 	"sync/atomic"
 	"testing"
 
@@ -135,6 +136,134 @@ func TestNoOp_AllProbeMethodsCallable(t *testing.T) {
 	{
 		_, p := obs.StopStarted(ctx)
 		p.End()
+	}
+	if err := obs.Shutdown(ctx); err != nil {
+		t.Errorf("noop Shutdown should return nil, got %v", err)
+	}
+	obs.ConfigureHTTPMux(http.NewServeMux())
+}
+
+func TestCompose_ShutdownCallsShutdownFn(t *testing.T) {
+	var called atomic.Int32
+	obs := Compose(
+		service.NoOpServiceObserver{},
+		datasource.NoOpDataSourceObserver{},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
+		WithShutdown(func(context.Context) error {
+			called.Add(1)
+			return nil
+		}),
+	)
+
+	if err := obs.Shutdown(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if called.Load() != 1 {
+		t.Errorf("expected shutdown fn called once, got %d", called.Load())
+	}
+}
+
+func TestCompose_ShutdownWithoutOption_ReturnsNil(t *testing.T) {
+	obs := Compose(
+		service.NoOpServiceObserver{},
+		datasource.NoOpDataSourceObserver{},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
+	)
+
+	if err := obs.Shutdown(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCompose_ConfigureHTTPMuxCallsFn(t *testing.T) {
+	var called atomic.Int32
+	obs := Compose(
+		service.NoOpServiceObserver{},
+		datasource.NoOpDataSourceObserver{},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
+		WithHTTPMux(func(*http.ServeMux) {
+			called.Add(1)
+		}),
+	)
+
+	obs.ConfigureHTTPMux(http.NewServeMux())
+	if called.Load() != 1 {
+		t.Errorf("expected mux fn called once, got %d", called.Load())
+	}
+}
+
+func TestCompositeAll_ConfigureHTTPMuxCascadesToAllChildren(t *testing.T) {
+	var c1, c2 atomic.Int32
+	child1 := Compose(
+		service.NoOpServiceObserver{},
+		datasource.NoOpDataSourceObserver{},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
+		WithHTTPMux(func(*http.ServeMux) { c1.Add(1) }),
+	)
+	child2 := Compose(
+		service.NoOpServiceObserver{},
+		datasource.NoOpDataSourceObserver{},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
+		WithHTTPMux(func(*http.ServeMux) { c2.Add(1) }),
+	)
+
+	composite := CompositeAll([]Observer{child1, child2})
+	composite.ConfigureHTTPMux(http.NewServeMux())
+
+	if c1.Load() != 1 {
+		t.Errorf("child1: expected 1 call, got %d", c1.Load())
+	}
+	if c2.Load() != 1 {
+		t.Errorf("child2: expected 1 call, got %d", c2.Load())
+	}
+}
+
+func TestCompositeAll_ShutdownCascadesToAllChildren(t *testing.T) {
+	var c1, c2 atomic.Int32
+	child1 := Compose(
+		service.NoOpServiceObserver{},
+		datasource.NoOpDataSourceObserver{},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
+		WithShutdown(func(context.Context) error {
+			c1.Add(1)
+			return nil
+		}),
+	)
+	child2 := Compose(
+		service.NoOpServiceObserver{},
+		datasource.NoOpDataSourceObserver{},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
+		WithShutdown(func(context.Context) error {
+			c2.Add(1)
+			return errors.New("child2 error")
+		}),
+	)
+
+	composite := CompositeAll([]Observer{child1, child2})
+	err := composite.Shutdown(context.Background())
+
+	if c1.Load() != 1 {
+		t.Errorf("child1 shutdown: expected 1 call, got %d", c1.Load())
+	}
+	if c2.Load() != 1 {
+		t.Errorf("child2 shutdown: expected 1 call, got %d", c2.Load())
+	}
+	if err == nil || !errors.Is(err, errors.New("")) && err.Error() != "child2 error" {
+		t.Errorf("expected child2 error to propagate, got %v", err)
 	}
 }
 
@@ -328,10 +457,10 @@ func TestCompositeAll_FansOutServiceTypes(t *testing.T) {
 			tokenExchangeCalled: &tokenExch1,
 			authzCheckCalled:    &authz1,
 		},
-		datasource.NoOpObserver{},
-		keys.NoOpObserver{},
-		trust.NoOpObserver{},
-		server.NoOpObserver{},
+		datasource.NoOpDataSourceObserver{},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
 	)
 	child2 := Compose(
 		&spyServiceObserver{
@@ -339,10 +468,10 @@ func TestCompositeAll_FansOutServiceTypes(t *testing.T) {
 			tokenExchangeCalled: &tokenExch2,
 			authzCheckCalled:    &authz2,
 		},
-		datasource.NoOpObserver{},
-		keys.NoOpObserver{},
-		trust.NoOpObserver{},
-		server.NoOpObserver{},
+		datasource.NoOpDataSourceObserver{},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
 	)
 
 	composite := CompositeAll([]Observer{child1, child2})
@@ -377,20 +506,20 @@ func TestCompositeAll_MultiProbe_FansOutEvents(t *testing.T) {
 		struct {
 			datasource.CacheObserver
 			datasource.LuaObserver
-		}{&spyDSCacheObserver{called: new(atomic.Int32), hitCalled: &hits1}, datasource.NoOpObserver{}},
-		keys.NoOpObserver{},
-		trust.NoOpObserver{},
-		server.NoOpObserver{},
+		}{&spyDSCacheObserver{called: new(atomic.Int32), hitCalled: &hits1}, datasource.NoOpDataSourceObserver{}},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
 	)
 	child2 := Compose(
 		service.NoOpServiceObserver{},
 		struct {
 			datasource.CacheObserver
 			datasource.LuaObserver
-		}{&spyDSCacheObserver{called: new(atomic.Int32), hitCalled: &hits2}, datasource.NoOpObserver{}},
-		keys.NoOpObserver{},
-		trust.NoOpObserver{},
-		server.NoOpObserver{},
+		}{&spyDSCacheObserver{called: new(atomic.Int32), hitCalled: &hits2}, datasource.NoOpDataSourceObserver{}},
+		keys.NoOpKeysObserver{},
+		trust.NoOpTrustObserver{},
+		server.NoOpServerObserver{},
 	)
 
 	composite := CompositeAll([]Observer{child1, child2})
@@ -433,11 +562,11 @@ type spyLuaDSObserver struct{ called *atomic.Int32 }
 
 func (s *spyLuaDSObserver) LuaFetchStarted(_ context.Context, _ string) (context.Context, datasource.LuaFetchProbe) {
 	s.called.Add(1)
-	return datasource.NoOpObserver{}.LuaFetchStarted(context.Background(), "")
+	return datasource.NoOpDataSourceObserver{}.LuaFetchStarted(context.Background(), "")
 }
 
 type spyKeysObserver struct {
-	keys.NoOpObserver
+	keys.NoOpKeysObserver
 	rotCalled  *atomic.Int32
 	kmsCalled  *atomic.Int32
 	diskCalled *atomic.Int32
@@ -472,17 +601,17 @@ type spyTrustObserver struct {
 
 func (s *spyTrustObserver) ValidationStarted(_ context.Context) (context.Context, trust.ValidationProbe) {
 	s.called.Add(1)
-	return trust.NoOpObserver{}.ValidationStarted(context.Background())
+	return trust.NoOpTrustObserver{}.ValidationStarted(context.Background())
 }
 
 func (s *spyTrustObserver) ForActorStarted(_ context.Context) (context.Context, trust.ForActorProbe) {
 	s.filterCalled.Add(1)
-	return trust.NoOpObserver{}.ForActorStarted(context.Background())
+	return trust.NoOpTrustObserver{}.ForActorStarted(context.Background())
 }
 
 func (s *spyTrustObserver) JWTValidateStarted(_ context.Context, _ string) (context.Context, trust.JWTValidateProbe) {
 	s.jwtCalled.Add(1)
-	return trust.NoOpObserver{}.JWTValidateStarted(context.Background(), "")
+	return trust.NoOpTrustObserver{}.JWTValidateStarted(context.Background(), "")
 }
 
 type spyJWKSObserver struct {
@@ -492,7 +621,7 @@ type spyJWKSObserver struct {
 
 func (s *spyJWKSObserver) CacheRefreshStarted(_ context.Context) (context.Context, server.CacheRefreshProbe) {
 	s.called.Add(1)
-	return server.NoOpObserver{}.CacheRefreshStarted(context.Background())
+	return server.NoOpServerObserver{}.CacheRefreshStarted(context.Background())
 }
 
 type spySrvLifeObserver struct {
@@ -502,7 +631,7 @@ type spySrvLifeObserver struct {
 
 func (s *spySrvLifeObserver) StopStarted(_ context.Context) (context.Context, server.StopProbe) {
 	s.called.Add(1)
-	return server.NoOpObserver{}.StopStarted(context.Background())
+	return server.NoOpServerObserver{}.StopStarted(context.Background())
 }
 
 type spyServiceObserver struct {

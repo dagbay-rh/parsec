@@ -1,4 +1,4 @@
-package probe
+package zlog
 
 import (
 	"context"
@@ -10,15 +10,15 @@ import (
 )
 
 var (
-	_ keys.RotationObserver         = (*LoggingKeyRotationObserver)(nil)
-	_ keys.AWSKMSProviderObserver   = (*LoggingAWSKMSProviderObserver)(nil)
-	_ keys.DiskProviderObserver     = (*LoggingDiskProviderObserver)(nil)
-	_ keys.InMemoryProviderObserver = (*LoggingInMemoryProviderObserver)(nil)
+	_ keys.DualSlotRotatingSignerObserver = (*LoggingKeyRotationObserver)(nil)
+	_ keys.AWSKMSProviderObserver         = (*LoggingAWSKMSProviderObserver)(nil)
+	_ keys.DiskProviderObserver           = (*LoggingDiskProviderObserver)(nil)
+	_ keys.InMemoryProviderObserver       = (*LoggingInMemoryProviderObserver)(nil)
 )
 
 // LoggingKeyRotationObserver logs key rotation lifecycle events via zerolog.
 type LoggingKeyRotationObserver struct {
-	keys.NoOpRotationObserver
+	keys.NoOpDualSlotRotatingSignerObserver
 	logger zerolog.Logger
 }
 

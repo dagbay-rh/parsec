@@ -49,7 +49,7 @@ func NewInMemoryCachingDataSource(source service.DataSource, obs CacheObserver, 
 	}
 
 	if obs == nil {
-		obs = NoOpObserver{}
+		obs = NoOpDataSourceObserver{}
 	}
 
 	ds := &InMemoryCachingDataSource{

@@ -24,7 +24,7 @@ type JWTValidator struct {
 	cache       *jwk.Cache
 	trustDomain string
 	clock       clock.Clock
-	observer    ValidatorObserver
+	observer    JWTValidatorObserver
 }
 
 // JWTValidatorConfig contains configuration for JWT validation
@@ -53,7 +53,7 @@ type JWTValidatorConfig struct {
 	Clock clock.Clock
 
 	// Observer for JWT validation events. If nil, a no-op observer is used.
-	Observer ValidatorObserver
+	Observer JWTValidatorObserver
 }
 
 // NewJWTValidator creates a new JWT validator with JWKS support
@@ -104,7 +104,7 @@ func NewJWTValidator(cfg JWTValidatorConfig) (*JWTValidator, error) {
 
 	obs := cfg.Observer
 	if obs == nil {
-		obs = NoOpValidatorObserver{}
+		obs = NoOpJWTValidatorObserver{}
 	}
 
 	return &JWTValidator{

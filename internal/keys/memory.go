@@ -26,14 +26,14 @@ type InMemoryKeyProvider struct {
 	keys       map[string]*memoryKey // Current keys by namespace:keyName
 	oldKeys    []*memoryKey          // Keys scheduled for deletion
 	keyCounter int                   // Counter for generating unique key IDs
-	observer   KeyProviderObserver
+	observer   InMemoryProviderObserver
 }
 
 // InMemoryKeyProviderConfig configures the in-memory key provider.
 type InMemoryKeyProviderConfig struct {
 	KeyType   KeyType
 	Algorithm string
-	Observer  KeyProviderObserver
+	Observer  InMemoryProviderObserver
 }
 
 // NewInMemoryKeyProvider creates a new in-memory key provider.
@@ -53,7 +53,7 @@ func NewInMemoryKeyProvider(cfg InMemoryKeyProviderConfig) *InMemoryKeyProvider 
 
 	obs := cfg.Observer
 	if obs == nil {
-		obs = NoOpKeyProviderObserver{}
+		obs = NoOpInMemoryProviderObserver{}
 	}
 
 	return &InMemoryKeyProvider{

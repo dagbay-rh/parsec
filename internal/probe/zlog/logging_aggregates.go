@@ -1,4 +1,4 @@
-package probe
+package zlog
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 // LoggingDataSourceObserver satisfies datasource.DataSourceObserver
 // by combining cache and Lua logging observers.
 type LoggingDataSourceObserver struct {
-	datasource.NoOpObserver
+	datasource.NoOpDataSourceObserver
 	cache *LoggingDataSourceCacheObserver
 	lua   *LoggingLuaDataSourceObserver
 }
@@ -38,7 +38,7 @@ var _ datasource.DataSourceObserver = (*LoggingDataSourceObserver)(nil)
 // LoggingKeysObserver satisfies keys.KeysObserver
 // by combining rotation and per-provider logging observers.
 type LoggingKeysObserver struct {
-	keys.NoOpObserver
+	keys.NoOpKeysObserver
 	rotation *LoggingKeyRotationObserver
 	kms      *LoggingAWSKMSProviderObserver
 	disk     *LoggingDiskProviderObserver
@@ -79,7 +79,7 @@ var _ keys.KeysObserver = (*LoggingKeysObserver)(nil)
 // LoggingServerObserver satisfies server.ServerObserver
 // by combining JWKS and lifecycle logging observers.
 type LoggingServerObserver struct {
-	server.NoOpObserver
+	server.NoOpServerObserver
 	jwks      *LoggingJWKSObserver
 	lifecycle *LoggingServerLifecycleObserver
 }

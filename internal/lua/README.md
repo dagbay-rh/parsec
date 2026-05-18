@@ -140,17 +140,16 @@ Each service instance can be registered to multiple Lua states. However, Lua sta
 
 ```go
 // Simple configuration with just timeout
-httpService := lua.NewHTTPService(30 * time.Second)
+httpService := lua.NewHTTPService(ctx, lua.WithTimeout(30*time.Second))
 
 // Full configuration with request options
-httpService := lua.NewHTTPServiceWithConfig(lua.HTTPServiceConfig{
-    Timeout: 30 * time.Second,
-    RequestOptions: func(req *http.Request) error {
-        // Add authentication header to all requests
-        req.Header.Set("Authorization", "Bearer " + apiKey)
+httpService := lua.NewHTTPService(ctx,
+    lua.WithTimeout(30*time.Second),
+    lua.WithRequestOptions(func(req *http.Request) error {
+        req.Header.Set("Authorization", "Bearer "+apiKey)
         return nil
-    },
-})
+    }),
+)
 ```
 
 #### Request Options

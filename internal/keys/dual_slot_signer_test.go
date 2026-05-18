@@ -78,7 +78,7 @@ func newTestDualSlotRotatingSigner(t *testing.T, clk clock.Clock, slotStore KeyS
 		GracePeriod:         2 * time.Minute,
 		CheckInterval:       10 * time.Second,
 		PrepareTimeout:      1 * time.Minute,
-		Observer:            NoOpObserver{},
+		Observer:            NoOpKeysObserver{},
 	})
 
 	return rs, keyProvider
@@ -629,7 +629,7 @@ func TestDualSlotRotatingSigner_Namespacing(t *testing.T) {
 		SlotStore:           slotStore,
 		Clock:               clk,
 		PrepareTimeout:      1 * time.Minute,
-		Observer:            NoOpObserver{},
+		Observer:            NoOpKeysObserver{},
 	})
 
 	ctx := context.Background()

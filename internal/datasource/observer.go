@@ -88,10 +88,10 @@ func (NoOpLuaObserver) LuaFetchStarted(ctx context.Context, _ string) (context.C
 	return ctx, NoOpLuaFetchProbe{}
 }
 
-// NoOpObserver satisfies both datasource observer interfaces with empty probes.
-type NoOpObserver struct {
+// NoOpDataSourceObserver satisfies both datasource observer interfaces with empty probes.
+type NoOpDataSourceObserver struct {
 	NoOpCacheObserver
 	NoOpLuaObserver
 }
 
-var _ DataSourceObserver = NoOpObserver{}
+var _ DataSourceObserver = NoOpDataSourceObserver{}

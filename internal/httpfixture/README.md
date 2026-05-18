@@ -193,9 +193,12 @@ provider := httpfixture.NewMapProvider(map[string]*httpfixture.Fixture{
 ds, err := datasource.NewLuaDataSource(datasource.LuaDataSourceConfig{
     Name:   "user-data",
     Script: script,
-    HTTPConfig: &lua.HTTPServiceConfig{
-        Timeout:         30 * time.Second,
-        FixtureProvider: provider,
+    HTTPOptions: []lua.HTTPServiceOption{
+        lua.WithTimeout(30 * time.Second),
+        lua.WithTransport(httpfixture.NewTransport(httpfixture.TransportConfig{
+            Provider: provider,
+            Strict:   true,
+        })),
     },
 })
 ```
