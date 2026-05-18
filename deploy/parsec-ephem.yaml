@@ -1,0 +1,223 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  name: parsec
+objects:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: parsec-config
+    data:
+      parsec.yaml: |
+        server:
+          grpc_port: 9800
+          http_port: 8000
+
+        observability:
+          type: composite
+          log_level: info
+          log_format: json
+          observers:
+            - type: logging
+            - type: metrics
+
+        trust_domain: "parsec.example.com"
+
+        exchange_server:
+          claims_filter:
+            type: stub
+
+        trust_store:
+          type: stub_store
+          validators:
+            - name: redhat-sso
+              type: jwt_validator
+              issuer: "https://sso.redhat.com/auth/realms/redhat-external"
+              jwks_url: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs"
+              trust_domain: "https://sso.redhat.com/auth/realms/redhat-external"
+              refresh_interval: "15m"
+
+        data_sources: []
+
+        issuers:
+          - token_type: "urn:ietf:params:oauth:token-type:txn_token"
+            type: stub
+            issuer_url: "https://parsec.example.com"
+            ttl: 5m
+            transaction_context:
+              - type: cel
+                name: redhat-identity-mapper
+                script_file: /etc/parsec/scripts/redhat_identity.cel
+            request_context:
+              - type: request_attributes
+
+          - token_type: "urn:redhat:params:oauth:token-type:rh-identity"
+            type: unsigned
+            # Claim mappers build the full x-rh-identity envelope (identity + entitlements)
+            claim_mappers:
+              - type: cel
+                name: redhat-identity-mapper
+                script_file: /etc/parsec/scripts/redhat_identity.cel
+
+        authz_server:
+          token_types:
+            - type: "urn:ietf:params:oauth:token-type:txn_token"
+              header_name: "Transaction-Token"
+            - type: "urn:redhat:params:oauth:token-type:rh-identity"
+              header_name: "x-rh-identity"
+
+      redhat_identity.cel: |
+        // Red Hat Identity Transformation
+        //
+        // Transforms JWT claims into a complete x-rh-identity envelope:
+        //   { "identity": { ... }, "entitlements": {} }
+        //
+        // Supports:
+        //   - Service Account tokens (preferred_username starts with "service-account-")
+        //   - Console API tokens (scope contains "api.console")
+        //
+        // Unrecognized tokens call fail(), which causes UnsignedIssuer to return
+        // a ClaimMappingError → ext_authz DENY.
+        //
+        // Based on: https://github.com/RedHatInsights/insights-3scale
+
+        isServiceAccountToken(subject.claims) ? {
+          "identity": {
+            "auth_type": "jwt-auth",
+            "account_number": has(subject.claims.organization) && has(subject.claims.organization.account_number) ?
+                              subject.claims.organization.account_number : "",
+            "org_id": "rh-org-id" in subject.claims ? subject.claims["rh-org-id"] :
+                      (has(subject.claims.organization) && has(subject.claims.organization.id) ?
+                       subject.claims.organization.id : ""),
+            "type": "ServiceAccount",
+            "service_account": {
+              "username": has(subject.claims.preferred_username) ? subject.claims.preferred_username : "",
+              "client_id": has(subject.claims.client_id) ? subject.claims.client_id :
+                           (has(subject.claims.clientId) ? subject.claims.clientId : ""),
+              "user_id": has(subject.claims.sub) ? subject.claims.sub : "",
+              "scope": has(subject.claims.scope) ? subject.claims.scope : ""
+            },
+            "internal": {
+              "org_id": "rh-org-id" in subject.claims ? subject.claims["rh-org-id"] :
+                        (has(subject.claims.organization) && has(subject.claims.organization.id) ?
+                         subject.claims.organization.id : ""),
+              "cross_access": false,
+              "auth_time": has(subject.claims.iat) ? int(subject.claims.iat) * 1000 : now_ms()
+            }
+          },
+          "entitlements": {}
+        } : (
+          isConsoleApiToken(subject.claims) ? {
+            "identity": {
+              "auth_type": "jwt-auth",
+              "account_number": has(subject.claims.organization) && has(subject.claims.organization.account_number) ?
+                                subject.claims.organization.account_number : "",
+              "org_id": has(subject.claims.organization) && has(subject.claims.organization.id) ?
+                        subject.claims.organization.id : "",
+              "type": "User",
+              "user": {
+                "username": has(subject.claims.preferred_username) ? subject.claims.preferred_username : "",
+                "email": has(subject.claims.email) ? subject.claims.email : "",
+                "first_name": has(subject.claims.given_name) ? subject.claims.given_name : "",
+                "last_name": has(subject.claims.family_name) ? subject.claims.family_name : "",
+                "is_active": true,
+                "is_org_admin": hasRole(subject.claims, "admin:org:all"),
+                "is_internal": has(subject.claims.is_internal) ? subject.claims.is_internal : hasRole(subject.claims, "redhat:employees"),
+                "locale": has(subject.claims.locale) ? subject.claims.locale : "",
+                "user_id": has(subject.claims.user_id) ? safeToString(subject.claims.user_id) : ""
+              },
+              "internal": {
+                "org_id": has(subject.claims.organization) && has(subject.claims.organization.id) ?
+                          subject.claims.organization.id : "",
+                "cross_access": false,
+                "auth_time": has(subject.claims.iat) ? int(subject.claims.iat) * 1000 : now_ms()
+              }
+            },
+            "entitlements": {}
+          } : fail("unsupported_token_type")
+        )
+
+  - apiVersion: cloud.redhat.com/v1alpha1
+    kind: ClowdApp
+    metadata:
+      name: parsec
+    spec:
+      envName: ${ENV_NAME}
+      deployments:
+        - name: api
+          replicas: ${{REPLICAS}}
+          podSpec:
+            image: ${PARSEC_IMAGE}:${IMAGE_TAG}
+            command: ["parsec"]
+            args: ["serve", "--config", "/etc/parsec/parsec.yaml"]
+            livenessProbe:
+              httpGet:
+                path: /healthz/live
+                port: 8000
+              timeoutSeconds: 5
+              periodSeconds: 15
+              failureThreshold: 3
+            readinessProbe:
+              httpGet:
+                path: /healthz/ready
+                port: 8000
+              timeoutSeconds: 5
+              periodSeconds: 10
+              failureThreshold: 3
+            resources:
+              requests:
+                memory: ${PARSEC_REQUESTS_MEMORY}
+                cpu: ${PARSEC_REQUESTS_CPU}
+              limits:
+                memory: ${PARSEC_LIMITS_MEMORY}
+                cpu: ${PARSEC_LIMITS_CPU}
+            env:
+              - name: CLOWDER_ENABLED
+                value: "true"
+              - name: PARSEC_CONFIG
+                value: "/etc/parsec/parsec.yaml"
+            volumeMounts:
+              - name: config-volume
+                mountPath: "/etc/parsec/parsec.yaml"
+                subPath: parsec.yaml
+              - name: config-volume
+                mountPath: "/etc/parsec/scripts/redhat_identity.cel"
+                subPath: redhat_identity.cel
+            volumes:
+              - name: config-volume
+                configMap:
+                  name: parsec-config
+          webServices:
+            public:
+              enabled: true
+              h2cEnabled: true
+              h2cTargetPort: 9800
+              apiPath: parsec
+      testing:
+        iqePlugin: parsec
+parameters:
+  - description: ClowdEnvironment name (ephemeral, stage, prod)
+    name: ENV_NAME
+    required: true
+  - description: Parsec container image
+    name: PARSEC_IMAGE
+    value: quay.io/redhat-services-prod/project-kessel-tenant/kessel-parsec
+  - description: Image tag
+    name: IMAGE_TAG
+    required: true
+    value: latest
+  - description: Number of replicas
+    name: REPLICAS
+    value: "1"
+  - description: Memory request for Parsec service
+    name: PARSEC_REQUESTS_MEMORY
+    value: '128Mi'
+  - description: CPU request for Parsec service
+    name: PARSEC_REQUESTS_CPU
+    value: '100m'
+  - description: Memory limit for Parsec service
+    name: PARSEC_LIMITS_MEMORY
+    value: '256Mi'
+  - description: CPU limit for Parsec service
+    name: PARSEC_LIMITS_CPU
+    value: '250m'
