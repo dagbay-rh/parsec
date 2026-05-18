@@ -26,6 +26,7 @@ exchange_server:
 # Trust store configuration
 trust_store:
   type: stub_store
+  # audiences: ["rhsm-api", "customer-portal", "api.console"]  # optional JWT aud allowlist
   validators:
     - name: redhat-sso
       type: jwt_validator

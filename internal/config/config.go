@@ -81,6 +81,10 @@ type TrustStoreConfig struct {
 	// Validators is the list of validators to add to the store
 	Validators []NamedValidatorConfig `koanf:"validators"`
 
+	// Audiences is an optional allowlist for JWT aud claims on all jwt_validators in this store.
+	// Empty disables enforcement (backward compatible).
+	Audiences []string `koanf:"audiences"`
+
 	// Filter configuration (only used when Type is "filtered_store")
 	Filter *ValidatorFilterConfig `koanf:"filter"`
 }

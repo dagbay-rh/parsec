@@ -28,7 +28,7 @@ func newStubStore(cfg TrustStoreConfig, transport http.RoundTripper, trustObs tr
 
 	// Add validators
 	for _, validatorCfg := range cfg.Validators {
-		validator, err := newValidator(validatorCfg.ValidatorConfig, transport, trustObs)
+		validator, err := newValidator(validatorCfg.ValidatorConfig, cfg.Audiences, transport, trustObs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create validator: %w", err)
 		}
@@ -64,7 +64,7 @@ func newFilteredStore(cfg TrustStoreConfig, transport http.RoundTripper, trustOb
 			return nil, fmt.Errorf("validator name is required for filtered store")
 		}
 
-		validator, err := newValidator(validatorCfg.ValidatorConfig, transport, trustObs)
+		validator, err := newValidator(validatorCfg.ValidatorConfig, cfg.Audiences, transport, trustObs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create validator %s: %w", validatorCfg.Name, err)
 		}
@@ -76,10 +76,10 @@ func newFilteredStore(cfg TrustStoreConfig, transport http.RoundTripper, trustOb
 }
 
 // newValidator creates a validator from configuration
-func newValidator(cfg ValidatorConfig, transport http.RoundTripper, trustObs trust.TrustObserver) (trust.Validator, error) {
+func newValidator(cfg ValidatorConfig, trustStoreAudiences []string, transport http.RoundTripper, trustObs trust.TrustObserver) (trust.Validator, error) {
 	switch cfg.Type {
 	case "jwt_validator":
-		return newJWTValidator(cfg, transport, trustObs)
+		return newJWTValidator(cfg, trustStoreAudiences, transport, trustObs)
 	case "json_validator":
 		return newJSONValidator(cfg)
 	case "stub_validator":
@@ -90,7 +90,7 @@ func newValidator(cfg ValidatorConfig, transport http.RoundTripper, trustObs tru
 }
 
 // newJWTValidator creates a JWT validator
-func newJWTValidator(cfg ValidatorConfig, transport http.RoundTripper, trustObs trust.TrustObserver) (trust.Validator, error) {
+func newJWTValidator(cfg ValidatorConfig, trustStoreAudiences []string, transport http.RoundTripper, trustObs trust.TrustObserver) (trust.Validator, error) {
 	if cfg.Issuer == "" {
 		return nil, fmt.Errorf("jwt_validator requires issuer")
 	}
@@ -99,9 +99,10 @@ func newJWTValidator(cfg ValidatorConfig, transport http.RoundTripper, trustObs 
 	}
 
 	validatorCfg := trust.JWTValidatorConfig{
-		Issuer:      cfg.Issuer,
-		JWKSURL:     cfg.JWKSURL,
-		TrustDomain: cfg.TrustDomain,
+		Issuer:           cfg.Issuer,
+		JWKSURL:          cfg.JWKSURL,
+		TrustDomain:      cfg.TrustDomain,
+		AllowedAudiences: trustStoreAudiences,
 	}
 
 	// Parse refresh interval if provided
