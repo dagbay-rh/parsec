@@ -2,6 +2,7 @@ package trust
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 	"time"
@@ -393,8 +394,9 @@ func TestJWTValidator_audienceAllowlist(t *testing.T) {
 		}
 
 		cred := &JWTCredential{BearerCredential: BearerCredential{Token: tokenString}}
-		if _, err := validator.Validate(ctx, cred); err == nil {
-			t.Fatal("expected validation failure for disallowed audience")
+		_, err = validator.Validate(ctx, cred)
+		if !errors.Is(err, ErrInvalidToken) {
+			t.Fatalf("expected ErrInvalidToken for disallowed audience, got: %v", err)
 		}
 	})
 
@@ -407,8 +409,9 @@ func TestJWTValidator_audienceAllowlist(t *testing.T) {
 		}
 
 		cred := &JWTCredential{BearerCredential: BearerCredential{Token: tokenString}}
-		if _, err := validator.Validate(ctx, cred); err == nil {
-			t.Fatal("expected validation failure for missing audience")
+		_, err = validator.Validate(ctx, cred)
+		if !errors.Is(err, ErrInvalidToken) {
+			t.Fatalf("expected ErrInvalidToken for missing audience, got: %v", err)
 		}
 	})
 
