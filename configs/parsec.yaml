@@ -29,9 +29,9 @@ trust_store:
   validators:
     - name: redhat-sso
       type: jwt_validator
-      issuer: "http://localhost:8180/realms/redhat-external"
-      jwks_url: "http://localhost:8180/realms/redhat-external/protocol/openid-connect/certs"
-      trust_domain: "http://localhost:8180/realms/redhat-external"
+      issuer: "https://sso.redhat.com/auth/realms/redhat-external"
+      jwks_url: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs"
+      trust_domain: "https://sso.redhat.com/auth/realms/redhat-external"
       refresh_interval: "15m"
       audiences: ["rhsm-api", "customer-portal", "api.console"]
       
