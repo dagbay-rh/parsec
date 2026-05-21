@@ -65,6 +65,18 @@ fixtures:
           "permissions": ["read:data", "write:data", "admin:users"]
         }
 
+  # Registry auth service fixture — grants pull access for any credentials
+  - type: http_rule
+    request:
+      method: POST
+      url: "https://registry-auth.example.com/v2/auth"
+      url_type: exact
+    response:
+      status: 200
+      headers:
+        Content-Type: application/json
+      body: '{"access":{"pull":"granted"}}'
+
 # Trust store with JWT validators for hermetic testing
 trust_store:
   type: stub_store
@@ -82,6 +94,13 @@ trust_store:
       jwks_url: "https://idp.customer.example.com/.well-known/jwks.json"
       trust_domain: "customer.example.com"
       refresh_interval: "15m"
+
+    # Registry auth validator for Basic Auth credentials
+    - type: registry_validator
+      registry_url: "https://registry-auth.example.com/v2/auth"
+      trust_domain: "registry.example.com"
+      username_pattern: "^[0-9]+\\|.+"
+      cache_ttl: "5m"
 
 # Data sources that use HTTP fixtures
 data_sources:

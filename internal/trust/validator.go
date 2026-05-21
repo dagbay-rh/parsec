@@ -65,12 +65,13 @@ func AnonymousResult() *Result {
 type CredentialType string
 
 const (
-	CredentialTypeBearer CredentialType = "bearer"
-	CredentialTypeJWT    CredentialType = "jwt"
-	CredentialTypeOIDC   CredentialType = "oidc"
-	CredentialTypeMTLS   CredentialType = "mtls"
-	CredentialTypeOAuth2 CredentialType = "oauth2"
-	CredentialTypeJSON   CredentialType = "json"
+	CredentialTypeBearer    CredentialType = "bearer"
+	CredentialTypeJWT       CredentialType = "jwt"
+	CredentialTypeOIDC      CredentialType = "oidc"
+	CredentialTypeMTLS      CredentialType = "mtls"
+	CredentialTypeOAuth2    CredentialType = "oauth2"
+	CredentialTypeJSON      CredentialType = "json"
+	CredentialTypeBasicAuth CredentialType = "basic_auth"
 )
 
 // Credential is the interface for all credential types
@@ -145,4 +146,14 @@ type JSONCredential struct {
 
 func (c *JSONCredential) Type() CredentialType {
 	return CredentialTypeJSON
+}
+
+// BasicAuthCredential represents HTTP Basic Auth credentials
+type BasicAuthCredential struct {
+	Username string
+	Password string
+}
+
+func (c *BasicAuthCredential) Type() CredentialType {
+	return CredentialTypeBasicAuth
 }

@@ -63,7 +63,19 @@ trust_store:
     - name: json-validator
       type: json_validator
       trust_domain: "test.example.com"
-    
+
+    # Registry validator for Basic Auth via external registry service
+    - name: registry-validator
+      type: registry_validator
+      registry_url: "https://registry-auth.example.com/v2/auth"
+      trust_domain: "registry.example.com"
+      username_pattern: "^[0-9]+\\|.+"   # org_id|username format
+      cache_ttl: "5m"
+      registry_tls:
+        client_cert_path: /etc/pki/tls/certs/client.crt
+        client_key_path: /etc/pki/tls/private/client.key
+        sni: registry-auth.prod.example.com
+
     # Stub validator for testing
     - name: stub-validator
       type: stub_validator

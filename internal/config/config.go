@@ -97,7 +97,7 @@ type NamedValidatorConfig struct {
 // ValidatorConfig configures a credential validator
 type ValidatorConfig struct {
 	// Type selects the validator implementation
-	// Options: "jwt_validator", "json_validator", "stub_validator"
+	// Options: "jwt_validator", "json_validator", "stub_validator", "registry_validator"
 	Type string `koanf:"type"`
 
 	// JWT Validator fields
@@ -114,6 +114,23 @@ type ValidatorConfig struct {
 
 	// Stub Validator fields
 	CredentialTypes []string `koanf:"credential_types"` // e.g., ["bearer", "jwt"]
+
+	// Registry Validator fields
+	RegistryURL     string              `koanf:"registry_url"`
+	RegistryTLS     *RegistryTLSConfig  `koanf:"registry_tls"`
+	UsernamePattern string              `koanf:"username_pattern"`
+	CacheTTL        string              `koanf:"cache_ttl"` // Duration string like "5m"
+}
+
+// RegistryTLSConfig configures TLS for the registry service connection
+type RegistryTLSConfig struct {
+	InsecureSkipVerify bool   `koanf:"insecure_skip_verify"`
+	ClientCertPath     string `koanf:"client_cert_path"`
+	ClientKeyPath      string `koanf:"client_key_path"`
+	// SNI overrides the TLS ServerName sent during the handshake. Needed when the
+	// registry URL points to an internal address but the server's certificate is
+	// issued for a different hostname (e.g. behind a load balancer or proxy).
+	SNI string `koanf:"sni"`
 }
 
 // ValidatorFilterConfig configures validator filtering for actors

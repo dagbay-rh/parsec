@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -184,22 +185,32 @@ func (s *AuthzServer) extractCredential(req *authv3.CheckRequest) (trust.Credent
 		return nil, nil, fmt.Errorf("no authorization header")
 	}
 
+	headersUsed := []string{"authorization"}
+
 	// Extract bearer token
 	if token, ok := strings.CutPrefix(authHeader, "Bearer "); ok {
-		// For bearer tokens, the trust store determines which validator to use
-		// based on its configuration (e.g., default validator, token introspection)
 		cred := &trust.BearerCredential{
 			Token: token,
 		}
-		// Return the credential and the headers that were used
-		headersUsed := []string{"authorization"}
 		return cred, headersUsed, nil
 	}
 
-	// Future: Handle other authentication schemes
-	// - Basic auth: would use "authorization" header
-	// - API key in custom header: would track that header name
-	// - Cookie-based auth: would track cookie names
+	// Extract Basic Auth credentials
+	if encoded, ok := strings.CutPrefix(authHeader, "Basic "); ok {
+		decoded, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid Basic auth encoding: %w", err)
+		}
+		username, password, ok := strings.Cut(string(decoded), ":")
+		if !ok {
+			return nil, nil, fmt.Errorf("invalid Basic auth format")
+		}
+		cred := &trust.BasicAuthCredential{
+			Username: username,
+			Password: password,
+		}
+		return cred, headersUsed, nil
+	}
 
 	return nil, nil, fmt.Errorf("unsupported authorization scheme")
 }

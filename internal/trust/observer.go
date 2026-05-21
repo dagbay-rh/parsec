@@ -48,11 +48,29 @@ type JWTValidateProbe interface {
 	End()
 }
 
+// RegistryValidatorObserver is called at key points during RegistryValidator.Validate.
+// Implementations should embed NoOpRegistryValidatorObserver for forward compatibility.
+type RegistryValidatorObserver interface {
+	RegistryValidateStarted(ctx context.Context, url string) (context.Context, RegistryValidateProbe)
+}
+
+// RegistryValidateProbe tracks a single RegistryValidator.Validate invocation.
+// Implementations should embed NoOpRegistryValidateProbe for forward compatibility.
+type RegistryValidateProbe interface {
+	UsernamePatternRejected()
+	CacheHit()
+	RegistryCallFailed(err error)
+	AccessDenied()
+	UsernameParseFailed(err error)
+	End()
+}
+
 // ValidatorObserver mirrors the Validator component tree.
-// It embeds JWTValidatorObserver and will embed future validator observers.
+// It embeds JWTValidatorObserver and RegistryValidatorObserver.
 // Implementations should embed NoOpValidatorObserver for forward compatibility.
 type ValidatorObserver interface {
 	JWTValidatorObserver
+	RegistryValidatorObserver
 }
 
 // TrustObserver is the per-package aggregate for all trust observer interfaces.
@@ -103,8 +121,24 @@ func (NoOpJWTValidatorObserver) JWTValidateStarted(ctx context.Context, _ string
 	return ctx, NoOpJWTValidateProbe{}
 }
 
+type NoOpRegistryValidateProbe struct{}
+
+func (NoOpRegistryValidateProbe) UsernamePatternRejected() {}
+func (NoOpRegistryValidateProbe) CacheHit()                {}
+func (NoOpRegistryValidateProbe) RegistryCallFailed(error)  {}
+func (NoOpRegistryValidateProbe) AccessDenied()             {}
+func (NoOpRegistryValidateProbe) UsernameParseFailed(error) {}
+func (NoOpRegistryValidateProbe) End()                      {}
+
+type NoOpRegistryValidatorObserver struct{}
+
+func (NoOpRegistryValidatorObserver) RegistryValidateStarted(ctx context.Context, _ string) (context.Context, RegistryValidateProbe) {
+	return ctx, NoOpRegistryValidateProbe{}
+}
+
 type NoOpValidatorObserver struct {
 	NoOpJWTValidatorObserver
+	NoOpRegistryValidatorObserver
 }
 
 // NoOpTrustObserver satisfies TrustObserver with empty probes.
