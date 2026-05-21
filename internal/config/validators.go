@@ -86,8 +86,10 @@ func newValidator(cfg ValidatorConfig, transport http.RoundTripper, trustObs tru
 		return newJSONValidator(cfg)
 	case "stub_validator":
 		return newStubValidator(cfg)
+	case "registry_validator":
+		return newRegistryValidator(cfg, transport, trustObs)
 	default:
-		return nil, fmt.Errorf("unknown validator type: %s (supported: jwt_validator, json_validator, stub_validator)", cfg.Type)
+		return nil, fmt.Errorf("unknown validator type: %s (supported: jwt_validator, json_validator, stub_validator, registry_validator)", cfg.Type)
 	}
 }
 
@@ -183,6 +185,46 @@ func newStubValidator(cfg ValidatorConfig) (trust.Validator, error) {
 	return validator.WithResult(result), nil
 }
 
+// newRegistryValidator creates a registry-auth validator
+func newRegistryValidator(cfg ValidatorConfig, transport http.RoundTripper, trustObs trust.TrustObserver) (trust.Validator, error) {
+	if cfg.RegistryURL == "" {
+		return nil, fmt.Errorf("registry_validator requires registry_url")
+	}
+	if cfg.TrustDomain == "" {
+		return nil, fmt.Errorf("registry_validator requires trust_domain")
+	}
+
+	validatorCfg := trust.RegistryValidatorConfig{
+		URL:             cfg.RegistryURL,
+		TrustDomain:     cfg.TrustDomain,
+		UsernamePattern: cfg.UsernamePattern,
+		Observer:        trustObs,
+	}
+
+	if cfg.CacheTTL != "" {
+		duration, err := time.ParseDuration(cfg.CacheTTL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid cache_ttl: %w", err)
+		}
+		validatorCfg.CacheTTL = duration
+	}
+
+	if cfg.RegistryTLS != nil {
+		validatorCfg.TLSConfig = &trust.RegistryTLSConfig{
+			InsecureSkipVerify: cfg.RegistryTLS.InsecureSkipVerify,
+			ClientCertPath:     cfg.RegistryTLS.ClientCertPath,
+			ClientKeyPath:      cfg.RegistryTLS.ClientKeyPath,
+			SNI:                cfg.RegistryTLS.SNI,
+		}
+	}
+
+	if transport != nil {
+		validatorCfg.HTTPClient = &http.Client{Transport: transport}
+	}
+
+	return trust.NewRegistryValidator(validatorCfg)
+}
+
 // newValidatorFilter creates a validator filter from configuration
 func newValidatorFilter(cfg ValidatorFilterConfig) (trust.ValidatorFilter, error) {
 	switch cfg.Type {
@@ -234,7 +276,9 @@ func parseCredentialType(s string) (trust.CredentialType, error) {
 		return trust.CredentialTypeJSON, nil
 	case "mtls":
 		return trust.CredentialTypeMTLS, nil
+	case "basic_auth":
+		return trust.CredentialTypeBasicAuth, nil
 	default:
-		return "", fmt.Errorf("unknown credential type: %s (supported: bearer, jwt, json, mtls)", s)
+		return "", fmt.Errorf("unknown credential type: %s (supported: bearer, jwt, json, mtls, basic_auth)", s)
 	}
 }

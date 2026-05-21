@@ -15,14 +15,21 @@ var (
 	jwtResultTokenExpired           = attribute.String("result", "token_expired")
 	jwtResultTokenInvalid           = attribute.String("result", "token_invalid")
 	jwtResultClaimsExtractionFailed = attribute.String("result", "claims_extraction_failed")
+
+	registryResultPatternRejected  = attribute.String("result", "username_pattern_rejected")
+	registryResultCallFailed       = attribute.String("result", "registry_call_failed")
+	registryResultAccessDenied     = attribute.String("result", "access_denied")
+	registryResultUsernameParseFail = attribute.String("result", "username_parse_failed")
+	registryResultCacheHit         = attribute.String("result", "cache_hit")
 )
 
 type trustObserver struct {
 	trust.NoOpTrustObserver
 
-	validationDuration  metric.Float64Histogram
-	jwtValidateDuration metric.Float64Histogram
-	actorFilterDuration metric.Float64Histogram
+	validationDuration       metric.Float64Histogram
+	jwtValidateDuration      metric.Float64Histogram
+	actorFilterDuration      metric.Float64Histogram
+	registryValidateDuration metric.Float64Histogram
 }
 
 func newTrustObserver(m metric.Meter) (*trustObserver, error) {
@@ -47,11 +54,19 @@ func newTrustObserver(m metric.Meter) (*trustObserver, error) {
 	if err != nil {
 		return nil, err
 	}
+	rvd, err := m.Float64Histogram("parsec.trust.registry.validate.duration",
+		metric.WithDescription("Registry validation duration in seconds"),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return nil, err
+	}
 
 	return &trustObserver{
-		validationDuration:  vd,
-		jwtValidateDuration: jvd,
-		actorFilterDuration: afd,
+		validationDuration:       vd,
+		jwtValidateDuration:      jvd,
+		actorFilterDuration:      afd,
+		registryValidateDuration: rvd,
 	}, nil
 }
 
@@ -148,9 +163,55 @@ func (p *forActorProbe) End() {
 	p.obs.actorFilterDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
 }
 
+// --- registry validate probe ---
+
+func (o *trustObserver) RegistryValidateStarted(ctx context.Context, url string) (context.Context, trust.RegistryValidateProbe) {
+	return ctx, &registryValidateProbe{
+		obs: o, ctx: ctx, startTime: time.Now(),
+		status:      successStatusAttr,
+		result:      resultSuccess,
+		registryURL: attribute.String("registry_url", url),
+	}
+}
+
+type registryValidateProbe struct {
+	trust.NoOpRegistryValidateProbe
+	obs         *trustObserver
+	ctx         context.Context
+	startTime   time.Time
+	status      attribute.KeyValue
+	result      attribute.KeyValue
+	registryURL attribute.KeyValue
+}
+
+func (p *registryValidateProbe) UsernamePatternRejected() {
+	p.status = errorStatusAttr
+	p.result = registryResultPatternRejected
+}
+func (p *registryValidateProbe) CacheHit() {
+	p.result = registryResultCacheHit
+}
+func (p *registryValidateProbe) RegistryCallFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = registryResultCallFailed
+}
+func (p *registryValidateProbe) AccessDenied() {
+	p.status = errorStatusAttr
+	p.result = registryResultAccessDenied
+}
+func (p *registryValidateProbe) UsernameParseFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = registryResultUsernameParseFail
+}
+func (p *registryValidateProbe) End() {
+	attrs := metric.WithAttributeSet(attribute.NewSet(p.registryURL, p.result, p.status))
+	p.obs.registryValidateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+}
+
 var (
-	_ trust.TrustObserver    = (*trustObserver)(nil)
-	_ trust.ValidationProbe  = (*validationProbe)(nil)
-	_ trust.JWTValidateProbe = (*jwtValidateProbe)(nil)
-	_ trust.ForActorProbe    = (*forActorProbe)(nil)
+	_ trust.TrustObserver         = (*trustObserver)(nil)
+	_ trust.ValidationProbe       = (*validationProbe)(nil)
+	_ trust.JWTValidateProbe      = (*jwtValidateProbe)(nil)
+	_ trust.ForActorProbe         = (*forActorProbe)(nil)
+	_ trust.RegistryValidateProbe = (*registryValidateProbe)(nil)
 )

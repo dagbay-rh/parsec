@@ -50,6 +50,13 @@ func (o *LoggingTrustObserver) JWTValidateStarted(ctx context.Context, issuer st
 	}
 }
 
+func (o *LoggingTrustObserver) RegistryValidateStarted(ctx context.Context, url string) (context.Context, trust.RegistryValidateProbe) {
+	return ctx, &loggingRegistryValidateProbe{
+		logger:    o.logger.With().Str("registry_url", url).Logger(),
+		startTime: time.Now(),
+	}
+}
+
 // --- Store.Validate probe ---
 
 type loggingValidationProbe struct {
@@ -143,4 +150,38 @@ func (p *loggingJWTValidateProbe) End() {
 	p.logger.Debug().
 		Dur("duration", time.Since(p.startTime)).
 		Msg("JWT validation completed")
+}
+
+// --- RegistryValidator.Validate probe ---
+
+type loggingRegistryValidateProbe struct {
+	trust.NoOpRegistryValidateProbe
+	logger    zerolog.Logger
+	startTime time.Time
+}
+
+func (p *loggingRegistryValidateProbe) UsernamePatternRejected() {
+	p.logger.Debug().Msg("username pattern rejected")
+}
+
+func (p *loggingRegistryValidateProbe) CacheHit() {
+	p.logger.Debug().Msg("registry auth cache hit")
+}
+
+func (p *loggingRegistryValidateProbe) RegistryCallFailed(err error) {
+	p.logger.Error().Err(err).Msg("registry auth call failed")
+}
+
+func (p *loggingRegistryValidateProbe) AccessDenied() {
+	p.logger.Debug().Msg("registry access denied")
+}
+
+func (p *loggingRegistryValidateProbe) UsernameParseFailed(err error) {
+	p.logger.Error().Err(err).Msg("username parse failed")
+}
+
+func (p *loggingRegistryValidateProbe) End() {
+	p.logger.Debug().
+		Dur("duration", time.Since(p.startTime)).
+		Msg("registry validation completed")
 }

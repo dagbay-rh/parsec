@@ -614,6 +614,10 @@ func (s *spyTrustObserver) JWTValidateStarted(_ context.Context, _ string) (cont
 	return trust.NoOpTrustObserver{}.JWTValidateStarted(context.Background(), "")
 }
 
+func (s *spyTrustObserver) RegistryValidateStarted(_ context.Context, _ string) (context.Context, trust.RegistryValidateProbe) {
+	return trust.NoOpTrustObserver{}.RegistryValidateStarted(context.Background(), "")
+}
+
 type spyJWKSObserver struct {
 	server.NoOpJWKSObserver
 	called *atomic.Int32

@@ -151,6 +151,14 @@ func (c *compositeAll) JWTValidateStarted(ctx context.Context, issuer string) (c
 	return ctx, &compositeJWTValidateProbe{probes}
 }
 
+func (c *compositeAll) RegistryValidateStarted(ctx context.Context, url string) (context.Context, trust.RegistryValidateProbe) {
+	probes := make([]trust.RegistryValidateProbe, len(c.children))
+	for i, ch := range c.children {
+		ctx, probes[i] = ch.RegistryValidateStarted(ctx, url)
+	}
+	return ctx, &compositeRegistryValidateProbe{probes}
+}
+
 func (c *compositeAll) InitPopulationStarted(ctx context.Context) (context.Context, server.InitPopulationProbe) {
 	probes := make([]server.InitPopulationProbe, len(c.children))
 	for i, ch := range c.children {
@@ -454,6 +462,39 @@ func (m *compositeJWTValidateProbe) ClaimsExtractionFailed(err error) {
 	}
 }
 func (m *compositeJWTValidateProbe) End() {
+	for _, p := range m.probes {
+		p.End()
+	}
+}
+
+type compositeRegistryValidateProbe struct{ probes []trust.RegistryValidateProbe }
+
+func (m *compositeRegistryValidateProbe) UsernamePatternRejected() {
+	for _, p := range m.probes {
+		p.UsernamePatternRejected()
+	}
+}
+func (m *compositeRegistryValidateProbe) CacheHit() {
+	for _, p := range m.probes {
+		p.CacheHit()
+	}
+}
+func (m *compositeRegistryValidateProbe) RegistryCallFailed(err error) {
+	for _, p := range m.probes {
+		p.RegistryCallFailed(err)
+	}
+}
+func (m *compositeRegistryValidateProbe) AccessDenied() {
+	for _, p := range m.probes {
+		p.AccessDenied()
+	}
+}
+func (m *compositeRegistryValidateProbe) UsernameParseFailed(err error) {
+	for _, p := range m.probes {
+		p.UsernameParseFailed(err)
+	}
+}
+func (m *compositeRegistryValidateProbe) End() {
 	for _, p := range m.probes {
 		p.End()
 	}

@@ -130,6 +130,10 @@ func (v *StubValidator) Validate(ctx context.Context, credential Credential) (*R
 		if cred.Token == "" {
 			return nil, fmt.Errorf("empty token")
 		}
+	case *BasicAuthCredential:
+		if cred.Username == "" || cred.Password == "" {
+			return nil, fmt.Errorf("empty basic auth credentials")
+		}
 	default:
 		// For other credential types, just validate the type is supported
 		supported := slices.Contains(v.credTypes, credential.Type())
