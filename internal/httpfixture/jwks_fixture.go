@@ -76,7 +76,7 @@ func NewJWKSFixture(cfg JWKSFixtureConfig) (*JWKSFixture, error) {
 	}
 
 	// Create JWK from public key
-	publicKey, err := jwk.Import(privateKey.PublicKey)
+	publicKey, err := jwk.Import[jwk.Key](privateKey.PublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create JWK: %w", err)
 	}
@@ -165,7 +165,7 @@ func (f *JWKSFixture) Clock() clock.Clock {
 // SignToken signs a JWT token using the fixture's private key
 func (f *JWKSFixture) SignToken(token jwt.Token) (string, error) {
 	// Create JWK from private key with kid for signing
-	key, err := jwk.Import(f.privateKey)
+	key, err := jwk.Import[jwk.Key](f.privateKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to create JWK from private key: %w", err)
 	}
