@@ -20,3 +20,5 @@ jobs:
         with:
           version: v2.6.2
           args: --timeout=10m
+        env:
+          GOEXPERIMENT: jsonv2

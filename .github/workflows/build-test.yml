@@ -27,11 +27,17 @@ jobs:
           cache: true
       - name: Install dependencies
         run: go get ./...
+        env:
+          GOEXPERIMENT: jsonv2
       - name: Build
         run: go build -tags release -v ./...
+        env:
+          GOEXPERIMENT: jsonv2
       - name: Test
         run: make test
         shell: bash
+        env:
+          GOEXPERIMENT: jsonv2
       - name: Archive code coverage results
         uses: actions/upload-artifact@v7
         with:
