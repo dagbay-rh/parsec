@@ -10,9 +10,9 @@ import (
 	"slices"
 	"time"
 
+	"github.com/jwx-go/jwkfetch/v4"
 	"github.com/lestrrat-go/httprc/v3"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 
 	"github.com/project-kessel/parsec/internal/claims"
 	"github.com/project-kessel/parsec/internal/clock"
@@ -22,7 +22,7 @@ import (
 type JWTValidator struct {
 	issuer           string
 	jwksURL          string
-	cache            *jwk.Cache
+	cache            *jwkfetch.Cache
 	trustDomain      string
 	clock            clock.Clock
 	observer         JWTValidatorObserver
@@ -79,16 +79,17 @@ func NewJWTValidator(cfg JWTValidatorConfig) (*JWTValidator, error) {
 	}
 
 	// Create JWKS cache with auto-refresh
-	cache, err := jwk.NewCache(context.Background(), httprc.NewClient())
+	var cacheOpts []jwkfetch.CacheOption
+	if cfg.HTTPClient != nil {
+		cacheOpts = append(cacheOpts, jwkfetch.WithHTTPClient(cfg.HTTPClient))
+	}
+	cache, err := jwkfetch.NewCache(context.Background(), httprc.NewClient(), cacheOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create JWKS cache: %w", err)
 	}
 
 	// Register the JWKS URL with the cache
-	registerOpts := []jwk.RegisterOption{jwk.WithMinInterval(refreshInterval)}
-	if cfg.HTTPClient != nil {
-		registerOpts = append(registerOpts, jwk.WithHTTPClient(cfg.HTTPClient))
-	}
+	registerOpts := []jwkfetch.RegisterOption{jwkfetch.WithMinInterval(refreshInterval)}
 	if err := cache.Register(context.Background(), jwksURL, registerOpts...); err != nil {
 		return nil, fmt.Errorf("failed to register JWKS URL: %w", err)
 	}
@@ -160,7 +161,7 @@ func (v *JWTValidator) Validate(ctx context.Context, credential Credential) (*Re
 		})),
 	)
 	if err != nil {
-		if errors.Is(err, jwt.TokenExpiredError()) {
+		if errors.Is(err, jwt.TokenExpiredError{}) {
 			p.TokenExpired()
 			return nil, ErrExpiredToken
 		}
@@ -195,8 +196,10 @@ func (v *JWTValidator) Validate(ctx context.Context, credential Credential) (*Re
 	}
 
 	scope := ""
-	if err := token.Get("scope", &scope); err != nil {
-		scope = ""
+	if v, ok := token.Field("scope"); ok {
+		if s, ok := v.(string); ok {
+			scope = s
+		}
 	}
 
 	expiresAt, _ := token.Expiration()

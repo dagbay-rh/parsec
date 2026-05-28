@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 
 	"github.com/project-kessel/parsec/internal/clock"
 )
@@ -205,18 +205,16 @@ func TestJWKSFixture_CreateAndSignToken(t *testing.T) {
 		}
 
 		// Verify custom claims
-		var email string
-		if err := token.Get("email", &email); err != nil {
+		if v, ok := token.Field("email"); !ok {
 			t.Error("expected 'email' claim to be present")
-		} else if email != "user@example.com" {
-			t.Errorf("expected email 'user@example.com', got %q", email)
+		} else if email, ok := v.(string); !ok || email != "user@example.com" {
+			t.Errorf("expected email 'user@example.com', got %q", v)
 		}
 
-		var name string
-		if err := token.Get("name", &name); err != nil {
+		if v, ok := token.Field("name"); !ok {
 			t.Error("expected 'name' claim to be present")
-		} else if name != "Test User" {
-			t.Errorf("expected name 'Test User', got %q", name)
+		} else if name, ok := v.(string); !ok || name != "Test User" {
+			t.Errorf("expected name 'Test User', got %q", v)
 		}
 	})
 
@@ -336,9 +334,13 @@ func TestJWKSFixture_SignToken(t *testing.T) {
 			t.Errorf("expected subject 'custom-subject', got %q", subject)
 		}
 
-		var customClaim string
-		if err := parsed.Get("custom_claim", &customClaim); err != nil {
-			t.Fatalf("expected custom_claim to be present: %v", err)
+		v, ok := parsed.Field("custom_claim")
+		if !ok {
+			t.Fatal("expected custom_claim to be present")
+		}
+		customClaim, ok := v.(string)
+		if !ok {
+			t.Fatalf("expected custom_claim to be string, got %T", v)
 		}
 		if customClaim != "custom_value" {
 			t.Errorf("expected custom_claim 'custom_value', got %q", customClaim)

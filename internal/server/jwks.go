@@ -197,8 +197,13 @@ func convertToJSONWebKey(pk service.PublicKey) (*parsecv1.JSONWebKey, error) {
 
 	case *ecdsa.PublicKey:
 		jwk.Kty = "EC"
-		jwk.X = base64urlEncode(key.X.Bytes())
-		jwk.Y = base64urlEncode(key.Y.Bytes())
+		raw, err := key.Bytes()
+		if err != nil {
+			return nil, fmt.Errorf("failed to encode EC public key: %w", err)
+		}
+		coordLen := (len(raw) - 1) / 2
+		jwk.X = base64urlEncode(raw[1 : 1+coordLen])
+		jwk.Y = base64urlEncode(raw[1+coordLen:])
 
 		// Set curve name
 		switch key.Curve.Params().Name {

@@ -16,7 +16,10 @@ GOBUILDFLAGS=-gcflags="all=-trimpath=${GOPATH}" -asmflags="all=-trimpath=${GOPAT
 ifeq (${FIPS_ENABLED}, true)
 GOFLAGS_MOD+=-tags=fips_enabled
 GOFLAGS_MOD:=$(strip ${GOFLAGS_MOD})
-GOENV+=GOEXPERIMENT=strictfipsruntime,boringcrypto
+GOENV+=GOEXPERIMENT=jsonv2,strictfipsruntime,boringcrypto
+GOENV:=$(strip ${GOENV})
+else
+GOENV+=GOEXPERIMENT=jsonv2
 GOENV:=$(strip ${GOENV})
 endif
 

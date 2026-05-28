@@ -107,18 +107,20 @@ Most JWT libraries can automatically fetch and use JWKS for verification:
 ```go
 // Example using lestrrat-go/jwx
 import (
-    "github.com/lestrrat-go/jwx/v3/jwk"
-    "github.com/lestrrat-go/jwx/v3/jwt"
+    "github.com/jwx-go/jwkfetch/v4"
+    "github.com/lestrrat-go/httprc/v3"
+    "github.com/lestrrat-go/jwx/v4/jwt"
 )
 
 // Fetch and cache JWKS
-cache := jwk.NewCache(ctx)
-cache.Register("https://parsec.example.com/v1/jwks.json")
+cache, _ := jwkfetch.NewCache(ctx, httprc.NewClient())
+cache.Register(ctx, "https://parsec.example.com/v1/jwks.json")
 
-// Parse and verify token
+// Parse and verify token using the cached JWKS
+jwks, _ := cache.Lookup(ctx, "https://parsec.example.com/v1/jwks.json")
 token, err := jwt.Parse(
     []byte(tokenString),
-    jwt.WithKeySet(cache, jwk.WithHTTPClient(client)),
+    jwt.WithKeySet(jwks),
 )
 ```
 
@@ -213,4 +215,3 @@ issuers:
 ```
 
 The JWKS endpoint will automatically serve the public keys from this issuer's key manager.
-

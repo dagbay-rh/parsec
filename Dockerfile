@@ -9,6 +9,7 @@ WORKDIR /workspace
 COPY go.mod go.sum ./
 
 ENV CGO_ENABLED 1
+ENV GOEXPERIMENT jsonv2
 RUN go mod download
 
 COPY cmd ./cmd

@@ -11,6 +11,18 @@ import (
 	"math/big"
 )
 
+// ecdsaCoordinates extracts the X and Y coordinates from an ECDSA public key
+// using the uncompressed point encoding (0x04 || X || Y) returned by Bytes().
+func ecdsaCoordinates(key *ecdsa.PublicKey) (x, y []byte, err error) {
+	raw, err := key.Bytes()
+	if err != nil {
+		return nil, nil, err
+	}
+	// Uncompressed point: 0x04 prefix + X + Y (equal length)
+	coordLen := (len(raw) - 1) / 2
+	return raw[1 : 1+coordLen], raw[1+coordLen:], nil
+}
+
 // ComputeThumbprint computes the RFC 7638 JWK Thumbprint for a public key.
 // Returns a base64url-encoded SHA-256 hash of the canonical JWK representation.
 func ComputeThumbprint(publicKey crypto.PublicKey) (string, error) {
@@ -59,25 +71,17 @@ func ecdsaToJWK(key *ecdsa.PublicKey) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("unsupported ECDSA curve: %s", curve)
 	}
 
-	// Get curve parameters
-	params := key.Params()
-	byteLen := (params.BitSize + 7) / 8
-
-	// Encode coordinates as base64url (RFC 7518)
-	x := key.X.Bytes()
-	y := key.Y.Bytes()
-
-	// Pad to correct length
-	xPadded := make([]byte, byteLen)
-	yPadded := make([]byte, byteLen)
-	copy(xPadded[byteLen-len(x):], x)
-	copy(yPadded[byteLen-len(y):], y)
+	// Extract coordinates from the uncompressed point encoding
+	x, y, err := ecdsaCoordinates(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode EC public key: %w", err)
+	}
 
 	return map[string]interface{}{
 		"kty": "EC",
 		"crv": crv,
-		"x":   base64.RawURLEncoding.EncodeToString(xPadded),
-		"y":   base64.RawURLEncoding.EncodeToString(yPadded),
+		"x":   base64.RawURLEncoding.EncodeToString(x),
+		"y":   base64.RawURLEncoding.EncodeToString(y),
 	}, nil
 }
 
