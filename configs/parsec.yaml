@@ -34,9 +34,14 @@ trust_store:
       trust_domain: "https://sso.redhat.com/auth/realms/redhat-external"
       refresh_interval: "15m"
       audiences: ["rhsm-api", "customer-portal", "api.console"]
-      
-# Data sources for token enrichment (none configured by default)
-data_sources: []
+
+# Data sources for token enrichment
+data_sources:
+  - name: identity-policy
+    type: static
+    data:
+      internal_idp_target: "https://sso.redhat.com/auth/realms/internal"
+      role_fallback_enabled: true
 
 # Token issuers
 issuers:

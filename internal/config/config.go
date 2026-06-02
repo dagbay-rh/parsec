@@ -135,13 +135,16 @@ type DataSourceConfig struct {
 	Name string `koanf:"name"`
 
 	// Type selects the data source implementation
-	// Options: "lua"
+	// Options: "lua", "static"
 	Type string `koanf:"type"`
 
 	// Lua data source fields
 	ScriptFile string         `koanf:"script_file"` // Path to Lua script
 	Script     string         `koanf:"script"`      // Inline Lua script (alternative to ScriptFile)
-	Config     map[string]any `koanf:"config"`      // Config values available to script
+	Config     map[string]any `koanf:"config"`      // Lua: values available to script via config.get()
+
+	// Static data source fields
+	Data map[string]any `koanf:"data"` // Fixed JSON returned on every fetch
 
 	// HTTP configuration
 	HTTPConfig *HTTPConfig `koanf:"http"`

@@ -79,6 +79,25 @@ isSupportedToken(subject.claims)
 }
 ```
 
+### Deployment Policy via Static Data Sources
+
+Deployment-specific policy (for example Red Hat identity mapping thresholds) belongs in a `static` data source, not top-level parsec config:
+
+```yaml
+data_sources:
+  - name: identity-policy
+    type: static
+    data:
+      internal_idp_target: "https://sso.redhat.com/auth/realms/internal"
+      role_fallback_enabled: true
+```
+
+CEL mappers read it like any other datasource:
+
+```cel
+subject.claims.idp == datasource("identity-policy").internal_idp_target
+```
+
 ### Complex Expressions
 
 ```cel

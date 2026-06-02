@@ -32,9 +32,18 @@ func newDataSource(cfg DataSourceConfig, transport http.RoundTripper, obs observ
 	switch cfg.Type {
 	case "lua":
 		return newLuaDataSource(cfg, transport, obs)
+	case "static":
+		return newStaticDataSource(cfg)
 	default:
-		return nil, fmt.Errorf("unknown data source type: %s (supported: lua)", cfg.Type)
+		return nil, fmt.Errorf("unknown data source type: %s (supported: lua, static)", cfg.Type)
 	}
+}
+
+func newStaticDataSource(cfg DataSourceConfig) (service.DataSource, error) {
+	if cfg.Data == nil {
+		return nil, fmt.Errorf("static data source requires data")
+	}
+	return datasource.NewStaticDataSource(cfg.Name, cfg.Data)
 }
 
 func newLuaDataSource(cfg DataSourceConfig, transport http.RoundTripper, obs observer.Observer) (service.DataSource, error) {
