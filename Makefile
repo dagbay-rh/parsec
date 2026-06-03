@@ -63,7 +63,7 @@ build:
 .PHONY: local-build
 # local-build to ensure FIPS is not enabled which would likely result in a failed build locally
 local-build:
-	mkdir -p bin/ && $(GO) build -ldflags "-X cmd.Version=$(VERSION)" -o ./bin/ ./cmd/parsec
+	mkdir -p bin/ && GOEXPERIMENT=jsonv2 $(GO) build -ldflags "-X cmd.Version=$(VERSION)" -o ./bin/ ./cmd/parsec
 
 .PHONY: docker-build-push
 docker-build-push:

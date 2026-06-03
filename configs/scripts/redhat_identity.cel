@@ -24,7 +24,7 @@ isRegistryAuthToken(subject.claims) ? {
     "internal": {
       "org_id": has(subject.claims.org_id) ? subject.claims.org_id : "",
       "cross_access": false,
-      "auth_time": 0
+      "auth_time": has(request.additional.auth_time_ms) ? request.additional.auth_time_ms : 0
     }
   },
   "entitlements": {}
@@ -50,7 +50,7 @@ isServiceAccountToken(subject.claims) ? {
                 (has(subject.claims.organization) && has(subject.claims.organization.id) ?
                  subject.claims.organization.id : ""),
       "cross_access": false,
-      "auth_time": has(subject.claims.iat) ? int(subject.claims.iat) * 1000 : now_ms()
+      "auth_time": has(request.additional.auth_time_ms) ? request.additional.auth_time_ms : 0
     }
   },
   "entitlements": {}
@@ -81,7 +81,7 @@ isServiceAccountToken(subject.claims) ? {
         "org_id": has(subject.claims.organization) && has(subject.claims.organization.id) ?
                   subject.claims.organization.id : "",
         "cross_access": false,
-        "auth_time": has(subject.claims.iat) ? int(subject.claims.iat) * 1000 : now_ms()
+        "auth_time": has(request.additional.auth_time_ms) ? request.additional.auth_time_ms : 0
       }
     },
     "entitlements": {}
