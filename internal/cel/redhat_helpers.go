@@ -12,6 +12,7 @@ import (
 //   - hasRole(claims, roleName) - checks if claims.realm_access.roles contains roleName
 //   - isConsoleApiToken(claims) - checks if scope contains "api.console"
 //   - isServiceAccountToken(claims) - checks if preferred_username starts with "service-account-"
+//   - isRegistryAuthToken(claims) - checks if auth_type is "registry-auth"
 //   - safeToString(val) - converts value to string safely (returns empty string if nil)
 func RedHatHelpersLibrary() cel.EnvOption {
 	return cel.Lib(&redhatHelpersLib{})
@@ -45,6 +46,15 @@ func (lib *redhatHelpersLib) CompileOptions() []cel.EnvOption {
 				[]*cel.Type{cel.DynType},
 				cel.BoolType,
 				cel.UnaryBinding(lib.isServiceAccountToken),
+			),
+		),
+
+		// isRegistryAuthToken(claims) - check if auth_type is "registry-auth"
+		cel.Function("isRegistryAuthToken",
+			cel.Overload("isRegistryAuthToken_map",
+				[]*cel.Type{cel.DynType},
+				cel.BoolType,
+				cel.UnaryBinding(lib.isRegistryAuthToken),
 			),
 		),
 
@@ -162,6 +172,26 @@ func (lib *redhatHelpersLib) isServiceAccountToken(claimsVal ref.Val) ref.Val {
 
 	// Check if username starts with "service-account-"
 	return types.Bool(len(username) >= 16 && username[:16] == "service-account-")
+}
+
+// isRegistryAuthToken checks if auth_type is "registry-auth"
+func (lib *redhatHelpersLib) isRegistryAuthToken(claimsVal ref.Val) ref.Val {
+	claimsMap, ok := claimsVal.Value().(map[string]any)
+	if !ok {
+		return types.Bool(false)
+	}
+
+	authTypeAny, ok := claimsMap["auth_type"]
+	if !ok {
+		return types.Bool(false)
+	}
+
+	authType, ok := authTypeAny.(string)
+	if !ok {
+		return types.Bool(false)
+	}
+
+	return types.Bool(authType == "registry-auth")
 }
 
 // safeToString converts a value to string safely
