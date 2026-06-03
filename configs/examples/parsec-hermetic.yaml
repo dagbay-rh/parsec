@@ -155,4 +155,18 @@ issuers:
             "request_method": has(request.method) ? request.method : null
           }
 
+  # Red Hat identity token issuer
+  - token_type: "urn:redhat:params:oauth:token-type:rh-identity"
+    type: unsigned
+    claim_mappers:
+      - type: cel
+        name: redhat-identity-mapper
+        script_file: ./configs/scripts/redhat_identity.cel
 
+# Authorization server configuration (ext_authz)
+authz_server:
+  token_types:
+    - type: "urn:ietf:params:oauth:token-type:txn_token"
+      header_name: "Transaction-Token"
+    - type: "urn:redhat:params:oauth:token-type:rh-identity"
+      header_name: "x-rh-identity"
