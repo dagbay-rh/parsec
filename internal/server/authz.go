@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
+	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	authv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
@@ -71,6 +73,8 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 	ctx, p := s.observer.AuthzCheckStarted(ctx)
 	defer p.End()
 
+	authStart := time.Now()
+
 	// 1. Build request attributes
 	reqAttrs := s.buildRequestAttributes(req)
 	p.RequestAttributesParsed(reqAttrs)
@@ -110,6 +114,11 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 		return s.denyResponse(codes.Unauthenticated, fmt.Sprintf("validation failed: %v", err)), nil
 	}
 	p.SubjectValidationSucceeded(result)
+
+	if reqAttrs.Additional == nil {
+		reqAttrs.Additional = make(map[string]any)
+	}
+	reqAttrs.Additional["auth_time_ms"] = time.Since(authStart).Milliseconds()
 
 	// 6. Issue tokens via TokenService
 	tokenTypes := make([]service.TokenType, len(s.TokenTypesToIssue))

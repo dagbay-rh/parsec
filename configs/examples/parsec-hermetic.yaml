@@ -74,7 +74,7 @@ fixtures:
   - type: http_rule
     request:
       method: POST
-      url: "https://registry-auth.example.com/v2/auth"
+      url: "https://registry-auth.example.com/registry-authorizer/v1/authorization"
       url_type: exact
     response:
       status: 200
@@ -102,7 +102,7 @@ trust_store:
 
     # Registry auth validator for Basic Auth credentials
     - type: registry_validator
-      registry_url: "https://registry-auth.example.com/v2/auth"
+      registry_url: "https://registry-auth.example.com/registry-authorizer/v1/authorization"
       trust_domain: "registry.example.com"
       username_pattern: "^[0-9]+\\|.+"
       cache_ttl: "5m"
