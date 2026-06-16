@@ -3,6 +3,8 @@ package trust
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
@@ -28,6 +30,7 @@ type RegistryValidator struct {
 	usernamePattern *regexp.Regexp
 	httpClient      *http.Client
 	cacheTTL        time.Duration
+	cacheHMACKey    []byte
 	mu              sync.RWMutex
 	entries         map[string]*cacheEntry
 	clock           clock.Clock
@@ -133,12 +136,18 @@ func NewRegistryValidator(cfg RegistryValidatorConfig) (*RegistryValidator, erro
 		obs = NoOpRegistryValidatorObserver{}
 	}
 
+	hmacKey := make([]byte, 32)
+	if _, err := rand.Read(hmacKey); err != nil {
+		return nil, fmt.Errorf("failed to generate cache HMAC key: %w", err)
+	}
+
 	return &RegistryValidator{
 		url:             cfg.URL,
 		trustDomain:     cfg.TrustDomain,
 		usernamePattern: compiledPattern,
 		httpClient:      httpClient,
 		cacheTTL:        cfg.CacheTTL,
+		cacheHMACKey:    hmacKey,
 		entries:         make(map[string]*cacheEntry),
 		clock:           clk,
 		observer:        obs,
@@ -313,8 +322,9 @@ func (v *RegistryValidator) Cleanup() {
 }
 
 func (v *RegistryValidator) cacheKey(username, password string) string {
-	h := sha256.Sum256([]byte(username + ":" + password))
-	return hex.EncodeToString(h[:])
+	mac := hmac.New(sha256.New, v.cacheHMACKey)
+	mac.Write([]byte(username + ":" + password))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 func (v *RegistryValidator) effectiveTTL() time.Duration {
