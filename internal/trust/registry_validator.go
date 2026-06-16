@@ -257,7 +257,7 @@ func (v *RegistryValidator) callRegistryService(ctx context.Context, username, p
 		p.RegistryCallFailed(err)
 		return fmt.Errorf("%w: registry service call failed: %v", ErrInvalidToken, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
