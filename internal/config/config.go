@@ -133,10 +133,10 @@ type ValidatorConfig struct {
 	Claims          map[string]any `koanf:"claims"`           // JWT-like claims returned on success
 
 	// Registry Validator fields
-	RegistryURL     string              `koanf:"registry_url"`
-	RegistryTLS     *RegistryTLSConfig  `koanf:"registry_tls"`
-	UsernamePattern string              `koanf:"username_pattern"`
-	CacheTTL        string              `koanf:"cache_ttl"` // Duration string like "5m"
+	RegistryURL     string             `koanf:"registry_url"`
+	RegistryTLS     *RegistryTLSConfig `koanf:"registry_tls"`
+	UsernamePattern string             `koanf:"username_pattern"`
+	CacheTTL        string             `koanf:"cache_ttl"` // Duration string like "5m"
 }
 
 // RegistryTLSConfig configures TLS for the registry service connection

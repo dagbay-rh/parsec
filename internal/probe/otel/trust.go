@@ -16,11 +16,11 @@ var (
 	jwtResultTokenInvalid           = attribute.String("result", "token_invalid")
 	jwtResultClaimsExtractionFailed = attribute.String("result", "claims_extraction_failed")
 
-	registryResultPatternRejected  = attribute.String("result", "username_pattern_rejected")
-	registryResultCallFailed       = attribute.String("result", "registry_call_failed")
-	registryResultAccessDenied     = attribute.String("result", "access_denied")
+	registryResultPatternRejected   = attribute.String("result", "username_pattern_rejected")
+	registryResultCallFailed        = attribute.String("result", "registry_call_failed")
+	registryResultAccessDenied      = attribute.String("result", "access_denied")
 	registryResultUsernameParseFail = attribute.String("result", "username_parse_failed")
-	registryResultCacheHit         = attribute.String("result", "cache_hit")
+	registryResultCacheHit          = attribute.String("result", "cache_hit")
 )
 
 type trustObserver struct {

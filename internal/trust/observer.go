@@ -123,8 +123,8 @@ func (NoOpJWTValidatorObserver) JWTValidateStarted(ctx context.Context, _ string
 
 type NoOpRegistryValidateProbe struct{}
 
-func (NoOpRegistryValidateProbe) UsernamePatternRejected() {}
-func (NoOpRegistryValidateProbe) CacheHit()                {}
+func (NoOpRegistryValidateProbe) UsernamePatternRejected()  {}
+func (NoOpRegistryValidateProbe) CacheHit()                 {}
 func (NoOpRegistryValidateProbe) RegistryCallFailed(error)  {}
 func (NoOpRegistryValidateProbe) AccessDenied()             {}
 func (NoOpRegistryValidateProbe) UsernameParseFailed(error) {}

@@ -228,11 +228,11 @@ func TestRegistryValidator_MalformedResponse(t *testing.T) {
 
 func TestRegistryValidator_UsernameParsing(t *testing.T) {
 	tests := []struct {
-		name       string
-		username   string
-		wantOrgID  string
-		wantUser   string
-		wantError  bool
+		name      string
+		username  string
+		wantOrgID string
+		wantUser  string
+		wantError bool
 	}{
 		{"standard format", "123|alice", "123", "alice", false},
 		{"multiple pipes", "123|alice|extra", "123", "alice|extra", false},
