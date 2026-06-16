@@ -28,7 +28,8 @@ type RegistryValidator struct {
 	usernamePattern *regexp.Regexp
 	httpClient      *http.Client
 	cacheTTL        time.Duration
-	cache           sync.Map
+	mu              sync.RWMutex
+	entries         map[string]*cacheEntry
 	clock           clock.Clock
 	observer        RegistryValidatorObserver
 }
@@ -115,7 +116,11 @@ func NewRegistryValidator(cfg RegistryValidatorConfig) (*RegistryValidator, erro
 
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
-		httpClient = buildHTTPClient(cfg.TLSConfig)
+		var err error
+		httpClient, err = buildHTTPClient(cfg.TLSConfig)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	clk := cfg.Clock
@@ -134,14 +139,15 @@ func NewRegistryValidator(cfg RegistryValidatorConfig) (*RegistryValidator, erro
 		usernamePattern: compiledPattern,
 		httpClient:      httpClient,
 		cacheTTL:        cfg.CacheTTL,
+		entries:         make(map[string]*cacheEntry),
 		clock:           clk,
 		observer:        obs,
 	}, nil
 }
 
-func buildHTTPClient(tlsCfg *RegistryTLSConfig) *http.Client {
+func buildHTTPClient(tlsCfg *RegistryTLSConfig) (*http.Client, error) {
 	if tlsCfg == nil {
-		return &http.Client{Timeout: 30 * time.Second}
+		return &http.Client{Timeout: 30 * time.Second}, nil
 	}
 
 	transport := &http.Transport{
@@ -153,15 +159,16 @@ func buildHTTPClient(tlsCfg *RegistryTLSConfig) *http.Client {
 
 	if tlsCfg.ClientCertPath != "" && tlsCfg.ClientKeyPath != "" {
 		cert, err := tls.LoadX509KeyPair(tlsCfg.ClientCertPath, tlsCfg.ClientKeyPath)
-		if err == nil {
-			transport.TLSClientConfig.Certificates = []tls.Certificate{cert}
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client certificate/key: %w", err)
 		}
+		transport.TLSClientConfig.Certificates = []tls.Certificate{cert}
 	}
 
 	return &http.Client{
 		Transport: transport,
 		Timeout:   30 * time.Second,
-	}
+	}, nil
 }
 
 // CredentialTypes returns the credential types this validator can handle.
@@ -190,13 +197,18 @@ func (v *RegistryValidator) Validate(ctx context.Context, credential Credential)
 
 	cacheKey := v.cacheKey(cred.Username, cred.Password)
 	if v.cacheTTL > 0 {
-		if entry, ok := v.cache.Load(cacheKey); ok {
-			ce := entry.(*cacheEntry)
-			if v.clock.Now().Before(ce.expiresAt) {
+		v.mu.RLock()
+		entry, found := v.entries[cacheKey]
+		v.mu.RUnlock()
+
+		if found {
+			if v.clock.Now().Before(entry.expiresAt) {
 				p.CacheHit()
-				return ce.result, nil
+				return entry.result, nil
 			}
-			v.cache.Delete(cacheKey)
+			v.mu.Lock()
+			delete(v.entries, cacheKey)
+			v.mu.Unlock()
 		}
 	}
 
@@ -224,10 +236,12 @@ func (v *RegistryValidator) Validate(ctx context.Context, credential Credential)
 	}
 
 	if v.cacheTTL > 0 {
-		v.cache.Store(cacheKey, &cacheEntry{
+		v.mu.Lock()
+		v.entries[cacheKey] = &cacheEntry{
 			result:    result,
 			expiresAt: now.Add(v.cacheTTL),
-		})
+		}
+		v.mu.Unlock()
 	}
 
 	return result, nil
@@ -282,6 +296,20 @@ func (v *RegistryValidator) callRegistryService(ctx context.Context, username, p
 	}
 
 	return nil
+}
+
+// Cleanup removes expired entries from the cache.
+// This should be called periodically to prevent memory leaks.
+func (v *RegistryValidator) Cleanup() {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	now := v.clock.Now()
+	for key, entry := range v.entries {
+		if now.After(entry.expiresAt) {
+			delete(v.entries, key)
+		}
+	}
 }
 
 func (v *RegistryValidator) cacheKey(username, password string) string {

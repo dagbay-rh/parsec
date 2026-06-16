@@ -116,7 +116,10 @@ func (v *StubValidator) Validate(ctx context.Context, credential Credential) (*R
 		return nil, v.err
 	}
 
-	// Type assertion to check for token-based credentials
+	if !slices.Contains(v.credTypes, credential.Type()) {
+		return nil, fmt.Errorf("credential type %s not supported", credential.Type())
+	}
+
 	switch cred := credential.(type) {
 	case *BearerCredential:
 		if cred.Token == "" {
@@ -133,12 +136,6 @@ func (v *StubValidator) Validate(ctx context.Context, credential Credential) (*R
 	case *BasicAuthCredential:
 		if cred.Username == "" || cred.Password == "" {
 			return nil, fmt.Errorf("empty basic auth credentials")
-		}
-	default:
-		// For other credential types, just validate the type is supported
-		supported := slices.Contains(v.credTypes, credential.Type())
-		if !supported {
-			return nil, fmt.Errorf("credential type %s not supported", credential.Type())
 		}
 	}
 

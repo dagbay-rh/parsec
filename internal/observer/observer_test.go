@@ -269,17 +269,18 @@ func TestCompositeAll_ShutdownCascadesToAllChildren(t *testing.T) {
 
 func TestCompose_DelegatesToCorrectSubObserver(t *testing.T) {
 	var (
-		cacheCalled  atomic.Int32
-		luaCalled    atomic.Int32
-		keyRotCalled atomic.Int32
-		kmsCalled    atomic.Int32
-		diskCalled   atomic.Int32
-		memCalled    atomic.Int32
-		trustCalled  atomic.Int32
-		filterCalled atomic.Int32
-		jwtCalled    atomic.Int32
-		jwksCalled   atomic.Int32
-		srvCalled    atomic.Int32
+		cacheCalled    atomic.Int32
+		luaCalled      atomic.Int32
+		keyRotCalled   atomic.Int32
+		kmsCalled      atomic.Int32
+		diskCalled     atomic.Int32
+		memCalled      atomic.Int32
+		trustCalled    atomic.Int32
+		filterCalled   atomic.Int32
+		jwtCalled      atomic.Int32
+		registryCalled atomic.Int32
+		jwksCalled     atomic.Int32
+		srvCalled      atomic.Int32
 	)
 
 	obs := Compose(
@@ -289,7 +290,7 @@ func TestCompose_DelegatesToCorrectSubObserver(t *testing.T) {
 			datasource.LuaObserver
 		}{&spyDSCacheObserver{called: &cacheCalled}, &spyLuaDSObserver{called: &luaCalled}},
 		&spyKeysObserver{rotCalled: &keyRotCalled, kmsCalled: &kmsCalled, diskCalled: &diskCalled, memCalled: &memCalled},
-		&spyTrustObserver{called: &trustCalled, filterCalled: &filterCalled, jwtCalled: &jwtCalled},
+		&spyTrustObserver{called: &trustCalled, filterCalled: &filterCalled, jwtCalled: &jwtCalled, registryCalled: &registryCalled},
 		struct {
 			server.JWKSObserver
 			server.LifecycleObserver
@@ -364,17 +365,18 @@ func TestCompositeAll_SingleChild_ReturnsSame(t *testing.T) {
 
 func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 	var (
-		cache1, cache2   atomic.Int32
-		lua1, lua2       atomic.Int32
-		rot1, rot2       atomic.Int32
-		kms1, kms2       atomic.Int32
-		disk1, disk2     atomic.Int32
-		mem1, mem2       atomic.Int32
-		trust1, trust2   atomic.Int32
-		filter1, filter2 atomic.Int32
-		jwt1, jwt2       atomic.Int32
-		jwks1, jwks2     atomic.Int32
-		srv1, srv2       atomic.Int32
+		cache1, cache2       atomic.Int32
+		lua1, lua2           atomic.Int32
+		rot1, rot2           atomic.Int32
+		kms1, kms2           atomic.Int32
+		disk1, disk2         atomic.Int32
+		mem1, mem2           atomic.Int32
+		trust1, trust2       atomic.Int32
+		filter1, filter2     atomic.Int32
+		jwt1, jwt2           atomic.Int32
+		registry1, registry2 atomic.Int32
+		jwks1, jwks2         atomic.Int32
+		srv1, srv2           atomic.Int32
 	)
 
 	child1 := Compose(
@@ -384,7 +386,7 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 			datasource.LuaObserver
 		}{&spyDSCacheObserver{called: &cache1}, &spyLuaDSObserver{called: &lua1}},
 		&spyKeysObserver{rotCalled: &rot1, kmsCalled: &kms1, diskCalled: &disk1, memCalled: &mem1},
-		&spyTrustObserver{called: &trust1, filterCalled: &filter1, jwtCalled: &jwt1},
+		&spyTrustObserver{called: &trust1, filterCalled: &filter1, jwtCalled: &jwt1, registryCalled: &registry1},
 		struct {
 			server.JWKSObserver
 			server.LifecycleObserver
@@ -397,7 +399,7 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 			datasource.LuaObserver
 		}{&spyDSCacheObserver{called: &cache2}, &spyLuaDSObserver{called: &lua2}},
 		&spyKeysObserver{rotCalled: &rot2, kmsCalled: &kms2, diskCalled: &disk2, memCalled: &mem2},
-		&spyTrustObserver{called: &trust2, filterCalled: &filter2, jwtCalled: &jwt2},
+		&spyTrustObserver{called: &trust2, filterCalled: &filter2, jwtCalled: &jwt2, registryCalled: &registry2},
 		struct {
 			server.JWKSObserver
 			server.LifecycleObserver
@@ -594,9 +596,10 @@ func (s *spyKeysObserver) MemoryRotateStarted(ctx context.Context) (context.Cont
 }
 
 type spyTrustObserver struct {
-	called       *atomic.Int32
-	filterCalled *atomic.Int32
-	jwtCalled    *atomic.Int32
+	called         *atomic.Int32
+	filterCalled   *atomic.Int32
+	jwtCalled      *atomic.Int32
+	registryCalled *atomic.Int32
 }
 
 func (s *spyTrustObserver) ValidationStarted(_ context.Context) (context.Context, trust.ValidationProbe) {
@@ -615,6 +618,7 @@ func (s *spyTrustObserver) JWTValidateStarted(_ context.Context, _ string) (cont
 }
 
 func (s *spyTrustObserver) RegistryValidateStarted(_ context.Context, _ string) (context.Context, trust.RegistryValidateProbe) {
+	s.registryCalled.Add(1)
 	return trust.NoOpTrustObserver{}.RegistryValidateStarted(context.Background(), "")
 }
 

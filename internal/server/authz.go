@@ -196,17 +196,17 @@ func (s *AuthzServer) extractCredential(req *authv3.CheckRequest) (trust.Credent
 
 	headersUsed := []string{"authorization"}
 
-	// Extract bearer token
-	if token, ok := strings.CutPrefix(authHeader, "Bearer "); ok {
-		cred := &trust.BearerCredential{
-			Token: token,
-		}
-		return cred, headersUsed, nil
+	scheme, value, found := strings.Cut(authHeader, " ")
+	if !found {
+		return nil, nil, fmt.Errorf("unsupported authorization scheme")
 	}
 
-	// Extract Basic Auth credentials
-	if encoded, ok := strings.CutPrefix(authHeader, "Basic "); ok {
-		decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if strings.EqualFold(scheme, "Bearer") {
+		return &trust.BearerCredential{Token: value}, headersUsed, nil
+	}
+
+	if strings.EqualFold(scheme, "Basic") {
+		decoded, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
 			return nil, nil, fmt.Errorf("invalid Basic auth encoding: %w", err)
 		}
@@ -214,11 +214,10 @@ func (s *AuthzServer) extractCredential(req *authv3.CheckRequest) (trust.Credent
 		if !ok {
 			return nil, nil, fmt.Errorf("invalid Basic auth format")
 		}
-		cred := &trust.BasicAuthCredential{
+		return &trust.BasicAuthCredential{
 			Username: username,
 			Password: password,
-		}
-		return cred, headersUsed, nil
+		}, headersUsed, nil
 	}
 
 	return nil, nil, fmt.Errorf("unsupported authorization scheme")
