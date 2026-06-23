@@ -206,7 +206,7 @@ func newRegistryValidator(cfg ValidatorConfig, transport http.RoundTripper, trus
 		if err != nil {
 			return nil, fmt.Errorf("invalid cache_ttl: %w", err)
 		}
-		validatorCfg.CacheTTL = duration
+		validatorCfg.CacheTTL = &duration
 	}
 
 	if cfg.RegistryTLS != nil {

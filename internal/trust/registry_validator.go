@@ -51,8 +51,9 @@ type RegistryValidatorConfig struct {
 	// Empty means accept all usernames.
 	UsernamePattern string
 
-	// CacheTTL is the TTL for caching successful auth results. Zero disables caching.
-	CacheTTL time.Duration
+	// CacheTTL is the TTL for caching successful auth results. Zero or negative value disables caching.
+	// If nil, defaults to 5 min.
+	CacheTTL *time.Duration
 
 	// HTTPClient is the HTTP client for calling the registry service.
 	// If nil, a default client is created (with TLSConfig applied if provided).
@@ -128,6 +129,20 @@ func NewRegistryValidator(cfg RegistryValidatorConfig) (*RegistryValidator, erro
 		}
 	}
 
+	hmacKey := make([]byte, 32)
+	if _, err := rand.Read(hmacKey); err != nil {
+		return nil, fmt.Errorf("failed to generate cache HMAC key: %w", err)
+	}
+
+	var cacheTTL time.Duration
+	if cfg.CacheTTL == nil {
+		cacheTTL = 5 * time.Minute
+	} else if *cfg.CacheTTL <= 0 {
+		cacheTTL = 0
+	} else {
+		cacheTTL = *cfg.CacheTTL
+	}
+	
 	clk := cfg.Clock
 	if clk == nil {
 		clk = clock.NewSystemClock()
@@ -138,17 +153,12 @@ func NewRegistryValidator(cfg RegistryValidatorConfig) (*RegistryValidator, erro
 		obs = NoOpRegistryValidatorObserver{}
 	}
 
-	hmacKey := make([]byte, 32)
-	if _, err := rand.Read(hmacKey); err != nil {
-		return nil, fmt.Errorf("failed to generate cache HMAC key: %w", err)
-	}
-
 	return &RegistryValidator{
 		url:             cfg.URL,
 		trustDomain:     cfg.TrustDomain,
 		usernamePattern: compiledPattern,
 		httpClient:      httpClient,
-		cacheTTL:        cfg.CacheTTL,
+		cacheTTL:        cacheTTL,
 		cacheHMACKey:    hmacKey,
 		entries:         make(map[string]*cacheEntry),
 		clock:           clk,
@@ -243,7 +253,7 @@ func (v *RegistryValidator) Validate(ctx context.Context, credential Credential)
 			"auth_type": "registry-auth",
 		},
 		IssuedAt:  now,
-		ExpiresAt: now.Add(v.effectiveTTL()),
+		ExpiresAt: now.Add(v.cacheTTL),
 	}
 
 	if v.cacheTTL > 0 {
@@ -327,13 +337,6 @@ func (v *RegistryValidator) cacheKey(username, password string) string {
 	mac := hmac.New(sha256.New, v.cacheHMACKey)
 	mac.Write([]byte(username + ":" + password))
 	return hex.EncodeToString(mac.Sum(nil))
-}
-
-func (v *RegistryValidator) effectiveTTL() time.Duration {
-	if v.cacheTTL > 0 {
-		return v.cacheTTL
-	}
-	return 5 * time.Minute
 }
 
 // parseRegistryUsername splits "org_id|username" into its components.

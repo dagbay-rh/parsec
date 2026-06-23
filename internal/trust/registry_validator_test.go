@@ -269,7 +269,8 @@ func TestRegistryValidator_Caching(t *testing.T) {
 
 	clk := clock.NewFixtureClock(time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC))
 	v := createRegistryValidator(t, provider, func(cfg *RegistryValidatorConfig) {
-		cfg.CacheTTL = 5 * time.Minute
+		duration := 5 * time.Minute
+		cfg.CacheTTL = &duration
 		cfg.Clock = clk
 	})
 
@@ -300,7 +301,8 @@ func TestRegistryValidator_CacheExpiry(t *testing.T) {
 
 	clk := clock.NewFixtureClock(time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC))
 	v := createRegistryValidator(t, provider, func(cfg *RegistryValidatorConfig) {
-		cfg.CacheTTL = 5 * time.Minute
+		duration := 5 * time.Minute
+		cfg.CacheTTL = &duration
 		cfg.Clock = clk
 	})
 
