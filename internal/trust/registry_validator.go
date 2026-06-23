@@ -21,6 +21,8 @@ import (
 	"github.com/project-kessel/parsec/internal/clock"
 )
 
+const maxRegistryResponseBytes = 1 << 20 // 1 MB
+
 // RegistryValidator validates credentials against an external registry authorization service.
 // It accepts BasicAuth credentials, POSTs them to the configured registry service,
 // and checks for access.pull == "granted" in the response.
@@ -282,7 +284,7 @@ func (v *RegistryValidator) callRegistryService(ctx context.Context, username, p
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxRegistryResponseBytes))
 	if err != nil {
 		p.RegistryCallFailed(err)
 		return fmt.Errorf("%w: failed to read registry response: %v", ErrInvalidToken, err)
