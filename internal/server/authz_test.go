@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -945,21 +946,38 @@ func TestAuthzServer_RequestAdditionalMetadata(t *testing.T) {
 		t.Fatalf("expected OK, got code %d: %s", resp.Status.Code, resp.Status.Message)
 	}
 
-	// Verify auth_time_ms, credential_source, and credential_type are set in
-	// request.Additional and flow through RequestAttributesMapper into token claims.
-	// A successful token issuance confirms the Additional map was populated without error.
 	okResp := resp.GetOkResponse()
 	if okResp == nil {
 		t.Fatal("expected OK response")
 	}
 
-	foundToken := false
+	var tokenValue string
 	for _, header := range okResp.Headers {
 		if header.Header.Key == "Transaction-Token" && header.Header.Value != "" {
-			foundToken = true
+			tokenValue = header.Header.Value
 		}
 	}
-	if !foundToken {
-		t.Error("transaction token not found — request.Additional metadata may have broken issuance")
+	if tokenValue == "" {
+		t.Fatal("transaction token not found")
+	}
+
+	// StubIssuer format: stub-txn-token.{subject}.{txnID}.{requestContextJSON}
+	parts := strings.SplitN(tokenValue, ".", 4)
+	if len(parts) < 4 {
+		t.Fatalf("unexpected stub token format: %q", tokenValue)
+	}
+	var reqCtx map[string]any
+	if err := json.Unmarshal([]byte(parts[3]), &reqCtx); err != nil {
+		t.Fatalf("failed to decode request context from stub token: %v", err)
+	}
+
+	if _, ok := reqCtx["auth_time_ms"]; !ok {
+		t.Error("auth_time_ms not found in request context")
+	}
+	if reqCtx["credential_source"] != "authorization_bearer_opaque" {
+		t.Errorf("expected credential_source 'authorization_bearer_opaque', got %v", reqCtx["credential_source"])
+	}
+	if reqCtx["credential_type"] != "bearer" {
+		t.Errorf("expected credential_type 'bearer', got %v", reqCtx["credential_type"])
 	}
 }
