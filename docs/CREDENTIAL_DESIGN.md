@@ -2,7 +2,71 @@
 
 ## Overview
 
-Credentials in parsec are strongly typed values that encapsulate only the material needed for validation. The extraction layer (e.g., `ext_authz`) is responsible for parsing credentials from transport-level concerns (headers, TLS, etc.) and tracking which headers were used.
+Credentials in parsec are strongly typed values that encapsulate only the material needed for validation. The extraction layer uses a `CredentialSource` interface to parse credentials from a `CredentialContext`, tracking which headers were consumed. Policy decisions are based on the verified claims of the credential itself, not the transport mechanism used to present it.
+
+## Extraction Architecture
+
+Three extraction paths share one `CredentialSource` interface:
+
+| Path | Transport | CredentialContext built by |
+|------|-----------|--------------------------|
+| ext_authz **subject** | Envoy CheckRequest HTTP attrs | `CredentialContextFromCheckRequest` |
+| ext_authz **actor** | gRPC peer + metadata | `CredentialContextFromGRPC` |
+| exchange **caller** | gRPC peer + metadata | `CredentialContextFromGRPC` |
+
+Exchange body tokens (`subject_token`, `actor_token`) are a **protocol-level concern** above credential extraction. They are wrapped directly as `BearerCredential` without going through `CredentialSource`. See "Exchange Subject Token Mapping" below for future direction.
+
+### CredentialContext
+
+`CredentialContext` holds the normalized context needed for credential extraction -- headers, path, and TLS peer info. Callers build one from their specific transport before calling `CredentialSource.Extract`:
+
+```go
+type CredentialContext struct {
+    Headers map[string]string  // normalized lowercase keys
+    TLSPeer *TLSPeerInfo      // mTLS client cert info; nil when absent
+}
+```
+
+Normalization constructors:
+- `CredentialContextFromCheckRequest(req)` -- Envoy ext_authz
+- `CredentialContextFromGRPC(ctx)` -- gRPC metadata + peer TLS
+
+### CredentialSource interface
+
+```go
+type CredentialSource interface {
+    Extract(ctx context.Context, cc CredentialContext) (*CredentialExtraction, error)
+}
+```
+
+Built-in implementations: `BearerCredentialSource`, `CookieCredentialSource`.
+
+### Configuration
+
+Credential sources are configured globally and shared by all extraction paths (ext_authz subject, ext_authz actor, exchange caller). The trust store determines which credentials are usable; credential sources only handle extraction.
+
+```yaml
+credential_sources:
+  - name: authorization-bearer
+    type: authorization_bearer_opaque
+  - name: cs-jwt-cookie
+    type: cookie_bearer_opaque
+    cookie_name: cs_jwt
+```
+
+Sources are tried in order; the first match wins. A source returns `nil` (no match) when the expected header or credential is absent.
+
+### Configuration Sharing
+
+All three extraction paths share the same `credential_sources` list:
+
+| Path | Transport | Typical Sources |
+|------|-----------|-----------------|
+| ext_authz **subject** | Envoy HTTP headers | bearer, cookie |
+| ext_authz **actor** | gRPC metadata | bearer |
+| exchange **caller** | gRPC metadata | bearer |
+
+This works because each `CredentialSource` returns `nil` when the expected header is missing. When no `credential_sources` are configured, `DefaultCredentialSources()` is used (bearer-only).
 
 ## Design Principles
 
@@ -34,181 +98,96 @@ type MTLSCredential struct {
 }
 ```
 
-**Benefits:**
-- Type safety at compile time
-- Type-specific methods available (e.g., `JWTCredential` could have `GetClaims()`)
-- Clear documentation of what data each credential type needs
-- No `map[string]string` soup
-- IssuerIdentity field on JWT/OIDC/mTLS credentials enables multi-trust-domain support
-- Bearer tokens use a default issuer determined by the validator store
-
 ### 2. Issuer Identification for Validator Store
 
-Most credentials contain issuer information that the validator store uses to select the appropriate validator. Bearer tokens are an exception - the store determines their issuer based on configuration:
-
-```go
-// Extraction determines issuer
-cred := &JWTCredential{
-    Token:          token,
-    IssuerIdentity: "https://accounts.google.com",  // Parsed from JWT
-}
-
-// Validator store extracts issuer and validates
-result, err := store.Validate(ctx, cred)
-```
+Most credentials contain issuer information that the validator store uses to select the appropriate validator. Bearer tokens are an exception -- the store determines their issuer based on configuration.
 
 **How issuers are determined:**
-- **JWT/OIDC**: Parsed from the `iss` claim in the token during extraction
+- **JWT/OIDC**: Parsed from the `iss` claim during validation (extracted as `BearerCredential`, JWT parsing is validator-level)
 - **Bearer (opaque)**: Uses default "bearer" issuer; store configured with appropriate validator
 - **mTLS**: From the certificate authority identifier
-- **API Key**: From configuration mapping key→issuer
-
-**Why this matters:**
-- Supports multiple identity providers simultaneously
-- Each provider can have different trust anchors (JWKS, CA certs)
-- Enables fine-grained trust policies per issuer
-- Validator store encapsulates issuer extraction and validator selection
 
 ### 3. Separation of Concerns
 
 Credentials contain **only validation data**, not transport metadata:
 
-- ❌ Credentials do NOT know about HTTP headers
-- ❌ Credentials do NOT know how they were extracted
-- ✅ Credentials ARE just the material needed for validation
+- Credentials do NOT know about HTTP headers
+- Credentials do NOT know how they were extracted
+- Credentials ARE just the material needed for validation
 
-The **extraction layer** handles transport concerns:
+The **extraction layer** handles transport concerns via `CredentialSource.Extract(CredentialContext)` and returns a `CredentialExtraction` containing the credential, consumed headers, and sanitization info.
 
-```go
-// extractCredential returns: (credential, headersUsed, error)
-func (s *AuthzServer) extractCredential(req *CheckRequest) (Credential, []string, error) {
-    authHeader := req.GetHeaders()["authorization"]
-    
-    if strings.HasPrefix(authHeader, "Bearer ") {
-        cred := &BearerCredential{
-            Token: strings.TrimPrefix(authHeader, "Bearer "),
-        }
-        headersUsed := []string{"authorization"}
-        return cred, headersUsed, nil
-    }
-    
-    // Future: Parse other schemes (JWT with specific header, API keys, etc.)
-}
-```
+### 4. Claims-Based Policy
 
-**Benefits:**
-- Clear responsibility: extraction layer handles transport, validator handles validation
-- Headers can be tracked dynamically based on extraction logic
-- Same credential type can be extracted from different sources (header, cookie, query param)
-- Easy to add new extraction methods without changing credential types
+Policy decisions (claim mappers, validator filtering, etc.) operate on the verified claims of the credential, not how it was presented. The transport mechanism (bearer header, cookie, etc.) is a presentation concern handled by the extraction layer. Once a credential is validated, the resulting `trust.Result` carries only identity and claims.
 
-### 3. Security Boundary in ext_authz
+### 5. Security Boundary in ext_authz
 
 The extraction layer tracks which headers were used, and ext_authz removes them from requests forwarded to backends:
 
 ```go
-// 1. Extract credential and track headers used
-cred, headersUsed, err := s.extractCredential(req)
+// 1. Build CredentialContext from transport
+cc, err := CredentialContextFromCheckRequest(req)
 
-// 2. Validate and issue transaction token
-result, err := validator.Validate(ctx, cred)
-token, err := issuer.Issue(ctx, result, reqCtx)
+// 2. Extract credential via CredentialSources chain
+ext, err := sources.Extract(ctx, cc)
 
-// 3. Remove external credential headers - security boundary
+// 3. Validate
+result, err := validateCredential(ctx, store, ext)
+
+// 4. Remove external credential headers -- security boundary
 return &CheckResponse{
-    HttpResponse: &CheckResponse_OkResponse{
-        OkResponse: &OkHttpResponse{
-            Headers: []*HeaderValueOption{
-                {Header: &HeaderValue{Key: "Transaction-Token", Value: token.Value}},
-            },
-            HeadersToRemove: headersUsed, // Remove external credentials
-        },
+    OkResponse: &OkHttpResponse{
+        HeadersToRemove: ext.RemoveHeaders,
     },
 }
 ```
-
-**Why this matters:**
-- External credentials (OAuth tokens, API keys, etc.) stay at the perimeter
-- Backend services only see transaction tokens
-- Prevents credential leakage to untrusted services
-- Clear trust boundary enforcement
 
 ## Examples
 
 ### Example 1: Bearer Token
 
 ```go
-// Extraction
-authHeader := req.GetHeaders()["authorization"]
-cred := &BearerCredential{
-    Token: strings.TrimPrefix(authHeader, "Bearer "),
-}
-headersUsed := []string{"authorization"}
+// 1. Normalize transport to CredentialContext
+cc, err := CredentialContextFromCheckRequest(req)
 
-// Validation
-validator.Validate(ctx, cred) // Just validates the token
+// 2. Extract via configured source chain
+ext, err := subjectSources.Extract(ctx, cc)
+// ext.Credential is *trust.BearerCredential{Token: "..."}
+// ext.RemoveHeaders is []string{"authorization"}
 
-// Security: "authorization" header removed from forwarded request
+// 3. Validate
+result, err := validateCredential(ctx, store, ext)
+
+// 4. Security: authorization header removed from forwarded request
 ```
 
-### Example 2: JWT with Header and Issuer Parsing
+### Example 2: Cookie
+
+The cookie source extracts a JWT from a named cookie and sanitizes the `Cookie` header so other cookies remain intact:
 
 ```go
-// Extraction - parse JWT to get algorithm, key ID, and issuer
-token := extractTokenFromHeader(req)
-header := parseJWTHeader(token)
-claims := parseJWTClaims(token) // Don't validate yet, just extract
+cc, err := CredentialContextFromCheckRequest(req)
+ext, err := subjectSources.Extract(ctx, cc)
+// ext.Credential is *trust.BearerCredential{Token: "..."}
+// ext.SetHeaders["cookie"] is "session=abc" (cs_jwt removed)
 
-cred := &JWTCredential{
-    Token:          token,
-    Algorithm:      header.Algorithm,
-    KeyID:          header.KeyID,
-    IssuerIdentity: claims.Issuer,  // e.g., "https://accounts.google.com"
-}
-headersUsed := []string{"authorization"}
-
-// Validator store validates - internally extracts issuer and selects validator
-// Gets validator configured for accounts.google.com with appropriate JWKS
-result, err := store.Validate(ctx, cred)
-// Validation can use Algorithm and KeyID to select specific key
-
-// Security: "authorization" header removed
+result, err := validateCredential(ctx, store, ext)
 ```
 
-### Example 3: API Key in Custom Header
+### Example 3: mTLS Actor
+
+mTLS actor extraction reads TLS peer info from `CredentialContext` before falling through to the bearer source chain. A future `MTLSCredentialSource` will replace the inline check in `extractActorCredential`:
 
 ```go
-// Extraction
-apiKey := req.GetHeaders()["x-api-key"]
+cc := CredentialContextFromGRPC(ctx)
+// cc.TLSPeer.Certificates populated from gRPC TLS state
 
-cred := &BearerCredential{  // Reuse bearer for simple keys
-    Token: apiKey,
-}
-headersUsed := []string{"x-api-key"}  // Track custom header
+ext, err := extractActorCredential(ctx, actorSources)
+// ext.Credential is *trust.MTLSCredential when client cert is present
 
-// Validation
-validator.Validate(ctx, cred)
-
-// Security: "x-api-key" header removed - key stays at perimeter
-```
-
-### Example 4: mTLS
-
-```go
-// Extraction - from TLS layer, not headers
-tlsInfo := req.GetAttributes().GetSource().GetCertificate()
-
-cred := &MTLSCredential{
-    Certificate:         tlsInfo.GetCertificate(),
-    Chain:               tlsInfo.GetChain(),
-    PeerCertificateHash: tlsInfo.GetHash(),
-}
-headersUsed := nil  // No headers used for mTLS
-
-// Validation - validates certificate against CA
-validator.Validate(ctx, cred)
-
-// Security: No headers to remove (TLS layer)
+result, err := validateCredential(ctx, store, ext)
+// No headers to remove (TLS layer)
 ```
 
 ## Type Assertions in Validators
@@ -221,39 +200,56 @@ type JWTValidator struct {
 }
 
 func (v *JWTValidator) Validate(ctx context.Context, credential Credential) (*Result, error) {
-    // Type assert to access JWT-specific fields
     jwtCred, ok := credential.(*JWTCredential)
     if !ok {
         return nil, fmt.Errorf("expected JWTCredential, got %T", credential)
     }
-    
-    // Now we can use type-specific fields
+
     key, err := v.jwksClient.GetKey(jwtCred.KeyID)
     if err != nil {
         return nil, err
     }
-    
-    // Validate JWT with specific algorithm
+
     return validateJWT(jwtCred.Token, key, jwtCred.Algorithm)
 }
 ```
 
-## Future Enhancements
+Bearer tokens extracted by `BearerCredentialSource` or `CookieCredentialSource` arrive as `*BearerCredential`. The trust store selects a validator based on configuration; JWT validators parse the token internally.
 
-### Multi-Source Extraction
+## Testing
 
-Same credential type from different sources:
+Type safety makes testing straightforward -- construct credentials directly without HTTP plumbing:
 
 ```go
-// Bearer from Authorization header
-cred, headers := extractBearerFromAuthHeader(req)
+func TestJWTValidation(t *testing.T) {
+    cred := &JWTCredential{
+        Token:     "eyJhbGc...",
+        Algorithm: "RS256",
+        KeyID:     "key-1",
+    }
 
-// Bearer from Cookie
-cred, headers := extractBearerFromCookie(req)
-
-// Bearer from Query Parameter (for websockets)
-cred, headers := extractBearerFromQuery(req)
+    result, err := validator.Validate(ctx, cred)
+    // ... assertions
+}
 ```
+
+Credential sources can be tested with a plain `CredentialContext`:
+
+```go
+ext, err := (&BearerCredentialSource{SourceName: "bearer"}).Extract(CredentialContext{
+    Headers: map[string]string{"authorization": "Bearer test-token"},
+})
+```
+
+## Future Enhancements
+
+### mTLS CredentialSource
+
+`CredentialContext.TLSPeer` is ready for a future `MTLSCredentialSource` that reads client certificates from the peer info. Currently, mTLS actor extraction is handled directly in `extractActorCredential` as a priority check before the source chain.
+
+### Exchange Subject Token Mapping
+
+The exchange endpoint currently wraps `subject_token` as a `BearerCredential` regardless of `subject_token_type`. A future enhancement should map RFC 8693 token types (e.g., `urn:ietf:params:oauth:token-type:jwt`) to specific credential types. This mapping likely belongs on the exchange server configuration or a top-level token type registry, not on `CredentialSource` (since exchange body tokens have exactly one extraction path by definition).
 
 ### Composite Credentials
 
@@ -264,8 +260,6 @@ type CompositeCredential struct {
     Primary   Credential  // e.g., JWT
     Secondary Credential  // e.g., API key
 }
-
-headersUsed := []string{"authorization", "x-api-key"}
 ```
 
 ### Proof-of-Possession
@@ -279,28 +273,7 @@ type DPoPCredential struct {
     Method      string
     URI         string
 }
-
-headersUsed := []string{"authorization", "dpop"}
 ```
-
-## Testing
-
-Type safety makes testing easier:
-
-```go
-func TestJWTValidation(t *testing.T) {
-    cred := &JWTCredential{
-        Token:     "eyJhbGc...",
-        Algorithm: "RS256",
-        KeyID:     "key-1",
-    }
-    
-    result, err := validator.Validate(ctx, cred)
-    // ... assertions
-}
-```
-
-No need to build maps or worry about string keys - everything is type-checked at compile time.
 
 ## Summary
 
@@ -308,15 +281,17 @@ No need to build maps or worry about string keys - everything is type-checked at
 |--------|----------|
 | **Credential Type** | Strongly typed structs implementing `Credential` interface |
 | **Credential Content** | Only validation material, no transport metadata |
-| **Issuer Identification** | Each credential identifies its issuer for trust store lookup |
-| **Header Tracking** | Extraction layer returns `(credential, headersUsed, error)` |
+| **Credential Context** | `CredentialContext` struct normalizes headers/path/TLS from any transport |
+| **Extraction Interface** | `CredentialSource.Extract(CredentialContext)` -- transport-neutral |
+| **Policy Basis** | Verified claims from `trust.Result`, not transport/presentation details |
+| **Configuration** | Global `credential_sources` shared by all extraction paths; trust store determines usability |
+| **Issuer Identification** | Some credential types carry issuer info for trust store routing; bearer tokens rely on store configuration |
 | **Security Boundary** | ext_authz removes headers used for external credentials |
-| **Type Safety** | Compile-time checking, no string maps |
-| **Multi-Trust-Domain** | Issuer field enables multiple IdPs/trust domains |
-| **Extensibility** | Easy to add new credential types without changing contracts |
+| **Exchange Body Tokens** | Protocol-level concern, separate from `CredentialSource` |
+| **Extensibility** | Easy to add new credential types or sources without changing contracts |
 
 This design cleanly separates:
-1. **Extraction** (transport → credential)
-2. **Validation** (credential → claims)
-3. **Security** (removing external credentials at boundary)
-
+1. **Normalization** (transport -> CredentialContext)
+2. **Extraction** (CredentialContext -> credential via CredentialSource)
+3. **Validation** (credential -> claims via trust store)
+4. **Security** (removing external credentials at boundary)

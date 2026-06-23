@@ -17,23 +17,26 @@ import (
 type ExchangeServer struct {
 	parsecv1.UnimplementedTokenExchangeServiceServer
 
-	trustStore           trust.Store
-	tokenService         *service.TokenService
-	claimsFilterRegistry ClaimsFilterRegistry
-	observer             service.TokenExchangeObserver
+	trustStore              trust.Store
+	tokenService            *service.TokenService
+	claimsFilterRegistry    ClaimsFilterRegistry
+	observer                service.TokenExchangeObserver
+	callerCredentialSources CredentialSources
 }
 
-// NewExchangeServer creates a new token exchange server
-func NewExchangeServer(trustStore trust.Store, tokenService *service.TokenService, claimsFilterRegistry ClaimsFilterRegistry, observer service.TokenExchangeObserver) *ExchangeServer {
-	// Use null object pattern - default to no-op observer if none provided
+// NewExchangeServer creates a new token exchange server.
+// callerCredentialSources defines where caller (actor) credentials are extracted from.
+func NewExchangeServer(trustStore trust.Store, tokenService *service.TokenService, claimsFilterRegistry ClaimsFilterRegistry, callerCredentialSources CredentialSources, observer service.TokenExchangeObserver) *ExchangeServer {
 	if observer == nil {
 		observer = service.NoOpTokenExchangeObserver{}
 	}
+
 	return &ExchangeServer{
-		trustStore:           trustStore,
-		tokenService:         tokenService,
-		claimsFilterRegistry: claimsFilterRegistry,
-		observer:             observer,
+		trustStore:              trustStore,
+		tokenService:            tokenService,
+		claimsFilterRegistry:    claimsFilterRegistry,
+		observer:                observer,
+		callerCredentialSources: callerCredentialSources,
 	}
 }
 
@@ -48,24 +51,10 @@ func (s *ExchangeServer) Exchange(ctx context.Context, req *parsecv1.ExchangeReq
 		return nil, fmt.Errorf("unsupported grant_type: %s", req.GrantType)
 	}
 
-	// 2. Extract actor credential from gRPC context
-	actorCred, err := extractActorCredential(ctx)
+	// 2. Authenticate actor (caller) from gRPC context
+	actor, err := authenticateActor(ctx, s.callerCredentialSources, s.trustStore, p)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract actor credential: %w", err)
-	}
-
-	var actor *trust.Result
-	if actorCred != nil {
-		var validationErr error
-		actor, validationErr = s.trustStore.Validate(ctx, actorCred)
-		if validationErr != nil {
-			p.ActorValidationFailed(validationErr)
-			return nil, fmt.Errorf("actor validation failed: %w", validationErr)
-		}
-		p.ActorValidationSucceeded(actor)
-	} else {
-		actor = trust.AnonymousResult()
-		p.ActorValidationSucceeded(actor)
+		return nil, err
 	}
 
 	// 3. Parse and filter client-provided request_context claims
@@ -129,7 +118,6 @@ func (s *ExchangeServer) Exchange(ctx context.Context, req *parsecv1.ExchangeReq
 	}
 
 	// Validate subject credential against filtered trust store
-	// The filtered store only includes validators the actor is allowed to use
 	result, err := filteredStore.Validate(ctx, cred)
 	if err != nil {
 		p.SubjectTokenValidationFailed(err)

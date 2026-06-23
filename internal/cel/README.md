@@ -20,7 +20,7 @@ This package provides CEL extensions specifically for claim mapping in Parsec:
   - `subject.audience` - Intended audience
   - `subject.scope` - OAuth2 scope
 
-- **`workload`** - Workload identity information (map, same structure as subject)
+- **`actor`** - Actor identity information (map, same structure as subject)
 
 - **`request`** - Request attributes (map)
   - `request.method` - HTTP method

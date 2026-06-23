@@ -33,6 +33,10 @@ type Config struct {
 	// Fixtures for hermetic testing (HTTP rules, etc.)
 	Fixtures []FixtureConfig `koanf:"fixtures"`
 
+	// CredentialSources configures where to extract credentials, in priority
+	// order. Shared by authz subject/actor extraction and exchange caller extraction.
+	CredentialSources []CredentialSourceConfig `koanf:"credential_sources"`
+
 	// Observability configuration (logging, metrics, tracing)
 	Observability *ObservabilityConfig `koanf:"observability"`
 }
@@ -50,6 +54,18 @@ type ServerConfig struct {
 type AuthzServerConfig struct {
 	// TokenTypes specifies which token types to issue and how to deliver them
 	TokenTypes []TokenTypeConfig `koanf:"token_types"`
+}
+
+// CredentialSourceConfig configures a credential extraction source
+type CredentialSourceConfig struct {
+	// Name uniquely identifies this credential source (multiple sources may share a type)
+	Name string `koanf:"name"`
+
+	// Type is the source kind: bearer, cookie
+	Type string `koanf:"type"`
+
+	// CookieName is the cookie to read (cookie type)
+	CookieName string `koanf:"cookie_name"`
 }
 
 // TokenTypeConfig specifies a token type to issue via ext_authz
@@ -113,7 +129,8 @@ type ValidatorConfig struct {
 	// (TrustDomain is shared)
 
 	// Stub Validator fields
-	CredentialTypes []string `koanf:"credential_types"` // e.g., ["bearer", "jwt"]
+	CredentialTypes []string       `koanf:"credential_types"` // e.g., ["bearer", "jwt"]
+	Claims          map[string]any `koanf:"claims"`           // JWT-like claims returned on success
 }
 
 // ValidatorFilterConfig configures validator filtering for actors
