@@ -29,6 +29,10 @@ func (s *BasicAuthCredentialSource) Extract(_ context.Context, cc CredentialCont
 	if !ok || !strings.EqualFold(scheme, "basic") {
 		return nil, nil
 	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
 
 	decoded, err := base64.StdEncoding.DecodeString(value)
 	if err != nil {

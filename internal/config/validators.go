@@ -230,11 +230,14 @@ func buildRegistryHTTPClient(tlsCfg *RegistryTLSConfig, transport http.RoundTrip
 		return &http.Client{Transport: transport, Timeout: timeout}, nil
 	}
 
-	registryTransport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: tlsCfg.InsecureSkipVerify,
-			ServerName:         tlsCfg.SNI,
-		},
+	baseTransport, _ := transport.(*http.Transport)
+	if baseTransport == nil {
+		baseTransport = http.DefaultTransport.(*http.Transport)
+	}
+	registryTransport := baseTransport.Clone()
+	registryTransport.TLSClientConfig = &tls.Config{
+		InsecureSkipVerify: tlsCfg.InsecureSkipVerify,
+		ServerName:         tlsCfg.SNI,
 	}
 
 	if tlsCfg.ClientCertPath != "" && tlsCfg.ClientKeyPath == "" {

@@ -382,6 +382,13 @@ func TestNewRegistryValidator_ConfigValidation(t *testing.T) {
 			wantErr:         true,
 		},
 		{
+			name:            "URL without host",
+			registryURL:     "https:///path",
+			trustDomain:     "test",
+			usernamePattern: `^\d+\|.+$`,
+			wantErr:         true,
+		},
+		{
 			name:            "valid config",
 			registryURL:     "https://example.com",
 			trustDomain:     "test",

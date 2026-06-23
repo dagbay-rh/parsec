@@ -116,6 +116,9 @@ func NewRegistryValidator(registryURL, trustDomain, usernamePattern string, opts
 	if parsedURL.Scheme != "https" {
 		return nil, fmt.Errorf("registry URL must use https scheme, got %q", parsedURL.Scheme)
 	}
+	if parsedURL.Host == "" {
+		return nil, fmt.Errorf("registry URL must include a host")
+	}
 
 	if trustDomain == "" {
 		return nil, fmt.Errorf("trust domain is required")
@@ -281,15 +284,19 @@ func (v *RegistryValidator) callRegistryService(ctx context.Context, username, p
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxRegistryResponseBytes))
+	if resp.StatusCode != http.StatusOK {
+		p.AccessDenied()
+		return fmt.Errorf("%w: registry service returned status %d", ErrInvalidToken, resp.StatusCode)
+	}
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxRegistryResponseBytes+1))
 	if err != nil {
 		p.RegistryCallFailed(err)
 		return fmt.Errorf("%w: failed to read registry response: %v", ErrInvalidToken, err)
 	}
-
-	if resp.StatusCode != http.StatusOK {
-		p.AccessDenied()
-		return fmt.Errorf("%w: registry service returned status %d", ErrInvalidToken, resp.StatusCode)
+	if int64(len(respBody)) > maxRegistryResponseBytes {
+		p.RegistryCallFailed(fmt.Errorf("response exceeds %d bytes", maxRegistryResponseBytes))
+		return fmt.Errorf("%w: registry response too large", ErrInvalidToken)
 	}
 
 	var authResp registryAuthResponse

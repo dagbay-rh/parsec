@@ -271,6 +271,36 @@ func TestCredentialSources_Extract(t *testing.T) {
 		}
 	})
 
+	t.Run("basic auth with extra whitespace trims value", func(t *testing.T) {
+		t.Parallel()
+		source := NewBasicAuthCredentialSource(CredentialSourceTypeBasicAuth)
+		encoded := base64.StdEncoding.EncodeToString([]byte("alice:secret"))
+		ext, err := source.Extract(ctx, makeCC(map[string]string{
+			"authorization": "Basic  " + encoded,
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		basic := ext.Credential.(*trust.BasicAuthCredential)
+		if basic.Username != "alice" {
+			t.Fatalf("expected trimmed username 'alice', got %q", basic.Username)
+		}
+	})
+
+	t.Run("basic auth empty value after scheme", func(t *testing.T) {
+		t.Parallel()
+		source := NewBasicAuthCredentialSource(CredentialSourceTypeBasicAuth)
+		ext, err := source.Extract(ctx, makeCC(map[string]string{
+			"authorization": "Basic   ",
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ext != nil {
+			t.Fatalf("expected nil extraction for empty value, got %+v", ext)
+		}
+	})
+
 	t.Run("basic auth empty authorization header", func(t *testing.T) {
 		t.Parallel()
 		source := NewBasicAuthCredentialSource(CredentialSourceTypeBasicAuth)
