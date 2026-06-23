@@ -50,6 +50,7 @@ trust_store:
       trust_domain: "registry.redhat.com"
       username_pattern: "^[0-9]+\\|.+"
       cache_ttl: "5m"
+      http_timeout: "10s"
       registry_tls:
         client_cert_path: "./tmp/client.crt"
         client_key_path: "./tmp/client.key"

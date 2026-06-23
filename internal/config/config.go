@@ -136,7 +136,8 @@ type ValidatorConfig struct {
 	RegistryURL     string             `koanf:"registry_url"`
 	RegistryTLS     *RegistryTLSConfig `koanf:"registry_tls"`
 	UsernamePattern string             `koanf:"username_pattern"`
-	CacheTTL        string             `koanf:"cache_ttl"` // Duration string like "5m"
+	CacheTTL        string             `koanf:"cache_ttl"`    // Duration string like "5m"
+	HTTPTimeout     string             `koanf:"http_timeout"` // Duration string like "30s"
 }
 
 // RegistryTLSConfig configures TLS for the registry service connection

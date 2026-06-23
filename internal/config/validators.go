@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"maps"
 	"net/http"
@@ -187,42 +188,71 @@ func newStubValidator(cfg ValidatorConfig) (trust.Validator, error) {
 
 // newRegistryValidator creates a registry-auth validator
 func newRegistryValidator(cfg ValidatorConfig, transport http.RoundTripper, trustObs trust.TrustObserver) (trust.Validator, error) {
-	if cfg.RegistryURL == "" {
-		return nil, fmt.Errorf("registry_validator requires registry_url")
-	}
-	if cfg.TrustDomain == "" {
-		return nil, fmt.Errorf("registry_validator requires trust_domain")
-	}
-
-	validatorCfg := trust.RegistryValidatorConfig{
-		URL:             cfg.RegistryURL,
-		TrustDomain:     cfg.TrustDomain,
-		UsernamePattern: cfg.UsernamePattern,
-		Observer:        trustObs,
-	}
+	var opts []trust.RegistryValidatorOption
 
 	if cfg.CacheTTL != "" {
 		duration, err := time.ParseDuration(cfg.CacheTTL)
 		if err != nil {
 			return nil, fmt.Errorf("invalid cache_ttl: %w", err)
 		}
-		validatorCfg.CacheTTL = &duration
+		opts = append(opts, trust.WithCacheTTL(duration))
 	}
 
-	if cfg.RegistryTLS != nil {
-		validatorCfg.TLSConfig = &trust.RegistryTLSConfig{
-			InsecureSkipVerify: cfg.RegistryTLS.InsecureSkipVerify,
-			ClientCertPath:     cfg.RegistryTLS.ClientCertPath,
-			ClientKeyPath:      cfg.RegistryTLS.ClientKeyPath,
-			SNI:                cfg.RegistryTLS.SNI,
+	var httpTimeout time.Duration
+	if cfg.HTTPTimeout != "" {
+		timeout, err := time.ParseDuration(cfg.HTTPTimeout)
+		if err != nil {
+			return nil, fmt.Errorf("invalid http_timeout: %w", err)
 		}
+		httpTimeout = timeout
 	}
 
-	if transport != nil {
-		validatorCfg.HTTPClient = &http.Client{Transport: transport}
+	httpClient, err := buildRegistryHTTPClient(cfg.RegistryTLS, transport, httpTimeout)
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, trust.WithHTTPClient(httpClient))
+
+	opts = append(opts, trust.WithRegistryObserver(trustObs))
+
+	return trust.NewRegistryValidator(cfg.RegistryURL, cfg.TrustDomain, cfg.UsernamePattern, opts...)
+}
+
+func buildRegistryHTTPClient(tlsCfg *RegistryTLSConfig, transport http.RoundTripper, timeout time.Duration) (*http.Client, error) {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
 	}
 
-	return trust.NewRegistryValidator(validatorCfg)
+	if tlsCfg == nil {
+		if transport == nil {
+			return &http.Client{Timeout: timeout}, nil
+		}
+		return &http.Client{Transport: transport, Timeout: timeout}, nil
+	}
+
+	registryTransport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: tlsCfg.InsecureSkipVerify,
+			ServerName:         tlsCfg.SNI,
+		},
+	}
+
+	if tlsCfg.ClientCertPath != "" && tlsCfg.ClientKeyPath == "" {
+		return nil, fmt.Errorf("must provide both client certificate/key for registry auth: only certificate provided")
+	}
+	if tlsCfg.ClientCertPath == "" && tlsCfg.ClientKeyPath != "" {
+		return nil, fmt.Errorf("must provide both client certificate/key for registry auth: only key provided")
+	}
+
+	if tlsCfg.ClientCertPath != "" && tlsCfg.ClientKeyPath != "" {
+		cert, err := tls.LoadX509KeyPair(tlsCfg.ClientCertPath, tlsCfg.ClientKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client certificate/key: %w", err)
+		}
+		registryTransport.TLSClientConfig.Certificates = []tls.Certificate{cert}
+	}
+
+	return &http.Client{Transport: registryTransport, Timeout: timeout}, nil
 }
 
 // newValidatorFilter creates a validator filter from configuration

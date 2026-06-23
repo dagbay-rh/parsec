@@ -6,7 +6,6 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -40,18 +39,8 @@ type RegistryValidator struct {
 	observer        RegistryValidatorObserver
 }
 
-// RegistryValidatorConfig contains configuration for registry-auth validation.
-type RegistryValidatorConfig struct {
-	// URL is the registry authorization service endpoint
-	URL string
-
-	// TrustDomain for validated identities
-	TrustDomain string
-
-	// UsernamePattern is a regex the username must match.
-	// Empty means accept all usernames.
-	UsernamePattern string
-
+// registryValidatorConfig contains configuration for registry-auth validation.
+type registryValidatorConfig struct {
 	// CacheTTL is the TTL for caching successful auth results. Zero or negative value disables caching.
 	// If nil, defaults to 5 min.
 	CacheTTL *time.Duration
@@ -60,25 +49,11 @@ type RegistryValidatorConfig struct {
 	// If nil, a default client is created (with TLSConfig applied if provided).
 	HTTPClient *http.Client
 
-	// TLSConfig configures TLS for the registry service connection.
-	TLSConfig *RegistryTLSConfig
-
 	// Clock for time operations (testability). If nil, uses system clock.
 	Clock clock.Clock
 
 	// Observer for validation events. If nil, a no-op observer is used.
 	Observer RegistryValidatorObserver
-}
-
-// RegistryTLSConfig configures TLS for the registry service connection.
-type RegistryTLSConfig struct {
-	InsecureSkipVerify bool
-	ClientCertPath     string
-	ClientKeyPath      string
-	// SNI overrides the TLS ServerName sent during the handshake. Needed when the
-	// registry URL points to an internal address but the server's certificate is
-	// issued for a different hostname (e.g. behind a load balancer or proxy).
-	SNI string
 }
 
 type cacheEntry struct {
@@ -103,54 +78,79 @@ type registryAccess struct {
 	Pull string `json:"pull"`
 }
 
+type RegistryValidatorOption func(*registryValidatorConfig)
+
+func WithCacheTTL(ttl time.Duration) RegistryValidatorOption {
+	return func(cfg *registryValidatorConfig) {
+		cfg.CacheTTL = &ttl
+	}
+}
+
+func WithHTTPClient(client *http.Client) RegistryValidatorOption {
+	return func(cfg *registryValidatorConfig) {
+		cfg.HTTPClient = client
+	}
+}
+
+func WithClock(clock clock.Clock) RegistryValidatorOption {
+	return func(cfg *registryValidatorConfig) {
+		cfg.Clock = clock
+	}
+}
+func WithRegistryObserver(observer RegistryValidatorObserver) RegistryValidatorOption {
+	return func(cfg *registryValidatorConfig) {
+		cfg.Observer = observer
+	}
+}
+
 // NewRegistryValidator creates a new registry-auth validator.
-func NewRegistryValidator(cfg RegistryValidatorConfig) (*RegistryValidator, error) {
-	if cfg.URL == "" {
+func NewRegistryValidator(registryURL, trustDomain, usernamePattern string, opts ...RegistryValidatorOption) (*RegistryValidator, error) {
+	// validation
+	if registryURL == "" {
 		return nil, fmt.Errorf("registry URL is required")
 	}
-	u, err := url.Parse(cfg.URL)
+	parsedURL, err := url.Parse(registryURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid registry URL: %w", err)
 	}
-	if u.Scheme != "https" {
-		return nil, fmt.Errorf("registry URL must use https scheme, got %q", u.Scheme)
+	if parsedURL.Scheme != "https" {
+		return nil, fmt.Errorf("registry URL must use https scheme, got %q", parsedURL.Scheme)
 	}
-	if cfg.TrustDomain == "" {
+
+	if trustDomain == "" {
 		return nil, fmt.Errorf("trust domain is required")
 	}
-
+	
+	if usernamePattern == "" {
+		return nil, fmt.Errorf("usernamePattern is required")
+	}
 	var compiledPattern *regexp.Regexp
-	if cfg.UsernamePattern != "" {
-		var err error
-		compiledPattern, err = regexp.Compile(cfg.UsernamePattern)
-		if err != nil {
-			return nil, fmt.Errorf("invalid username pattern: %w", err)
-		}
+	compiledPattern, err = regexp.Compile(usernamePattern)
+	if err != nil {
+		return nil, fmt.Errorf("invalid username pattern: %w", err)
 	}
 
-	httpClient := cfg.HTTPClient
-	if httpClient == nil {
-		var err error
-		httpClient, err = buildHTTPClient(cfg.TLSConfig)
-		if err != nil {
-			return nil, err
-		}
-	}
+	// options
+	cfg := registryValidatorConfig{}
+    for _, option := range opts {
+        option(&cfg)
+    }
 
-	hmacKey := make([]byte, 32)
-	if _, err := rand.Read(hmacKey); err != nil {
-		return nil, fmt.Errorf("failed to generate cache HMAC key: %w", err)
-	}
-
+	// defaults
 	var cacheTTL time.Duration
 	if cfg.CacheTTL == nil {
 		cacheTTL = 5 * time.Minute
-	} else if *cfg.CacheTTL <= 0 {
+	} else if *cfg.CacheTTL < 0 {
 		cacheTTL = 0
 	} else {
 		cacheTTL = *cfg.CacheTTL
 	}
-	
+
+	httpClient := cfg.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 30 * time.Second}
+	}
+
 	clk := cfg.Clock
 	if clk == nil {
 		clk = clock.NewSystemClock()
@@ -160,10 +160,15 @@ func NewRegistryValidator(cfg RegistryValidatorConfig) (*RegistryValidator, erro
 	if obs == nil {
 		obs = NoOpRegistryValidatorObserver{}
 	}
+	
+	hmacKey := make([]byte, 32)
+	if _, err := rand.Read(hmacKey); err != nil {
+		return nil, fmt.Errorf("failed to generate cache HMAC key: %w", err)
+	}
 
 	return &RegistryValidator{
-		url:             cfg.URL,
-		trustDomain:     cfg.TrustDomain,
+		url:             registryURL,
+		trustDomain:     trustDomain,
 		usernamePattern: compiledPattern,
 		httpClient:      httpClient,
 		cacheTTL:        cacheTTL,
@@ -174,31 +179,6 @@ func NewRegistryValidator(cfg RegistryValidatorConfig) (*RegistryValidator, erro
 	}, nil
 }
 
-func buildHTTPClient(tlsCfg *RegistryTLSConfig) (*http.Client, error) {
-	if tlsCfg == nil {
-		return &http.Client{Timeout: 30 * time.Second}, nil
-	}
-
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: tlsCfg.InsecureSkipVerify,
-			ServerName:         tlsCfg.SNI,
-		},
-	}
-
-	if tlsCfg.ClientCertPath != "" && tlsCfg.ClientKeyPath != "" {
-		cert, err := tls.LoadX509KeyPair(tlsCfg.ClientCertPath, tlsCfg.ClientKeyPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load client certificate/key: %w", err)
-		}
-		transport.TLSClientConfig.Certificates = []tls.Certificate{cert}
-	}
-
-	return &http.Client{
-		Transport: transport,
-		Timeout:   30 * time.Second,
-	}, nil
-}
 
 // CredentialTypes returns the credential types this validator can handle.
 func (v *RegistryValidator) CredentialTypes() []CredentialType {

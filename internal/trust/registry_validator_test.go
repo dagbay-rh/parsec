@@ -38,26 +38,21 @@ func countingFixtureProvider(statusCode int, body string, counter *atomic.Int32)
 	})
 }
 
-func createRegistryValidator(t *testing.T, provider httpfixture.FixtureProvider, opts ...func(*RegistryValidatorConfig)) *RegistryValidator {
-	t.Helper()
-
-	httpClient := &http.Client{
+func fixtureHTTPClient(provider httpfixture.FixtureProvider) *http.Client {
+	return &http.Client{
 		Transport: httpfixture.NewTransport(httpfixture.TransportConfig{
 			Provider: provider,
 			Strict:   true,
 		}),
 	}
+}
 
-	cfg := RegistryValidatorConfig{
-		URL:         registryURL,
-		TrustDomain: "test-domain",
-		HTTPClient:  httpClient,
-	}
-	for _, opt := range opts {
-		opt(&cfg)
-	}
+func createRegistryValidator(t *testing.T, provider httpfixture.FixtureProvider, opts ...RegistryValidatorOption) *RegistryValidator {
+	t.Helper()
 
-	v, err := NewRegistryValidator(cfg)
+	opts = append([]RegistryValidatorOption{WithHTTPClient(fixtureHTTPClient(provider))}, opts...)
+
+	v, err := NewRegistryValidator(registryURL, "test-domain", `^\d+\|.+$`, opts...)
 	if err != nil {
 		t.Fatalf("failed to create registry validator: %v", err)
 	}
@@ -142,9 +137,7 @@ func TestRegistryValidator_EmptyCredentials(t *testing.T) {
 
 func TestRegistryValidator_UsernamePatternRejection(t *testing.T) {
 	provider := registryFixtureProvider(200, `{"access":{"pull":"granted"}}`)
-	v := createRegistryValidator(t, provider, func(cfg *RegistryValidatorConfig) {
-		cfg.UsernamePattern = `^\d+\|.+$`
-	})
+	v := createRegistryValidator(t, provider)
 
 	tests := []struct {
 		name      string
@@ -268,11 +261,10 @@ func TestRegistryValidator_Caching(t *testing.T) {
 	provider := countingFixtureProvider(200, `{"access":{"pull":"granted"}}`, &callCount)
 
 	clk := clock.NewFixtureClock(time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC))
-	v := createRegistryValidator(t, provider, func(cfg *RegistryValidatorConfig) {
-		duration := 5 * time.Minute
-		cfg.CacheTTL = &duration
-		cfg.Clock = clk
-	})
+	v := createRegistryValidator(t, provider,
+		WithCacheTTL(5*time.Minute),
+		WithClock(clk),
+	)
 
 	cred := &BasicAuthCredential{Username: "123|alice", Password: "secret"}
 
@@ -300,11 +292,10 @@ func TestRegistryValidator_CacheExpiry(t *testing.T) {
 	provider := countingFixtureProvider(200, `{"access":{"pull":"granted"}}`, &callCount)
 
 	clk := clock.NewFixtureClock(time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC))
-	v := createRegistryValidator(t, provider, func(cfg *RegistryValidatorConfig) {
-		duration := 5 * time.Minute
-		cfg.CacheTTL = &duration
-		cfg.Clock = clk
-	})
+	v := createRegistryValidator(t, provider,
+		WithCacheTTL(5*time.Minute),
+		WithClock(clk),
+	)
 
 	cred := &BasicAuthCredential{Username: "123|alice", Password: "secret"}
 
@@ -334,7 +325,8 @@ func TestRegistryValidator_NoCaching(t *testing.T) {
 	var callCount atomic.Int32
 	provider := countingFixtureProvider(200, `{"access":{"pull":"granted"}}`, &callCount)
 
-	v := createRegistryValidator(t, provider)
+	zero := time.Duration(0)
+	v := createRegistryValidator(t, provider, WithCacheTTL(zero))
 
 	cred := &BasicAuthCredential{Username: "123|alice", Password: "secret"}
 
@@ -348,42 +340,59 @@ func TestRegistryValidator_NoCaching(t *testing.T) {
 
 func TestNewRegistryValidator_ConfigValidation(t *testing.T) {
 	tests := []struct {
-		name    string
-		cfg     RegistryValidatorConfig
-		wantErr bool
+		name            string
+		registryURL     string
+		trustDomain     string
+		usernamePattern string
+		wantErr         bool
 	}{
 		{
-			name:    "missing URL",
-			cfg:     RegistryValidatorConfig{TrustDomain: "test"},
-			wantErr: true,
+			name:            "missing URL",
+			registryURL:     "",
+			trustDomain:     "test",
+			usernamePattern: `^\d+\|.+$`,
+			wantErr:         true,
 		},
 		{
-			name:    "missing trust domain",
-			cfg:     RegistryValidatorConfig{URL: "https://example.com"},
-			wantErr: true,
+			name:            "missing trust domain",
+			registryURL:     "https://example.com",
+			trustDomain:     "",
+			usernamePattern: `^\d+\|.+$`,
+			wantErr:         true,
 		},
 		{
-			name: "invalid username pattern",
-			cfg: RegistryValidatorConfig{
-				URL:             "https://example.com",
-				TrustDomain:     "test",
-				UsernamePattern: "[invalid",
-			},
-			wantErr: true,
+			name:            "missing username pattern",
+			registryURL:     "https://example.com",
+			trustDomain:     "test",
+			usernamePattern: "",
+			wantErr:         true,
 		},
 		{
-			name: "valid config",
-			cfg: RegistryValidatorConfig{
-				URL:         "https://example.com",
-				TrustDomain: "test",
-			},
-			wantErr: false,
+			name:            "invalid username pattern",
+			registryURL:     "https://example.com",
+			trustDomain:     "test",
+			usernamePattern: "[invalid",
+			wantErr:         true,
+		},
+		{
+			name:            "non-https URL",
+			registryURL:     "http://example.com",
+			trustDomain:     "test",
+			usernamePattern: `^\d+\|.+$`,
+			wantErr:         true,
+		},
+		{
+			name:            "valid config",
+			registryURL:     "https://example.com",
+			trustDomain:     "test",
+			usernamePattern: `^\d+\|.+$`,
+			wantErr:         false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewRegistryValidator(tt.cfg)
+			_, err := NewRegistryValidator(tt.registryURL, tt.trustDomain, tt.usernamePattern)
 			if tt.wantErr && err == nil {
 				t.Error("expected error")
 			}
