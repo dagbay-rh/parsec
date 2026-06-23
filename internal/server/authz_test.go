@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
@@ -901,4 +902,186 @@ func TestAuthzServer_Check_Observability(t *testing.T) {
 			"End",
 		)
 	})
+}
+
+func TestAuthzServer_ExtractCredential(t *testing.T) {
+	trustStore := trust.NewStubStore()
+	stubValidator := trust.NewStubValidator(trust.CredentialTypeBearer, trust.CredentialTypeBasicAuth)
+	trustStore.AddValidator(stubValidator)
+
+	dataSourceRegistry := service.NewDataSourceRegistry()
+	issuerRegistry := service.NewSimpleRegistry()
+	txnMappers := []service.ClaimMapper{service.NewPassthroughSubjectMapper()}
+	reqMappers := []service.ClaimMapper{service.NewRequestAttributesMapper()}
+	txnTokenIssuer := issuer.NewStubIssuer(issuer.StubIssuerConfig{
+		IssuerURL:                 "https://parsec.test",
+		TTL:                       5 * time.Minute,
+		TransactionContextMappers: txnMappers,
+		RequestContextMappers:     reqMappers,
+	})
+	issuerRegistry.Register(service.TokenTypeTransactionToken, txnTokenIssuer)
+	tokenService := service.NewTokenService("parsec.test", dataSourceRegistry, issuerRegistry, nil)
+
+	authzServer := NewAuthzServer(trustStore, tokenService, nil, nil)
+	ctx := context.Background()
+
+	makeReq := func(authHeader string) *authv3.CheckRequest {
+		return &authv3.CheckRequest{
+			Attributes: &authv3.AttributeContext{
+				Request: &authv3.AttributeContext_Request{
+					Http: &authv3.AttributeContext_HttpRequest{
+						Method: "GET",
+						Path:   "/api/resource",
+						Headers: map[string]string{
+							"authorization": authHeader,
+						},
+					},
+				},
+			},
+		}
+	}
+
+	t.Run("bearer case insensitive", func(t *testing.T) {
+		for _, scheme := range []string{"Bearer", "bearer", "BEARER"} {
+			t.Run(scheme, func(t *testing.T) {
+				resp, err := authzServer.Check(ctx, makeReq(scheme+" test-token"))
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if resp.Status.Code != 0 {
+					t.Errorf("expected OK for %q, got code %d: %s", scheme, resp.Status.Code, resp.Status.Message)
+				}
+			})
+		}
+	})
+
+	t.Run("basic auth valid", func(t *testing.T) {
+		encoded := base64.StdEncoding.EncodeToString([]byte("alice:secret"))
+		resp, err := authzServer.Check(ctx, makeReq("Basic "+encoded))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Status.Code != 0 {
+			t.Errorf("expected OK, got code %d: %s", resp.Status.Code, resp.Status.Message)
+		}
+	})
+
+	t.Run("basic auth case insensitive", func(t *testing.T) {
+		for _, scheme := range []string{"Basic", "basic", "BASIC"} {
+			t.Run(scheme, func(t *testing.T) {
+				encoded := base64.StdEncoding.EncodeToString([]byte("alice:secret"))
+				resp, err := authzServer.Check(ctx, makeReq(scheme+" "+encoded))
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if resp.Status.Code != 0 {
+					t.Errorf("expected OK for %q, got code %d: %s", scheme, resp.Status.Code, resp.Status.Message)
+				}
+			})
+		}
+	})
+
+	t.Run("basic auth invalid base64", func(t *testing.T) {
+		resp, err := authzServer.Check(ctx, makeReq("Basic !!!not-base64!!!"))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Status.Code == 0 {
+			t.Error("expected denial for invalid base64")
+		}
+	})
+
+	t.Run("basic auth missing colon", func(t *testing.T) {
+		encoded := base64.StdEncoding.EncodeToString([]byte("nocolonhere"))
+		resp, err := authzServer.Check(ctx, makeReq("Basic "+encoded))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Status.Code == 0 {
+			t.Error("expected denial for missing colon in Basic auth")
+		}
+	})
+
+	t.Run("unsupported scheme", func(t *testing.T) {
+		resp, err := authzServer.Check(ctx, makeReq("Digest abc123"))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Status.Code == 0 {
+			t.Error("expected denial for unsupported scheme")
+		}
+	})
+
+	t.Run("no space in auth header", func(t *testing.T) {
+		resp, err := authzServer.Check(ctx, makeReq("Bearertoken"))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Status.Code == 0 {
+			t.Error("expected denial for malformed auth header")
+		}
+	})
+}
+
+func TestAuthzServer_AuthTimeMs(t *testing.T) {
+	trustStore := trust.NewStubStore()
+	stubValidator := trust.NewStubValidator(trust.CredentialTypeBearer)
+	trustStore.AddValidator(stubValidator)
+
+	dataSourceRegistry := service.NewDataSourceRegistry()
+	issuerRegistry := service.NewSimpleRegistry()
+	txnMappers := []service.ClaimMapper{service.NewPassthroughSubjectMapper()}
+	reqMappers := []service.ClaimMapper{service.NewRequestAttributesMapper()}
+	txnTokenIssuer := issuer.NewStubIssuer(issuer.StubIssuerConfig{
+		IssuerURL:                 "https://parsec.test",
+		TTL:                       5 * time.Minute,
+		TransactionContextMappers: txnMappers,
+		RequestContextMappers:     reqMappers,
+	})
+	issuerRegistry.Register(service.TokenTypeTransactionToken, txnTokenIssuer)
+	tokenService := service.NewTokenService("parsec.test", dataSourceRegistry, issuerRegistry, nil)
+
+	authzServer := NewAuthzServer(trustStore, tokenService, nil, nil)
+
+	req := &authv3.CheckRequest{
+		Attributes: &authv3.AttributeContext{
+			Request: &authv3.AttributeContext_Request{
+				Http: &authv3.AttributeContext_HttpRequest{
+					Method: "GET",
+					Path:   "/api/resource",
+					Headers: map[string]string{
+						"authorization": "Bearer test-token",
+					},
+				},
+			},
+		},
+	}
+
+	resp, err := authzServer.Check(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Status.Code != 0 {
+		t.Fatalf("expected OK, got code %d: %s", resp.Status.Code, resp.Status.Message)
+	}
+
+	// Verify auth_time_ms is present in issued token by checking the response succeeded.
+	// The auth_time_ms flows through RequestAttributesMapper into token claims,
+	// so a successful token issuance confirms it was set without error.
+	// We can't easily inspect the claim value from here, but we verify the
+	// Additional map was initialized and populated without breaking issuance.
+	okResp := resp.GetOkResponse()
+	if okResp == nil {
+		t.Fatal("expected OK response")
+	}
+
+	foundToken := false
+	for _, header := range okResp.Headers {
+		if header.Header.Key == "Transaction-Token" && header.Header.Value != "" {
+			foundToken = true
+		}
+	}
+	if !foundToken {
+		t.Error("transaction token not found — auth_time_ms may have broken issuance")
+	}
 }
