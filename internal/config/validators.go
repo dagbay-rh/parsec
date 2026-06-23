@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/project-kessel/parsec/internal/claims"
@@ -190,13 +189,6 @@ func newStubValidator(cfg ValidatorConfig) (trust.Validator, error) {
 func newRegistryValidator(cfg ValidatorConfig, transport http.RoundTripper, trustObs trust.TrustObserver) (trust.Validator, error) {
 	if cfg.RegistryURL == "" {
 		return nil, fmt.Errorf("registry_validator requires registry_url")
-	}
-	u, err := url.Parse(cfg.RegistryURL)
-	if err != nil {
-		return nil, fmt.Errorf("registry_validator: invalid registry_url: %w", err)
-	}
-	if u.Scheme != "https" {
-		return nil, fmt.Errorf("registry_validator: registry_url must use https scheme, got %q", u.Scheme)
 	}
 	if cfg.TrustDomain == "" {
 		return nil, fmt.Errorf("registry_validator requires trust_domain")

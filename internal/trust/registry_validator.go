@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -106,6 +107,13 @@ type registryAccess struct {
 func NewRegistryValidator(cfg RegistryValidatorConfig) (*RegistryValidator, error) {
 	if cfg.URL == "" {
 		return nil, fmt.Errorf("registry URL is required")
+	}
+	u, err := url.Parse(cfg.URL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid registry URL: %w", err)
+	}
+	if u.Scheme != "https" {
+		return nil, fmt.Errorf("registry URL must use https scheme, got %q", u.Scheme)
 	}
 	if cfg.TrustDomain == "" {
 		return nil, fmt.Errorf("trust domain is required")
