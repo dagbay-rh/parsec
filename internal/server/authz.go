@@ -2,9 +2,7 @@ package server
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
-	"strings"
 	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -176,51 +174,6 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 			},
 		},
 	}, nil
-}
-
-// extractCredential extracts credentials from the Envoy request
-// Returns the credential and the list of headers that were used to extract it
-func (s *AuthzServer) extractCredential(req *authv3.CheckRequest) (trust.Credential, []string, error) {
-	httpReq := req.GetAttributes().GetRequest().GetHttp()
-	// TODO: mtls e.g. cert := req.GetAttributes().GetSource().GetCertificate()
-
-	if httpReq == nil {
-		return nil, nil, fmt.Errorf("no HTTP request attributes")
-	}
-
-	// Look for Authorization header
-	authHeader := httpReq.GetHeaders()["authorization"]
-	if authHeader == "" {
-		return nil, nil, fmt.Errorf("no authorization header")
-	}
-
-	headersUsed := []string{"authorization"}
-
-	scheme, value, found := strings.Cut(authHeader, " ")
-	if !found {
-		return nil, nil, fmt.Errorf("unsupported authorization scheme")
-	}
-
-	if strings.EqualFold(scheme, "Bearer") {
-		return &trust.BearerCredential{Token: value}, headersUsed, nil
-	}
-
-	if strings.EqualFold(scheme, "Basic") {
-		decoded, err := base64.StdEncoding.DecodeString(value)
-		if err != nil {
-			return nil, nil, fmt.Errorf("invalid Basic auth encoding: %w", err)
-		}
-		username, password, ok := strings.Cut(string(decoded), ":")
-		if !ok {
-			return nil, nil, fmt.Errorf("invalid Basic auth format")
-		}
-		return &trust.BasicAuthCredential{
-			Username: username,
-			Password: password,
-		}, headersUsed, nil
-	}
-
-	return nil, nil, fmt.Errorf("unsupported authorization scheme")
 }
 
 // buildRequestAttributes extracts request attributes from the Envoy request

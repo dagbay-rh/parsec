@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"testing"
 
@@ -182,6 +183,164 @@ func TestCredentialSources_Extract(t *testing.T) {
 		bearer := ext.Credential.(*trust.BearerCredential)
 		if bearer.Token != "extra-space-token" {
 			t.Fatalf("expected trimmed token, got %q", bearer.Token)
+		}
+	})
+
+	t.Run("basic auth from authorization header", func(t *testing.T) {
+		t.Parallel()
+		sources := NewCredentialSources(NewBasicAuthCredentialSource(CredentialSourceTypeBasicAuth))
+		encoded := base64.StdEncoding.EncodeToString([]byte("alice:secret"))
+		ext, err := sources.Extract(ctx, makeCC(map[string]string{
+			"authorization": "Basic " + encoded,
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ext.SourceName != CredentialSourceTypeBasicAuth {
+			t.Fatalf("expected %s, got %q", CredentialSourceTypeBasicAuth, ext.SourceName)
+		}
+		basic, ok := ext.Credential.(*trust.BasicAuthCredential)
+		if !ok {
+			t.Fatalf("expected BasicAuthCredential, got %T", ext.Credential)
+		}
+		if basic.Username != "alice" {
+			t.Fatalf("expected username 'alice', got %q", basic.Username)
+		}
+		if basic.Password != "secret" {
+			t.Fatalf("expected password 'secret', got %q", basic.Password)
+		}
+		if len(ext.HeadersToRemove) != 1 || ext.HeadersToRemove[0] != "authorization" {
+			t.Fatalf("unexpected headers to remove: %v", ext.HeadersToRemove)
+		}
+	})
+
+	t.Run("basic auth scheme is case-insensitive", func(t *testing.T) {
+		t.Parallel()
+		sources := NewCredentialSources(NewBasicAuthCredentialSource(CredentialSourceTypeBasicAuth))
+		for _, scheme := range []string{"Basic", "basic", "BASIC"} {
+			t.Run(scheme, func(t *testing.T) {
+				encoded := base64.StdEncoding.EncodeToString([]byte("alice:secret"))
+				ext, err := sources.Extract(ctx, makeCC(map[string]string{
+					"authorization": scheme + " " + encoded,
+				}))
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				basic := ext.Credential.(*trust.BasicAuthCredential)
+				if basic.Username != "alice" {
+					t.Fatalf("unexpected username: %q", basic.Username)
+				}
+			})
+		}
+	})
+
+	t.Run("basic auth invalid base64", func(t *testing.T) {
+		t.Parallel()
+		sources := NewCredentialSources(NewBasicAuthCredentialSource(CredentialSourceTypeBasicAuth))
+		_, err := sources.Extract(ctx, makeCC(map[string]string{
+			"authorization": "Basic !!!not-base64!!!",
+		}))
+		if err == nil {
+			t.Fatal("expected error for invalid base64")
+		}
+	})
+
+	t.Run("basic auth missing colon", func(t *testing.T) {
+		t.Parallel()
+		sources := NewCredentialSources(NewBasicAuthCredentialSource(CredentialSourceTypeBasicAuth))
+		encoded := base64.StdEncoding.EncodeToString([]byte("nocolonhere"))
+		_, err := sources.Extract(ctx, makeCC(map[string]string{
+			"authorization": "Basic " + encoded,
+		}))
+		if err == nil {
+			t.Fatal("expected error for missing colon in Basic auth")
+		}
+	})
+
+	t.Run("basic auth skips non-basic scheme", func(t *testing.T) {
+		t.Parallel()
+		source := NewBasicAuthCredentialSource(CredentialSourceTypeBasicAuth)
+		ext, err := source.Extract(ctx, makeCC(map[string]string{
+			"authorization": "Bearer some-token",
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ext != nil {
+			t.Fatalf("expected nil extraction for Bearer scheme, got %+v", ext)
+		}
+	})
+
+	t.Run("basic auth empty authorization header", func(t *testing.T) {
+		t.Parallel()
+		source := NewBasicAuthCredentialSource(CredentialSourceTypeBasicAuth)
+		ext, err := source.Extract(ctx, makeCC(map[string]string{}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ext != nil {
+			t.Fatalf("expected nil extraction, got %+v", ext)
+		}
+	})
+
+	t.Run("basic auth password with colon", func(t *testing.T) {
+		t.Parallel()
+		sources := NewCredentialSources(NewBasicAuthCredentialSource(CredentialSourceTypeBasicAuth))
+		encoded := base64.StdEncoding.EncodeToString([]byte("alice:pass:word"))
+		ext, err := sources.Extract(ctx, makeCC(map[string]string{
+			"authorization": "Basic " + encoded,
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		basic := ext.Credential.(*trust.BasicAuthCredential)
+		if basic.Username != "alice" {
+			t.Fatalf("expected username 'alice', got %q", basic.Username)
+		}
+		if basic.Password != "pass:word" {
+			t.Fatalf("expected password 'pass:word', got %q", basic.Password)
+		}
+	})
+
+	t.Run("basic and bearer sources with basic header", func(t *testing.T) {
+		t.Parallel()
+		sources := NewCredentialSources(
+			NewBasicAuthCredentialSource(CredentialSourceTypeBasicAuth),
+			NewBearerCredentialSource(CredentialSourceTypeBearer),
+		)
+		encoded := base64.StdEncoding.EncodeToString([]byte("alice:secret"))
+		ext, err := sources.Extract(ctx, makeCC(map[string]string{
+			"authorization": "Basic " + encoded,
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ext.SourceName != CredentialSourceTypeBasicAuth {
+			t.Fatalf("expected basic auth source, got %q", ext.SourceName)
+		}
+		if _, ok := ext.Credential.(*trust.BasicAuthCredential); !ok {
+			t.Fatalf("expected BasicAuthCredential, got %T", ext.Credential)
+		}
+	})
+
+	t.Run("basic and bearer sources with bearer header", func(t *testing.T) {
+		t.Parallel()
+		sources := NewCredentialSources(
+			NewBasicAuthCredentialSource(CredentialSourceTypeBasicAuth),
+			NewBearerCredentialSource(CredentialSourceTypeBearer),
+		)
+		ext, err := sources.Extract(ctx, makeCC(map[string]string{
+			"authorization": "Bearer jwt-token",
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ext.SourceName != CredentialSourceTypeBearer {
+			t.Fatalf("expected bearer source, got %q", ext.SourceName)
+		}
+		bearer := ext.Credential.(*trust.BearerCredential)
+		if bearer.Token != "jwt-token" {
+			t.Fatalf("unexpected token: %q", bearer.Token)
 		}
 	})
 
