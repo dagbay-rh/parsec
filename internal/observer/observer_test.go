@@ -122,6 +122,15 @@ func TestNoOp_AllProbeMethodsCallable(t *testing.T) {
 		p.End()
 	}
 	{
+		_, p := obs.RegistryValidateStarted(ctx, "https://registry.example.com")
+		p.UsernamePatternRejected()
+		p.CacheHit()
+		p.RegistryCallFailed(errors.New("x"))
+		p.AccessDenied()
+		p.UsernameParseFailed(errors.New("x"))
+		p.End()
+	}
+	{
 		_, p := obs.InitPopulationStarted(ctx)
 		p.InitialCachePopulationFailed(errors.New("x"))
 		p.End()
@@ -344,6 +353,11 @@ func TestCompose_DelegatesToCorrectSubObserver(t *testing.T) {
 		t.Errorf("JWTValidateStarted: expected JWT observer called once, got %d", jwtCalled.Load())
 	}
 
+	obs.RegistryValidateStarted(ctx, "https://registry.example.com")
+	if registryCalled.Load() != 1 {
+		t.Errorf("RegistryValidateStarted: expected registry observer called once, got %d", registryCalled.Load())
+	}
+
 	obs.CacheRefreshStarted(ctx)
 	if jwksCalled.Load() != 1 {
 		t.Errorf("CacheRefreshStarted: expected JWKS observer called once, got %d", jwksCalled.Load())
@@ -418,6 +432,7 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 	composite.ValidationStarted(ctx)
 	composite.ForActorStarted(ctx)
 	composite.JWTValidateStarted(ctx, "https://issuer.example.com")
+	composite.RegistryValidateStarted(ctx, "https://registry.example.com")
 	composite.CacheRefreshStarted(ctx)
 	composite.StopStarted(ctx)
 
@@ -434,6 +449,7 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 		{"TrustValidation", &trust1, &trust2},
 		{"TrustForActor", &filter1, &filter2},
 		{"JWTValidate", &jwt1, &jwt2},
+		{"RegistryValidate", &registry1, &registry2},
 		{"JWKS", &jwks1, &jwks2},
 		{"ServerLifecycle", &srv1, &srv2},
 	} {
