@@ -903,7 +903,7 @@ func TestAuthzServer_Check_Observability(t *testing.T) {
 	})
 }
 
-func TestAuthzServer_AuthTimeMs(t *testing.T) {
+func TestAuthzServer_RequestAdditionalMetadata(t *testing.T) {
 	trustStore := trust.NewStubStore()
 	stubValidator := trust.NewStubValidator(trust.CredentialTypeBearer)
 	trustStore.AddValidator(stubValidator)
@@ -945,11 +945,9 @@ func TestAuthzServer_AuthTimeMs(t *testing.T) {
 		t.Fatalf("expected OK, got code %d: %s", resp.Status.Code, resp.Status.Message)
 	}
 
-	// Verify auth_time_ms is present in issued token by checking the response succeeded.
-	// The auth_time_ms flows through RequestAttributesMapper into token claims,
-	// so a successful token issuance confirms it was set without error.
-	// We can't easily inspect the claim value from here, but we verify the
-	// Additional map was initialized and populated without breaking issuance.
+	// Verify auth_time_ms, credential_source, and credential_type are set in
+	// request.Additional and flow through RequestAttributesMapper into token claims.
+	// A successful token issuance confirms the Additional map was populated without error.
 	okResp := resp.GetOkResponse()
 	if okResp == nil {
 		t.Fatal("expected OK response")
@@ -962,6 +960,6 @@ func TestAuthzServer_AuthTimeMs(t *testing.T) {
 		}
 	}
 	if !foundToken {
-		t.Error("transaction token not found — auth_time_ms may have broken issuance")
+		t.Error("transaction token not found — request.Additional metadata may have broken issuance")
 	}
 }

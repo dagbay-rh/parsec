@@ -117,6 +117,8 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 		reqAttrs.Additional = make(map[string]any)
 	}
 	reqAttrs.Additional["auth_time_ms"] = time.Since(authStart).Milliseconds()
+	reqAttrs.Additional["credential_source"] = ext.SourceName
+	reqAttrs.Additional["credential_type"] = string(ext.Credential.Type())
 
 	// 6. Issue tokens via TokenService
 	tokenTypes := make([]service.TokenType, len(s.TokenTypesToIssue))
