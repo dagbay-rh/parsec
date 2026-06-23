@@ -120,7 +120,7 @@ func NewRegistryValidator(registryURL, trustDomain, usernamePattern string, opts
 	if trustDomain == "" {
 		return nil, fmt.Errorf("trust domain is required")
 	}
-	
+
 	if usernamePattern == "" {
 		return nil, fmt.Errorf("usernamePattern is required")
 	}
@@ -132,9 +132,9 @@ func NewRegistryValidator(registryURL, trustDomain, usernamePattern string, opts
 
 	// options
 	cfg := registryValidatorConfig{}
-    for _, option := range opts {
-        option(&cfg)
-    }
+	for _, option := range opts {
+		option(&cfg)
+	}
 
 	// defaults
 	var cacheTTL time.Duration
@@ -160,7 +160,7 @@ func NewRegistryValidator(registryURL, trustDomain, usernamePattern string, opts
 	if obs == nil {
 		obs = NoOpRegistryValidatorObserver{}
 	}
-	
+
 	hmacKey := make([]byte, 32)
 	if _, err := rand.Read(hmacKey); err != nil {
 		return nil, fmt.Errorf("failed to generate cache HMAC key: %w", err)
@@ -178,7 +178,6 @@ func NewRegistryValidator(registryURL, trustDomain, usernamePattern string, opts
 		observer:        obs,
 	}, nil
 }
-
 
 // CredentialTypes returns the credential types this validator can handle.
 func (v *RegistryValidator) CredentialTypes() []CredentialType {
