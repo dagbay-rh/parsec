@@ -30,12 +30,16 @@ var (
 	validatorCacheResultUnknown = attribute.String("result", "unknown")
 )
 
+var (
+	validatorTypeJWT = attribute.String("validator_type", "jwt")
+	validatorTypeLua = attribute.String("validator_type", "lua")
+)
+
 type trustObserver struct {
 	trust.NoOpTrustObserver
 
 	validationDuration          metric.Float64Histogram
-	jwtValidateDuration         metric.Float64Histogram
-	luaValidateDuration         metric.Float64Histogram
+	validateDuration            metric.Float64Histogram
 	validatorCacheFetchDuration metric.Float64Histogram
 	actorFilterDuration         metric.Float64Histogram
 }
@@ -48,15 +52,8 @@ func newTrustObserver(m metric.Meter) (*trustObserver, error) {
 	if err != nil {
 		return nil, err
 	}
-	jvd, err := m.Float64Histogram("parsec.trust.jwt.validate.duration",
-		metric.WithDescription("JWT validation duration in seconds"),
-		metric.WithUnit("s"),
-	)
-	if err != nil {
-		return nil, err
-	}
-	lvd, err := m.Float64Histogram("parsec.trust.lua.validate.duration",
-		metric.WithDescription("Lua validator validation duration in seconds"),
+	vald, err := m.Float64Histogram("parsec.trust.validate.duration",
+		metric.WithDescription("Per-validator validation duration in seconds"),
 		metric.WithUnit("s"),
 	)
 	if err != nil {
@@ -79,8 +76,7 @@ func newTrustObserver(m metric.Meter) (*trustObserver, error) {
 
 	return &trustObserver{
 		validationDuration:          vd,
-		jwtValidateDuration:         jvd,
-		luaValidateDuration:         lvd,
+		validateDuration:            vald,
 		validatorCacheFetchDuration: vcfd,
 		actorFilterDuration:         afd,
 	}, nil
@@ -116,23 +112,25 @@ func (p *validationProbe) End() {
 func (o *trustObserver) JWTValidateStarted(ctx context.Context, issuer string) (context.Context, trust.JWTValidateProbe) {
 	return ctx, &jwtValidateProbe{
 		obs: o, ctx: ctx, startTime: time.Now(),
-		status: successStatusAttr,
-		result: resultSuccess,
-		issuer: attribute.String("issuer", issuer),
+		status:        successStatusAttr,
+		result:        resultSuccess,
+		validatorType: validatorTypeJWT,
+		validator:     attribute.String("validator", issuer),
 	}
 }
 
 // jwtValidateProbe records metrics for a single JWT validation.
-// The issuer attribute is the configured issuer URL of the validator,
+// The validator attribute is the configured issuer URL of the JWT validator,
 // bounded by the number of trust_store.validators — not a per-request value.
 type jwtValidateProbe struct {
 	trust.NoOpJWTValidateProbe
-	obs       *trustObserver
-	ctx       context.Context
-	startTime time.Time
-	status    attribute.KeyValue
-	result    attribute.KeyValue
-	issuer    attribute.KeyValue
+	obs           *trustObserver
+	ctx           context.Context
+	startTime     time.Time
+	status        attribute.KeyValue
+	result        attribute.KeyValue
+	validatorType attribute.KeyValue
+	validator     attribute.KeyValue
 }
 
 func (p *jwtValidateProbe) JWKSLookupFailed(_ error) {
@@ -152,8 +150,8 @@ func (p *jwtValidateProbe) ClaimsExtractionFailed(_ error) {
 	p.result = jwtResultClaimsExtractionFailed
 }
 func (p *jwtValidateProbe) End() {
-	attrs := metric.WithAttributeSet(attribute.NewSet(p.issuer, p.result, p.status))
-	p.obs.jwtValidateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	attrs := metric.WithAttributeSet(attribute.NewSet(p.validatorType, p.validator, p.result, p.status))
+	p.obs.validateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
 }
 
 // --- Lua validate probe ---
@@ -161,20 +159,22 @@ func (p *jwtValidateProbe) End() {
 func (o *trustObserver) LuaValidateStarted(ctx context.Context, validatorName string) (context.Context, trust.LuaValidateProbe) {
 	return ctx, &luaValidateProbe{
 		obs: o, ctx: ctx, startTime: time.Now(),
-		status:    successStatusAttr,
-		result:    resultSuccess,
-		validator: attribute.String("validator", validatorName),
+		status:        successStatusAttr,
+		result:        resultSuccess,
+		validatorType: validatorTypeLua,
+		validator:     attribute.String("validator", validatorName),
 	}
 }
 
 type luaValidateProbe struct {
 	trust.NoOpLuaValidateProbe
-	obs       *trustObserver
-	ctx       context.Context
-	startTime time.Time
-	status    attribute.KeyValue
-	result    attribute.KeyValue
-	validator attribute.KeyValue
+	obs           *trustObserver
+	ctx           context.Context
+	startTime     time.Time
+	status        attribute.KeyValue
+	result        attribute.KeyValue
+	validatorType attribute.KeyValue
+	validator     attribute.KeyValue
 }
 
 func (p *luaValidateProbe) ScriptLoadFailed(_ error) {
@@ -202,8 +202,8 @@ func (p *luaValidateProbe) ResultConversionFailed(_ error) {
 	p.result = luaValidateResultConversionFailed
 }
 func (p *luaValidateProbe) End() {
-	attrs := metric.WithAttributeSet(attribute.NewSet(p.validator, p.result, p.status))
-	p.obs.luaValidateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	attrs := metric.WithAttributeSet(attribute.NewSet(p.validatorType, p.validator, p.result, p.status))
+	p.obs.validateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
 }
 
 // --- validator cache fetch probe ---
