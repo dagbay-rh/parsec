@@ -130,7 +130,15 @@ func readScript(inline, file string) (string, error) {
 }
 
 func cachingEnabled(cfg *CachingConfig) bool {
-	return cfg != nil && cfg.Type != "" && cfg.Type != "none"
+	if cfg == nil {
+		return false
+	}
+	switch cfg.Type {
+	case "in_memory", "distributed":
+		return true
+	default:
+		return false
+	}
 }
 
 func parseCacheTTL(cfg *CachingConfig) (time.Duration, error) {

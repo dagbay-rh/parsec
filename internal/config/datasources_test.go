@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/project-kessel/parsec/internal/datasource"
@@ -63,5 +64,32 @@ end
 	}
 	if _, ok := ds.(*datasource.InMemoryCachingDataSource); !ok {
 		t.Fatalf("got %T, want *datasource.InMemoryCachingDataSource", ds)
+	}
+}
+
+func TestNewDataSourceRegistry_InvalidCachingType(t *testing.T) {
+	t.Parallel()
+
+	const luaScript = `
+function fetch(input)
+  return {data = "{}", content_type = "application/json"}
+end
+`
+	_, err := NewDataSourceRegistry([]DataSourceConfig{
+		{
+			Name:   "ds",
+			Type:   "lua",
+			Script: luaScript,
+			Caching: &CachingConfig{
+				Type: "redis",
+			},
+		},
+	}, nil, observer.NoOp())
+
+	if err == nil {
+		t.Fatal("expected error for invalid caching type, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown caching type") {
+		t.Fatalf("expected 'unknown caching type' error, got: %v", err)
 	}
 }

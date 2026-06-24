@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/project-kessel/parsec/internal/observer"
@@ -66,5 +67,42 @@ end
 	}
 	if result.Claims.GetString("source") != "lua" {
 		t.Fatalf("source=%v", result.Claims["source"])
+	}
+}
+
+func TestNewTrustStore_LuaValidator_InvalidCachingType(t *testing.T) {
+	t.Parallel()
+
+	const luaScript = `
+function validate(input)
+  return {
+    subject = "user",
+    issuer = "https://issuer.example.com",
+    trust_domain = "example.com",
+  }
+end
+`
+	_, err := NewTrustStore(TrustStoreConfig{
+		Type: "stub_store",
+		Validators: []NamedValidatorConfig{
+			{
+				Name: "lua-validator",
+				ValidatorConfig: ValidatorConfig{
+					Type:            "lua_validator",
+					Script:          luaScript,
+					CredentialTypes: []string{"bearer"},
+					Caching: &CachingConfig{
+						Type: "redis",
+					},
+				},
+			},
+		},
+	}, nil, observer.NoOp())
+
+	if err == nil {
+		t.Fatal("expected error for invalid caching type, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown validator caching type") {
+		t.Fatalf("expected 'unknown validator caching type' error, got: %v", err)
 	}
 }
