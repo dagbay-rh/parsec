@@ -17,9 +17,13 @@ const fetchCacheKeyFuncName = "fetch_cache_key"
 
 // LuaDataSource executes a Lua script to fetch data.
 // The script has access to http, config, and json services.
+//
+// The Lua script is compiled once at construction time; each call to
+// [LuaDataSource.Fetch] loads the pre-compiled bytecode into a fresh
+// LState, avoiding repeated parsing and compilation.
 type LuaDataSource struct {
 	name         string
-	script       string
+	proto        *lua.FunctionProto
 	configSource luaservices.ConfigSource
 	httpOpts     []luaservices.HTTPServiceOption
 	observer     LuaObserver
@@ -56,7 +60,10 @@ type LuaDataSourceConfig struct {
 	Observer LuaObserver
 }
 
-// NewLuaDataSource creates a new Lua data source
+// NewLuaDataSource creates a new Lua data source.
+//
+// The script is compiled once during construction; see [LuaDataSource] for
+// the runtime lifecycle.
 func NewLuaDataSource(config LuaDataSourceConfig) (*LuaDataSource, error) {
 	if config.Name == "" {
 		return nil, fmt.Errorf("data source name is required")
@@ -69,17 +76,12 @@ func NewLuaDataSource(config LuaDataSourceConfig) (*LuaDataSource, error) {
 		config.ConfigSource = luaservices.NewMapConfigSource(nil)
 	}
 
-	// Validate that the script has a fetch function
-	L := lua.NewState()
-	defer L.Close()
-
-	if err := L.DoString(config.Script); err != nil {
-		return nil, fmt.Errorf("failed to load script: %w", err)
+	proto, err := luaservices.CompileScript(config.Script, config.Name)
+	if err != nil {
+		return nil, err
 	}
-
-	fetchFunc := L.GetGlobal("fetch")
-	if fetchFunc.Type() != lua.LTFunction {
-		return nil, fmt.Errorf("script must define a 'fetch' function")
+	if err := luaservices.ValidateFunction(proto, "fetch"); err != nil {
+		return nil, err
 	}
 
 	obs := config.Observer
@@ -89,7 +91,7 @@ func NewLuaDataSource(config LuaDataSourceConfig) (*LuaDataSource, error) {
 
 	return &LuaDataSource{
 		name:         config.Name,
-		script:       config.Script,
+		proto:        proto,
 		configSource: config.ConfigSource,
 		httpOpts:     config.HTTPOptions,
 		observer:     obs,
@@ -118,7 +120,7 @@ func (ds *LuaDataSource) Fetch(ctx context.Context, input *service.DataSourceInp
 	jsonService := luaservices.NewJSONService()
 	jsonService.Register(L)
 
-	if err := L.DoString(ds.script); err != nil {
+	if err := luaservices.LoadProto(L, ds.proto); err != nil {
 		p.ScriptLoadFailed(err)
 		return nil, fmt.Errorf("failed to load script: %w", err)
 	}
@@ -377,17 +379,8 @@ func NewCacheableLuaDataSource(config CacheableLuaDataSourceConfig) (*CacheableL
 		return nil, err
 	}
 
-	// Validate that the fetch_cache_key function exists
-	L := lua.NewState()
-	defer L.Close()
-
-	if err := L.DoString(config.Script); err != nil {
-		return nil, fmt.Errorf("failed to load script: %w", err)
-	}
-
-	cacheKeyFunc := L.GetGlobal(fetchCacheKeyFuncName)
-	if cacheKeyFunc.Type() != lua.LTFunction {
-		return nil, fmt.Errorf("script must define a '%s' function", fetchCacheKeyFuncName)
+	if err := luaservices.ValidateFunction(baseDS.proto, fetchCacheKeyFuncName); err != nil {
+		return nil, err
 	}
 
 	return &CacheableLuaDataSource{
@@ -398,7 +391,6 @@ func NewCacheableLuaDataSource(config CacheableLuaDataSourceConfig) (*CacheableL
 
 // CacheKey implements the Cacheable interface
 func (ds *CacheableLuaDataSource) CacheKey(input *service.DataSourceInput) service.DataSourceInput {
-	// Create a new Lua state
 	L := lua.NewState()
 	defer L.Close()
 
@@ -408,16 +400,12 @@ func (ds *CacheableLuaDataSource) CacheKey(input *service.DataSourceInput) servi
 	jsonService := luaservices.NewJSONService()
 	jsonService.Register(L)
 
-	// Load the script
-	if err := L.DoString(ds.script); err != nil {
-		// On error, return full input
+	if err := luaservices.LoadProto(L, ds.proto); err != nil {
 		return *input
 	}
 
-	// Convert input to Lua table
 	inputTable := ds.inputToLuaTable(L, input)
 
-	// Call the cache key function
 	cacheKeyFunc := L.GetGlobal(fetchCacheKeyFuncName)
 	if err := L.CallByParam(lua.P{
 		Fn:      cacheKeyFunc,

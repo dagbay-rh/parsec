@@ -14,6 +14,10 @@ import (
 	luaservices "github.com/project-kessel/parsec/internal/lua"
 )
 
+// ScriptName is the source name used when compiling Lua validator scripts.
+// It appears in Lua error messages and stack traces.
+type ScriptName = string
+
 const (
 	validateFuncName         = "validate"
 	validateCacheKeyFuncName = "validate_cache_key"
@@ -54,9 +58,13 @@ func (v *ValidatorInput) UnmarshalJSON(data []byte) error {
 
 // LuaValidator validates credentials by executing a Lua validate(input)
 // function. The script has access to http, config, and json services.
+//
+// The Lua script is compiled once at construction time; each call to
+// [LuaValidator.Validate] loads the pre-compiled bytecode into a fresh
+// LState, avoiding repeated parsing and compilation.
 type LuaValidator struct {
 	name            string
-	script          string
+	proto           *lua.FunctionProto
 	credentialTypes []CredentialType
 	configSource    luaservices.ConfigSource
 	httpOpts        []luaservices.HTTPServiceOption
@@ -102,7 +110,10 @@ func WithLuaValidatorCacheTTL(ttl time.Duration) LuaValidatorOption {
 }
 
 // NewLuaValidator creates a Lua-backed credential validator.
-func NewLuaValidator(name string, script string, credentialTypes []CredentialType, opts ...LuaValidatorOption) (*LuaValidator, error) {
+//
+// The script is compiled once during construction; see [LuaValidator] for
+// the runtime lifecycle.
+func NewLuaValidator(name ScriptName, script string, credentialTypes []CredentialType, opts ...LuaValidatorOption) (*LuaValidator, error) {
 	if name == "" {
 		return nil, fmt.Errorf("validator name is required")
 	}
@@ -113,7 +124,11 @@ func NewLuaValidator(name string, script string, credentialTypes []CredentialTyp
 		return nil, fmt.Errorf("at least one credential type is required")
 	}
 
-	if err := validateLuaFunction(script, validateFuncName); err != nil {
+	proto, err := luaservices.CompileScript(script, name)
+	if err != nil {
+		return nil, err
+	}
+	if err := luaservices.ValidateFunction(proto, validateFuncName); err != nil {
 		return nil, err
 	}
 
@@ -121,7 +136,7 @@ func NewLuaValidator(name string, script string, credentialTypes []CredentialTyp
 
 	return &LuaValidator{
 		name:            name,
-		script:          script,
+		proto:           proto,
 		credentialTypes: slices.Clone(credentialTypes),
 		configSource:    cfg.configSource,
 		httpOpts:        cfg.httpOpts,
@@ -146,21 +161,6 @@ func newLuaValidatorConfig(opts ...LuaValidatorOption) luaValidatorConfig {
 	return cfg
 }
 
-func validateLuaFunction(script string, functionName string) error {
-	L := lua.NewState()
-	defer L.Close()
-
-	if err := L.DoString(script); err != nil {
-		return fmt.Errorf("failed to load script: %w", err)
-	}
-
-	fn := L.GetGlobal(functionName)
-	if fn.Type() != lua.LTFunction {
-		return fmt.Errorf("script must define a '%s' function", functionName)
-	}
-
-	return nil
-}
 
 // CredentialTypes implements the Validator interface.
 func (v *LuaValidator) CredentialTypes() []CredentialType {
@@ -197,7 +197,7 @@ func (v *LuaValidator) Validate(ctx context.Context, credential Credential) (*Re
 	jsonService := luaservices.NewJSONService()
 	jsonService.Register(L)
 
-	if err := L.DoString(v.script); err != nil {
+	if err := luaservices.LoadProto(L, v.proto); err != nil {
 		p.ScriptLoadFailed(err)
 		return nil, fmt.Errorf("failed to load script: %w", err)
 	}
@@ -242,12 +242,12 @@ type CacheableLuaValidator struct {
 }
 
 // NewCacheableLuaValidator creates a Lua validator with validate_cache_key(input).
-func NewCacheableLuaValidator(name string, script string, credentialTypes []CredentialType, opts ...LuaValidatorOption) (*CacheableLuaValidator, error) {
+func NewCacheableLuaValidator(name ScriptName, script string, credentialTypes []CredentialType, opts ...LuaValidatorOption) (*CacheableLuaValidator, error) {
 	base, err := NewLuaValidator(name, script, credentialTypes, opts...)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateLuaFunction(script, validateCacheKeyFuncName); err != nil {
+	if err := luaservices.ValidateFunction(base.proto, validateCacheKeyFuncName); err != nil {
 		return nil, err
 	}
 
@@ -275,7 +275,7 @@ func (v *CacheableLuaValidator) CacheKey(credential Credential) (ValidatorInput,
 	jsonService := luaservices.NewJSONService()
 	jsonService.Register(L)
 
-	if err := L.DoString(v.script); err != nil {
+	if err := luaservices.LoadProto(L, v.proto); err != nil {
 		return ValidatorInput{}, fmt.Errorf("failed to load script: %w", err)
 	}
 

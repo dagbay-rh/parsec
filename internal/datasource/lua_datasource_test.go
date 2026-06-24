@@ -53,7 +53,7 @@ func TestNewLuaDataSource(t *testing.T) {
 				Script: "invalid lua syntax {{{",
 			},
 			wantErr: true,
-			errMsg:  "failed to load script",
+			errMsg:  "failed to parse script",
 		},
 		{
 			name: "missing fetch function",
