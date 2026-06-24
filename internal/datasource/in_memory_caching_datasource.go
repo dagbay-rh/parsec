@@ -2,12 +2,12 @@ package datasource
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/project-kessel/parsec/internal/cache"
 	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/service"
 )
@@ -156,13 +156,9 @@ func (c *InMemoryCachingDataSource) Size() int {
 // serializeInput serializes a masked DataSourceInput into a cache key string
 // This creates a deterministic string representation of the input
 func serializeInput(input *service.DataSourceInput) (string, error) {
-	// Serialize to JSON for deterministic ordering
 	keyBytes, err := json.Marshal(input)
 	if err != nil {
 		return "", fmt.Errorf("failed to serialize input: %w", err)
 	}
-
-	// Hash the serialized form to get a fixed-size key
-	hash := sha256.Sum256(keyBytes)
-	return fmt.Sprintf("%x", hash), nil
+	return cache.HashKey(keyBytes), nil
 }
