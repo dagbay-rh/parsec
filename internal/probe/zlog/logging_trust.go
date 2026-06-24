@@ -50,6 +50,20 @@ func (o *LoggingTrustObserver) JWTValidateStarted(ctx context.Context, issuer st
 	}
 }
 
+func (o *LoggingTrustObserver) LuaValidateStarted(ctx context.Context, validatorName string) (context.Context, trust.LuaValidateProbe) {
+	return ctx, &loggingLuaValidateProbe{
+		logger:    o.logger.With().Str("validator", validatorName).Logger(),
+		startTime: time.Now(),
+	}
+}
+
+func (o *LoggingTrustObserver) ValidatorCacheFetchStarted(ctx context.Context, validatorName string) (context.Context, trust.ValidatorCacheFetchProbe) {
+	return ctx, &loggingValidatorCacheFetchProbe{
+		logger:    o.logger.With().Str("validator", validatorName).Logger(),
+		startTime: time.Now(),
+	}
+}
+
 // --- Store.Validate probe ---
 
 type loggingValidationProbe struct {
@@ -143,4 +157,76 @@ func (p *loggingJWTValidateProbe) End() {
 	p.logger.Debug().
 		Dur("duration", time.Since(p.startTime)).
 		Msg("JWT validation completed")
+}
+
+// --- LuaValidator.Validate probe ---
+
+type loggingLuaValidateProbe struct {
+	trust.NoOpLuaValidateProbe
+	logger    zerolog.Logger
+	startTime time.Time
+}
+
+func (p *loggingLuaValidateProbe) ScriptLoadFailed(err error) {
+	p.logger.Error().Err(err).Msg("lua validator script load failed")
+}
+
+func (p *loggingLuaValidateProbe) ScriptExecutionFailed(err error) {
+	p.logger.Error().Err(err).Msg("lua validator script execution failed")
+}
+
+func (p *loggingLuaValidateProbe) InvalidReturnType(got string) {
+	p.logger.Error().Str("got", got).Msg("lua validator returned invalid type")
+}
+
+func (p *loggingLuaValidateProbe) TokenInvalid(err error) {
+	p.logger.Debug().Err(err).Msg("lua validator rejected credential before script execution")
+}
+
+func (p *loggingLuaValidateProbe) ValidationRejected() {
+	p.logger.Debug().Msg("lua validator rejected credential")
+}
+
+func (p *loggingLuaValidateProbe) ResultConversionFailed(err error) {
+	p.logger.Error().Err(err).Msg("lua validator result conversion failed")
+}
+
+func (p *loggingLuaValidateProbe) ValidationCompleted() {
+	p.logger.Debug().Msg("lua validation completed")
+}
+
+func (p *loggingLuaValidateProbe) End() {
+	p.logger.Debug().
+		Dur("duration", time.Since(p.startTime)).
+		Msg("lua validation ended")
+}
+
+// --- validator cache probe ---
+
+type loggingValidatorCacheFetchProbe struct {
+	trust.NoOpValidatorCacheFetchProbe
+	logger    zerolog.Logger
+	startTime time.Time
+}
+
+func (p *loggingValidatorCacheFetchProbe) CacheHit() {
+	p.logger.Debug().Msg("validator cache hit")
+}
+
+func (p *loggingValidatorCacheFetchProbe) CacheMiss() {
+	p.logger.Debug().Msg("validator cache miss")
+}
+
+func (p *loggingValidatorCacheFetchProbe) CacheExpired() {
+	p.logger.Debug().Msg("validator cache entry expired")
+}
+
+func (p *loggingValidatorCacheFetchProbe) FetchFailed(err error) {
+	p.logger.Warn().Err(err).Msg("validator cache fetch failed")
+}
+
+func (p *loggingValidatorCacheFetchProbe) End() {
+	p.logger.Debug().
+		Dur("duration", time.Since(p.startTime)).
+		Msg("validator cache fetch completed")
 }

@@ -15,14 +15,29 @@ var (
 	jwtResultTokenExpired           = attribute.String("result", "token_expired")
 	jwtResultTokenInvalid           = attribute.String("result", "token_invalid")
 	jwtResultClaimsExtractionFailed = attribute.String("result", "claims_extraction_failed")
+
+	luaValidateResultRejected         = attribute.String("result", "rejected")
+	luaValidateResultScriptLoadFailed = attribute.String("result", "script_load_failed")
+	luaValidateResultExecutionFailed  = attribute.String("result", "execution_failed")
+	luaValidateResultInvalidReturn    = attribute.String("result", "invalid_return_type")
+	luaValidateResultTokenInvalid     = attribute.String("result", "token_invalid")
+	luaValidateResultConversionFailed = attribute.String("result", "conversion_failed")
+
+	validatorCacheResultHit     = attribute.String("result", "hit")
+	validatorCacheResultMiss    = attribute.String("result", "miss")
+	validatorCacheResultExpired = attribute.String("result", "expired")
+	validatorCacheResultError   = attribute.String("result", "error")
+	validatorCacheResultUnknown = attribute.String("result", "unknown")
 )
 
 type trustObserver struct {
 	trust.NoOpTrustObserver
 
-	validationDuration  metric.Float64Histogram
-	jwtValidateDuration metric.Float64Histogram
-	actorFilterDuration metric.Float64Histogram
+	validationDuration          metric.Float64Histogram
+	jwtValidateDuration         metric.Float64Histogram
+	luaValidateDuration         metric.Float64Histogram
+	validatorCacheFetchDuration metric.Float64Histogram
+	actorFilterDuration         metric.Float64Histogram
 }
 
 func newTrustObserver(m metric.Meter) (*trustObserver, error) {
@@ -40,6 +55,20 @@ func newTrustObserver(m metric.Meter) (*trustObserver, error) {
 	if err != nil {
 		return nil, err
 	}
+	lvd, err := m.Float64Histogram("parsec.trust.lua.validate.duration",
+		metric.WithDescription("Lua validator validation duration in seconds"),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	vcfd, err := m.Float64Histogram("parsec.trust.validator.cache.fetch.duration",
+		metric.WithDescription("Validator cache fetch duration in seconds"),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return nil, err
+	}
 	afd, err := m.Float64Histogram("parsec.trust.actor.filter.duration",
 		metric.WithDescription("Actor filter duration in seconds"),
 		metric.WithUnit("s"),
@@ -49,9 +78,11 @@ func newTrustObserver(m metric.Meter) (*trustObserver, error) {
 	}
 
 	return &trustObserver{
-		validationDuration:  vd,
-		jwtValidateDuration: jvd,
-		actorFilterDuration: afd,
+		validationDuration:          vd,
+		jwtValidateDuration:         jvd,
+		luaValidateDuration:         lvd,
+		validatorCacheFetchDuration: vcfd,
+		actorFilterDuration:         afd,
 	}, nil
 }
 
@@ -125,6 +156,91 @@ func (p *jwtValidateProbe) End() {
 	p.obs.jwtValidateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
 }
 
+// --- Lua validate probe ---
+
+func (o *trustObserver) LuaValidateStarted(ctx context.Context, validatorName string) (context.Context, trust.LuaValidateProbe) {
+	return ctx, &luaValidateProbe{
+		obs: o, ctx: ctx, startTime: time.Now(),
+		status:    successStatusAttr,
+		result:    resultSuccess,
+		validator: attribute.String("validator", validatorName),
+	}
+}
+
+type luaValidateProbe struct {
+	trust.NoOpLuaValidateProbe
+	obs       *trustObserver
+	ctx       context.Context
+	startTime time.Time
+	status    attribute.KeyValue
+	result    attribute.KeyValue
+	validator attribute.KeyValue
+}
+
+func (p *luaValidateProbe) ScriptLoadFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = luaValidateResultScriptLoadFailed
+}
+func (p *luaValidateProbe) ScriptExecutionFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = luaValidateResultExecutionFailed
+}
+func (p *luaValidateProbe) InvalidReturnType(_ string) {
+	p.status = errorStatusAttr
+	p.result = luaValidateResultInvalidReturn
+}
+func (p *luaValidateProbe) TokenInvalid(_ error) {
+	p.status = errorStatusAttr
+	p.result = luaValidateResultTokenInvalid
+}
+func (p *luaValidateProbe) ValidationRejected() {
+	p.status = errorStatusAttr
+	p.result = luaValidateResultRejected
+}
+func (p *luaValidateProbe) ResultConversionFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = luaValidateResultConversionFailed
+}
+func (p *luaValidateProbe) End() {
+	attrs := metric.WithAttributeSet(attribute.NewSet(p.validator, p.result, p.status))
+	p.obs.luaValidateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+}
+
+// --- validator cache fetch probe ---
+
+func (o *trustObserver) ValidatorCacheFetchStarted(ctx context.Context, validatorName string) (context.Context, trust.ValidatorCacheFetchProbe) {
+	return ctx, &validatorCacheFetchProbe{
+		obs: o, ctx: ctx, startTime: time.Now(),
+		status:    successStatusAttr,
+		validator: attribute.String("validator", validatorName),
+	}
+}
+
+type validatorCacheFetchProbe struct {
+	trust.NoOpValidatorCacheFetchProbe
+	obs       *trustObserver
+	ctx       context.Context
+	startTime time.Time
+	status    attribute.KeyValue
+	result    attribute.KeyValue
+	validator attribute.KeyValue
+}
+
+func (p *validatorCacheFetchProbe) CacheHit()     { p.result = validatorCacheResultHit }
+func (p *validatorCacheFetchProbe) CacheMiss()    { p.result = validatorCacheResultMiss }
+func (p *validatorCacheFetchProbe) CacheExpired() { p.result = validatorCacheResultExpired }
+func (p *validatorCacheFetchProbe) FetchFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = validatorCacheResultError
+}
+func (p *validatorCacheFetchProbe) End() {
+	if p.result == (attribute.KeyValue{}) {
+		p.result = validatorCacheResultUnknown
+	}
+	attrs := metric.WithAttributeSet(attribute.NewSet(p.validator, p.result, p.status))
+	p.obs.validatorCacheFetchDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+}
+
 // --- actor filter probe ---
 
 func (o *trustObserver) ForActorStarted(ctx context.Context) (context.Context, trust.ForActorProbe) {
@@ -149,8 +265,10 @@ func (p *forActorProbe) End() {
 }
 
 var (
-	_ trust.TrustObserver    = (*trustObserver)(nil)
-	_ trust.ValidationProbe  = (*validationProbe)(nil)
-	_ trust.JWTValidateProbe = (*jwtValidateProbe)(nil)
-	_ trust.ForActorProbe    = (*forActorProbe)(nil)
+	_ trust.TrustObserver            = (*trustObserver)(nil)
+	_ trust.ValidationProbe          = (*validationProbe)(nil)
+	_ trust.JWTValidateProbe         = (*jwtValidateProbe)(nil)
+	_ trust.LuaValidateProbe         = (*luaValidateProbe)(nil)
+	_ trust.ValidatorCacheFetchProbe = (*validatorCacheFetchProbe)(nil)
+	_ trust.ForActorProbe            = (*forActorProbe)(nil)
 )

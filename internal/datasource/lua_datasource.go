@@ -13,6 +13,8 @@ import (
 	"github.com/project-kessel/parsec/internal/trust"
 )
 
+const fetchCacheKeyFuncName = "fetch_cache_key"
+
 // LuaDataSource executes a Lua script to fetch data.
 // The script has access to http, config, and json services.
 type LuaDataSource struct {
@@ -320,8 +322,7 @@ func luaTableToMap(tbl *lua.LTable) map[string]interface{} {
 // CacheableLuaDataSource is a Lua data source that implements the Cacheable interface
 type CacheableLuaDataSource struct {
 	*LuaDataSource
-	cacheKeyFunc string
-	cacheTTL     time.Duration
+	cacheTTL time.Duration
 }
 
 // CacheableLuaDataSourceConfig configures a cacheable Lua data source
@@ -346,16 +347,13 @@ type CacheableLuaDataSourceConfig struct {
 	// If nil, NewLuaDataSource substitutes NoOpDataSourceObserver{}.
 	Observer LuaObserver
 
-	// CacheKeyFunc is the name of the Lua function that generates cache keys
-	// REQUIRED - the function should take an input table and return a modified input table
-	// with only the fields relevant for caching
+	// The script must define fetch_cache_key(input), which returns a modified input
+	// table with only the fields relevant for caching.
 	//
 	// Example:
-	//   function cache_key(input)
+	//   function fetch_cache_key(input)
 	//     return {subject = {subject = input.subject.subject}}
 	//   end
-	CacheKeyFunc string
-
 	// CacheTTL is the cache time-to-live
 	// Default: 5 minutes
 	CacheTTL time.Duration
@@ -363,10 +361,6 @@ type CacheableLuaDataSourceConfig struct {
 
 // NewCacheableLuaDataSource creates a new cacheable Lua data source
 func NewCacheableLuaDataSource(config CacheableLuaDataSourceConfig) (*CacheableLuaDataSource, error) {
-	if config.CacheKeyFunc == "" {
-		return nil, fmt.Errorf("cache_key function is required for cacheable data source")
-	}
-
 	if config.CacheTTL == 0 {
 		config.CacheTTL = 5 * time.Minute
 	}
@@ -383,7 +377,7 @@ func NewCacheableLuaDataSource(config CacheableLuaDataSourceConfig) (*CacheableL
 		return nil, err
 	}
 
-	// Validate that the cache_key function exists
+	// Validate that the fetch_cache_key function exists
 	L := lua.NewState()
 	defer L.Close()
 
@@ -391,14 +385,13 @@ func NewCacheableLuaDataSource(config CacheableLuaDataSourceConfig) (*CacheableL
 		return nil, fmt.Errorf("failed to load script: %w", err)
 	}
 
-	cacheKeyFunc := L.GetGlobal(config.CacheKeyFunc)
+	cacheKeyFunc := L.GetGlobal(fetchCacheKeyFuncName)
 	if cacheKeyFunc.Type() != lua.LTFunction {
-		return nil, fmt.Errorf("script must define a '%s' function", config.CacheKeyFunc)
+		return nil, fmt.Errorf("script must define a '%s' function", fetchCacheKeyFuncName)
 	}
 
 	return &CacheableLuaDataSource{
 		LuaDataSource: baseDS,
-		cacheKeyFunc:  config.CacheKeyFunc,
 		cacheTTL:      config.CacheTTL,
 	}, nil
 }
@@ -408,6 +401,12 @@ func (ds *CacheableLuaDataSource) CacheKey(input *service.DataSourceInput) servi
 	// Create a new Lua state
 	L := lua.NewState()
 	defer L.Close()
+
+	configService := luaservices.NewConfigService(ds.configSource)
+	configService.Register(L)
+
+	jsonService := luaservices.NewJSONService()
+	jsonService.Register(L)
 
 	// Load the script
 	if err := L.DoString(ds.script); err != nil {
@@ -419,7 +418,7 @@ func (ds *CacheableLuaDataSource) CacheKey(input *service.DataSourceInput) servi
 	inputTable := ds.inputToLuaTable(L, input)
 
 	// Call the cache key function
-	cacheKeyFunc := L.GetGlobal(ds.cacheKeyFunc)
+	cacheKeyFunc := L.GetGlobal(fetchCacheKeyFuncName)
 	if err := L.CallByParam(lua.P{
 		Fn:      cacheKeyFunc,
 		NRet:    1,

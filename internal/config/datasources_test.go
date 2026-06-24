@@ -5,7 +5,6 @@ import (
 
 	"github.com/project-kessel/parsec/internal/datasource"
 	"github.com/project-kessel/parsec/internal/observer"
-	"github.com/project-kessel/parsec/internal/service"
 )
 
 func TestNewDataSourceRegistry_Static(t *testing.T) {
@@ -39,18 +38,20 @@ func TestNewDataSourceRegistry_CacheableLuaUsesObserver(t *testing.T) {
 function fetch(input)
   return {data = "{}", content_type = "application/json"}
 end
-function cache_key(input)
+function fetch_cache_key(input)
   return input
 end
 `
 	obs := observer.NoOp()
 	reg, err := NewDataSourceRegistry([]DataSourceConfig{
 		{
-			Name:         "with_cache_key",
-			Type:         "lua",
-			Script:       luaScript,
-			CacheKeyFunc: "cache_key",
-			LuaCacheTTL:  "10m",
+			Name:   "with_cache_key",
+			Type:   "lua",
+			Script: luaScript,
+			Caching: &CachingConfig{
+				Type: "in_memory",
+				TTL:  "10m",
+			},
 		},
 	}, nil, obs)
 	if err != nil {
@@ -60,10 +61,7 @@ end
 	if ds == nil {
 		t.Fatal("expected registered data source")
 	}
-	if _, ok := ds.(service.Cacheable); !ok {
-		t.Fatalf("got %T, want service.Cacheable", ds)
-	}
-	if _, ok := ds.(*datasource.CacheableLuaDataSource); !ok {
-		t.Fatalf("got %T, want *datasource.CacheableLuaDataSource", ds)
+	if _, ok := ds.(*datasource.InMemoryCachingDataSource); !ok {
+		t.Fatalf("got %T, want *datasource.InMemoryCachingDataSource", ds)
 	}
 }

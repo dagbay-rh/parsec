@@ -128,6 +128,13 @@ type ValidatorConfig struct {
 	// JSON Validator fields
 	// (TrustDomain is shared)
 
+	// Lua Validator fields
+	ScriptFile string         `koanf:"script_file"` // Path to Lua script
+	Script     string         `koanf:"script"`      // Inline Lua script (alternative to ScriptFile)
+	Config     map[string]any `koanf:"config"`      // Lua: values available to script via config.get()
+	HTTPConfig *HTTPConfig    `koanf:"http"`
+	Caching    *CachingConfig `koanf:"caching"`
+
 	// Stub Validator fields
 	CredentialTypes []string       `koanf:"credential_types"` // e.g., ["bearer", "jwt"]
 	Claims          map[string]any `koanf:"claims"`           // JWT-like claims returned on success
@@ -166,15 +173,6 @@ type DataSourceConfig struct {
 	// HTTP configuration
 	HTTPConfig *HTTPConfig `koanf:"http"`
 
-	// CacheKeyFunc names the Lua global that implements cache key masking. When non-empty,
-	// the data source is built as datasource.CacheableLuaDataSource (script must define
-	// fetch and this function). Observer wiring matches a plain Lua data source.
-	CacheKeyFunc string `koanf:"cache_key_func"`
-
-	// LuaCacheTTL is a duration string (e.g. "5m") for CacheableLuaDataSource.CacheTTL.
-	// Empty uses the datasource package default when creating a cacheable Lua source.
-	LuaCacheTTL string `koanf:"lua_cache_ttl"`
-
 	// Caching configuration
 	Caching *CachingConfig `koanf:"caching"`
 }
@@ -191,7 +189,7 @@ type CachingConfig struct {
 	// Options: "in_memory", "distributed", "none"
 	Type string `koanf:"type"`
 
-	// TTL is the cache time-to-live
+	// TTL is the cache time-to-live for cacheable script-backed implementations.
 	TTL string `koanf:"ttl"` // Duration string like "5m"
 
 	// Distributed caching fields

@@ -419,7 +419,7 @@ function fetch(input)
 	return nil
 end
 
-function cache_key(input)
+function fetch_cache_key(input)
 	return {
 		subject = {
 			subject = input.subject.subject
@@ -445,8 +445,7 @@ end
 				Strict:   true,
 			})),
 		},
-		CacheKeyFunc: "cache_key",
-		CacheTTL:     10 * time.Minute,
+		CacheTTL: 10 * time.Minute,
 	})
 	if err != nil {
 		t.Fatalf("failed to create data source: %v", err)

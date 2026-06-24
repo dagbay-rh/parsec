@@ -293,7 +293,7 @@ function fetch(input)
   }
 end
 
-function cache_key(input)
+function fetch_cache_key(input)
   -- Only cache based on subject
   return {
     subject = {

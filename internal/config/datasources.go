@@ -51,16 +51,10 @@ func newLuaDataSource(cfg DataSourceConfig, transport http.RoundTripper, obs obs
 		return nil, fmt.Errorf("data source name is required")
 	}
 
-	// Get script content (either from file or inline)
-	script := cfg.Script
-	if cfg.ScriptFile != "" {
-		content, err := os.ReadFile(cfg.ScriptFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read script file %s: %w", cfg.ScriptFile, err)
-		}
-		script = string(content)
+	script, err := readScript(cfg.Script, cfg.ScriptFile)
+	if err != nil {
+		return nil, err
 	}
-
 	if script == "" {
 		return nil, fmt.Errorf("lua data source requires either script or script_file")
 	}
@@ -83,14 +77,10 @@ func newLuaDataSource(cfg DataSourceConfig, transport http.RoundTripper, obs obs
 
 	var baseDS service.DataSource
 
-	if cfg.CacheKeyFunc != "" {
-		var cacheTTL time.Duration
-		if cfg.LuaCacheTTL != "" {
-			var err error
-			cacheTTL, err = time.ParseDuration(cfg.LuaCacheTTL)
-			if err != nil {
-				return nil, fmt.Errorf("invalid lua_cache_ttl: %w", err)
-			}
+	if cachingEnabled(cfg.Caching) {
+		cacheTTL, err := parseCacheTTL(cfg.Caching)
+		if err != nil {
+			return nil, err
 		}
 
 		cacheable, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
@@ -99,7 +89,6 @@ func newLuaDataSource(cfg DataSourceConfig, transport http.RoundTripper, obs obs
 			ConfigSource: configSource,
 			HTTPOptions:  httpOptions,
 			Observer:     obs,
-			CacheKeyFunc: cfg.CacheKeyFunc,
 			CacheTTL:     cacheTTL,
 		})
 		if err != nil {
@@ -127,6 +116,32 @@ func newLuaDataSource(cfg DataSourceConfig, transport http.RoundTripper, obs obs
 	}
 
 	return baseDS, nil
+}
+
+func readScript(inline, file string) (string, error) {
+	if file == "" {
+		return inline, nil
+	}
+	content, err := os.ReadFile(file)
+	if err != nil {
+		return "", fmt.Errorf("failed to read script file %s: %w", file, err)
+	}
+	return string(content), nil
+}
+
+func cachingEnabled(cfg *CachingConfig) bool {
+	return cfg != nil && cfg.Type != "" && cfg.Type != "none"
+}
+
+func parseCacheTTL(cfg *CachingConfig) (time.Duration, error) {
+	if cfg == nil || cfg.TTL == "" {
+		return 0, nil
+	}
+	duration, err := time.ParseDuration(cfg.TTL)
+	if err != nil {
+		return 0, fmt.Errorf("invalid cache ttl: %w", err)
+	}
+	return duration, nil
 }
 
 func buildHTTPOptions(cfg *HTTPConfig, transport http.RoundTripper) ([]luaservices.HTTPServiceOption, error) {

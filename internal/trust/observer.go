@@ -48,11 +48,48 @@ type JWTValidateProbe interface {
 	End()
 }
 
+// LuaValidatorObserver is called at key points during LuaValidator.Validate.
+// Implementations should embed NoOpLuaValidatorObserver for forward compatibility.
+type LuaValidatorObserver interface {
+	LuaValidateStarted(ctx context.Context, validatorName string) (context.Context, LuaValidateProbe)
+}
+
+// LuaValidateProbe tracks a single LuaValidator.Validate invocation.
+// Implementations should embed NoOpLuaValidateProbe for forward compatibility.
+type LuaValidateProbe interface {
+	ScriptLoadFailed(err error)
+	ScriptExecutionFailed(err error)
+	InvalidReturnType(got string)
+	TokenInvalid(err error)
+	ValidationRejected()
+	ResultConversionFailed(err error)
+	ValidationCompleted()
+	End()
+}
+
+// ValidatorCacheObserver is called at key points during validator cache operations.
+// Implementations should embed NoOpValidatorCacheObserver for forward compatibility.
+type ValidatorCacheObserver interface {
+	ValidatorCacheFetchStarted(ctx context.Context, validatorName string) (context.Context, ValidatorCacheFetchProbe)
+}
+
+// ValidatorCacheFetchProbe tracks a single validator cache fetch invocation.
+// Implementations should embed NoOpValidatorCacheFetchProbe for forward compatibility.
+type ValidatorCacheFetchProbe interface {
+	CacheHit()
+	CacheMiss()
+	CacheExpired()
+	FetchFailed(err error)
+	End()
+}
+
 // ValidatorObserver mirrors the Validator component tree.
-// It embeds JWTValidatorObserver and will embed future validator observers.
+// It embeds leaf observers for validator implementations and wrappers.
 // Implementations should embed NoOpValidatorObserver for forward compatibility.
 type ValidatorObserver interface {
 	JWTValidatorObserver
+	LuaValidatorObserver
+	ValidatorCacheObserver
 }
 
 // TrustObserver is the per-package aggregate for all trust observer interfaces.
@@ -83,6 +120,25 @@ func (NoOpJWTValidateProbe) TokenInvalid(error)           {}
 func (NoOpJWTValidateProbe) ClaimsExtractionFailed(error) {}
 func (NoOpJWTValidateProbe) End()                         {}
 
+type NoOpLuaValidateProbe struct{}
+
+func (NoOpLuaValidateProbe) ScriptLoadFailed(error)       {}
+func (NoOpLuaValidateProbe) ScriptExecutionFailed(error)  {}
+func (NoOpLuaValidateProbe) InvalidReturnType(string)     {}
+func (NoOpLuaValidateProbe) TokenInvalid(error)           {}
+func (NoOpLuaValidateProbe) ValidationRejected()          {}
+func (NoOpLuaValidateProbe) ResultConversionFailed(error) {}
+func (NoOpLuaValidateProbe) ValidationCompleted()         {}
+func (NoOpLuaValidateProbe) End()                         {}
+
+type NoOpValidatorCacheFetchProbe struct{}
+
+func (NoOpValidatorCacheFetchProbe) CacheHit()         {}
+func (NoOpValidatorCacheFetchProbe) CacheMiss()        {}
+func (NoOpValidatorCacheFetchProbe) CacheExpired()     {}
+func (NoOpValidatorCacheFetchProbe) FetchFailed(error) {}
+func (NoOpValidatorCacheFetchProbe) End()              {}
+
 type NoOpStoreObserver struct {
 	NoOpFilteredStoreObserver
 }
@@ -103,8 +159,22 @@ func (NoOpJWTValidatorObserver) JWTValidateStarted(ctx context.Context, _ string
 	return ctx, NoOpJWTValidateProbe{}
 }
 
+type NoOpLuaValidatorObserver struct{}
+
+func (NoOpLuaValidatorObserver) LuaValidateStarted(ctx context.Context, _ string) (context.Context, LuaValidateProbe) {
+	return ctx, NoOpLuaValidateProbe{}
+}
+
+type NoOpValidatorCacheObserver struct{}
+
+func (NoOpValidatorCacheObserver) ValidatorCacheFetchStarted(ctx context.Context, _ string) (context.Context, ValidatorCacheFetchProbe) {
+	return ctx, NoOpValidatorCacheFetchProbe{}
+}
+
 type NoOpValidatorObserver struct {
 	NoOpJWTValidatorObserver
+	NoOpLuaValidatorObserver
+	NoOpValidatorCacheObserver
 }
 
 // NoOpTrustObserver satisfies TrustObserver with empty probes.

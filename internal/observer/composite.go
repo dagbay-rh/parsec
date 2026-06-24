@@ -151,6 +151,22 @@ func (c *compositeAll) JWTValidateStarted(ctx context.Context, issuer string) (c
 	return ctx, &compositeJWTValidateProbe{probes}
 }
 
+func (c *compositeAll) LuaValidateStarted(ctx context.Context, validatorName string) (context.Context, trust.LuaValidateProbe) {
+	probes := make([]trust.LuaValidateProbe, len(c.children))
+	for i, ch := range c.children {
+		ctx, probes[i] = ch.LuaValidateStarted(ctx, validatorName)
+	}
+	return ctx, &compositeLuaValidateProbe{probes}
+}
+
+func (c *compositeAll) ValidatorCacheFetchStarted(ctx context.Context, validatorName string) (context.Context, trust.ValidatorCacheFetchProbe) {
+	probes := make([]trust.ValidatorCacheFetchProbe, len(c.children))
+	for i, ch := range c.children {
+		ctx, probes[i] = ch.ValidatorCacheFetchStarted(ctx, validatorName)
+	}
+	return ctx, &compositeValidatorCacheFetchProbe{probes}
+}
+
 func (c *compositeAll) InitPopulationStarted(ctx context.Context) (context.Context, server.InitPopulationProbe) {
 	probes := make([]server.InitPopulationProbe, len(c.children))
 	for i, ch := range c.children {
@@ -454,6 +470,79 @@ func (m *compositeJWTValidateProbe) ClaimsExtractionFailed(err error) {
 	}
 }
 func (m *compositeJWTValidateProbe) End() {
+	for _, p := range m.probes {
+		p.End()
+	}
+}
+
+type compositeLuaValidateProbe struct{ probes []trust.LuaValidateProbe }
+
+func (m *compositeLuaValidateProbe) ScriptLoadFailed(err error) {
+	for _, p := range m.probes {
+		p.ScriptLoadFailed(err)
+	}
+}
+func (m *compositeLuaValidateProbe) ScriptExecutionFailed(err error) {
+	for _, p := range m.probes {
+		p.ScriptExecutionFailed(err)
+	}
+}
+func (m *compositeLuaValidateProbe) InvalidReturnType(got string) {
+	for _, p := range m.probes {
+		p.InvalidReturnType(got)
+	}
+}
+func (m *compositeLuaValidateProbe) TokenInvalid(err error) {
+	for _, p := range m.probes {
+		p.TokenInvalid(err)
+	}
+}
+func (m *compositeLuaValidateProbe) ValidationRejected() {
+	for _, p := range m.probes {
+		p.ValidationRejected()
+	}
+}
+func (m *compositeLuaValidateProbe) ResultConversionFailed(err error) {
+	for _, p := range m.probes {
+		p.ResultConversionFailed(err)
+	}
+}
+func (m *compositeLuaValidateProbe) ValidationCompleted() {
+	for _, p := range m.probes {
+		p.ValidationCompleted()
+	}
+}
+func (m *compositeLuaValidateProbe) End() {
+	for _, p := range m.probes {
+		p.End()
+	}
+}
+
+type compositeValidatorCacheFetchProbe struct {
+	probes []trust.ValidatorCacheFetchProbe
+}
+
+func (m *compositeValidatorCacheFetchProbe) CacheHit() {
+	for _, p := range m.probes {
+		p.CacheHit()
+	}
+}
+func (m *compositeValidatorCacheFetchProbe) CacheMiss() {
+	for _, p := range m.probes {
+		p.CacheMiss()
+	}
+}
+func (m *compositeValidatorCacheFetchProbe) CacheExpired() {
+	for _, p := range m.probes {
+		p.CacheExpired()
+	}
+}
+func (m *compositeValidatorCacheFetchProbe) FetchFailed(err error) {
+	for _, p := range m.probes {
+		p.FetchFailed(err)
+	}
+}
+func (m *compositeValidatorCacheFetchProbe) End() {
 	for _, p := range m.probes {
 		p.End()
 	}

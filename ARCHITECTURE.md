@@ -281,6 +281,7 @@ type Result struct {
 **Implementations**:
 - `JWTValidator` - Validates JWT tokens with JWKS (production-ready)
 - `JSONValidator` - Validates unsigned JSON credentials with structured Result format
+- `LuaValidator` - Scriptable validation with HTTP/JSON/config services
 - `StubValidator` - For testing, accepts any non-empty token
 
 ### trust.Store
@@ -536,8 +537,8 @@ Data sources are fetched lazily during claim mapping:
 
 ### Caching Layers
 
-Data sources support transparent caching:
-- **`Cacheable` interface**: Defines cache key and TTL
+Data sources and script-backed validators support transparent caching:
+- **`Cacheable` / `CacheableValidator` interfaces**: Define cache key and TTL
 - **In-memory caching**: Fast local cache with LRU eviction
 - **Distributed caching**: groupcache for multi-instance deployments
 - Automatic cache key generation from inputs
