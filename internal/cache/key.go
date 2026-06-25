@@ -6,7 +6,6 @@
 package cache
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"strings"
 	"time"
@@ -48,10 +47,3 @@ func RoundTimestampToInterval(t time.Time, interval time.Duration) time.Time {
 	return time.Unix(0, roundedNano)
 }
 
-// HashKey produces a deterministic hex-encoded SHA-256 hash of the given bytes.
-// This is used by in-memory caches to produce fixed-size keys from
-// variable-length serialized inputs.
-func HashKey(data []byte) string {
-	hash := sha256.Sum256(data)
-	return fmt.Sprintf("%x", hash)
-}

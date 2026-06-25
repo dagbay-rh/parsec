@@ -83,7 +83,7 @@ func (v *InMemoryCachingValidator) Validate(ctx context.Context, credential Cred
 		return v.source.Validate(ctx, credential)
 	}
 
-	cacheKey, err := serializeValidatorInputHash(cacheInput)
+	cacheKey, err := serializeValidatorInput(cacheInput)
 	if err != nil {
 		return v.source.Validate(ctx, credential)
 	}
@@ -267,12 +267,12 @@ func DeserializeValidatorInputFromJSON(key string) (ValidatorInput, error) {
 	return input, nil
 }
 
-func serializeValidatorInputHash(input ValidatorInput) (string, error) {
+func serializeValidatorInput(input ValidatorInput) (string, error) {
 	keyBytes, err := json.Marshal(input)
 	if err != nil {
 		return "", fmt.Errorf("failed to serialize validator input: %w", err)
 	}
-	return cache.HashKey(keyBytes), nil
+	return string(keyBytes), nil
 }
 
 func validatorCacheExpiry(now time.Time, ttl time.Duration, result *Result) (time.Time, bool) {

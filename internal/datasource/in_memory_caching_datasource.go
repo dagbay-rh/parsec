@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/project-kessel/parsec/internal/cache"
 	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/service"
 )
@@ -153,12 +152,12 @@ func (c *InMemoryCachingDataSource) Size() int {
 	return len(c.entries)
 }
 
-// serializeInput serializes a masked DataSourceInput into a cache key string
-// This creates a deterministic string representation of the input
+// serializeInput serializes a masked DataSourceInput into a deterministic
+// string suitable for use as an in-memory cache map key.
 func serializeInput(input *service.DataSourceInput) (string, error) {
 	keyBytes, err := json.Marshal(input)
 	if err != nil {
 		return "", fmt.Errorf("failed to serialize input: %w", err)
 	}
-	return cache.HashKey(keyBytes), nil
+	return string(keyBytes), nil
 }

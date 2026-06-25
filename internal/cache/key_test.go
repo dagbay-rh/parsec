@@ -149,28 +149,3 @@ func TestAppendTTLSuffix(t *testing.T) {
 	})
 }
 
-func TestHashKey(t *testing.T) {
-	t.Run("deterministic", func(t *testing.T) {
-		data := []byte(`{"subject":"user@example.com"}`)
-		hash1 := cache.HashKey(data)
-		hash2 := cache.HashKey(data)
-		if hash1 != hash2 {
-			t.Errorf("HashKey is not deterministic: %q != %q", hash1, hash2)
-		}
-	})
-
-	t.Run("different inputs produce different hashes", func(t *testing.T) {
-		hash1 := cache.HashKey([]byte("input-a"))
-		hash2 := cache.HashKey([]byte("input-b"))
-		if hash1 == hash2 {
-			t.Error("HashKey produced same hash for different inputs")
-		}
-	})
-
-	t.Run("produces 64 character hex string", func(t *testing.T) {
-		hash := cache.HashKey([]byte("test"))
-		if len(hash) != 64 {
-			t.Errorf("HashKey length = %d, want 64", len(hash))
-		}
-	})
-}
