@@ -170,10 +170,10 @@ end
 			"issuer":            "https://issuer.example.com",
 			"trust_domain":      "example.com",
 		})),
-		WithLuaHTTPOptions(luaservices.WithRequestOptions(func(req *http.Request) error {
+		WithLuaRequestOptions(func(req *http.Request) error {
 			req.Header.Set("X-API-Key", "secret")
 			return nil
-		})),
+		}),
 	)
 	if err != nil {
 		t.Fatalf("NewLuaValidator: %v", err)

@@ -2,11 +2,11 @@ package config
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"time"
 
 	"github.com/project-kessel/parsec/internal/datasource"
+	"github.com/project-kessel/parsec/internal/httpclient"
 	luaservices "github.com/project-kessel/parsec/internal/lua"
 	"github.com/project-kessel/parsec/internal/observer"
 	"github.com/project-kessel/parsec/internal/service"
@@ -14,11 +14,11 @@ import (
 
 // NewDataSourceRegistry creates a data source registry from configuration.
 // The observer provides cache lifecycle events for data sources that use caching.
-func NewDataSourceRegistry(cfg []DataSourceConfig, transport http.RoundTripper, obs observer.Observer) (*service.DataSourceRegistry, error) {
+func NewDataSourceRegistry(cfg []DataSourceConfig, httpRegistry *httpclient.Registry, obs observer.Observer) (*service.DataSourceRegistry, error) {
 	registry := service.NewDataSourceRegistry()
 
 	for _, dsCfg := range cfg {
-		ds, err := newDataSource(dsCfg, transport, obs)
+		ds, err := newDataSource(dsCfg, httpRegistry, obs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create data source %s: %w", dsCfg.Name, err)
 		}
@@ -28,10 +28,10 @@ func NewDataSourceRegistry(cfg []DataSourceConfig, transport http.RoundTripper, 
 	return registry, nil
 }
 
-func newDataSource(cfg DataSourceConfig, transport http.RoundTripper, obs observer.Observer) (service.DataSource, error) {
+func newDataSource(cfg DataSourceConfig, httpRegistry *httpclient.Registry, obs observer.Observer) (service.DataSource, error) {
 	switch cfg.Type {
 	case "lua":
-		return newLuaDataSource(cfg, transport, obs)
+		return newLuaDataSource(cfg, httpRegistry, obs)
 	case "static":
 		return newStaticDataSource(cfg)
 	default:
@@ -46,7 +46,7 @@ func newStaticDataSource(cfg DataSourceConfig) (service.DataSource, error) {
 	return datasource.NewStaticDataSource(cfg.Name, cfg.Data)
 }
 
-func newLuaDataSource(cfg DataSourceConfig, transport http.RoundTripper, obs observer.Observer) (service.DataSource, error) {
+func newLuaDataSource(cfg DataSourceConfig, httpRegistry *httpclient.Registry, obs observer.Observer) (service.DataSource, error) {
 	if cfg.Name == "" {
 		return nil, fmt.Errorf("data source name is required")
 	}
@@ -65,14 +65,10 @@ func newLuaDataSource(cfg DataSourceConfig, transport http.RoundTripper, obs obs
 		configSource = luaservices.NewMapConfigSource(cfg.Config)
 	}
 
-	// Build HTTP options
-	var httpOptions []luaservices.HTTPServiceOption
-	if cfg.HTTPConfig != nil {
-		opts, err := buildHTTPOptions(cfg.HTTPConfig, transport)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build HTTP options: %w", err)
-		}
-		httpOptions = opts
+	// Resolve HTTP client from registry
+	client, err := resolveHTTPClient(cfg.HTTPClient, cfg.HTTPClientSpec, httpRegistry)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve HTTP client: %w", err)
 	}
 
 	var baseDS service.DataSource
@@ -87,7 +83,7 @@ func newLuaDataSource(cfg DataSourceConfig, transport http.RoundTripper, obs obs
 			Name:         cfg.Name,
 			Script:       script,
 			ConfigSource: configSource,
-			HTTPOptions:  httpOptions,
+			HTTPClient:   client,
 			Observer:     obs,
 			CacheTTL:     cacheTTL,
 		})
@@ -100,7 +96,7 @@ func newLuaDataSource(cfg DataSourceConfig, transport http.RoundTripper, obs obs
 			Name:         cfg.Name,
 			Script:       script,
 			ConfigSource: configSource,
-			HTTPOptions:  httpOptions,
+			HTTPClient:   client,
 			Observer:     obs,
 		}
 
@@ -150,24 +146,6 @@ func parseCacheTTL(cfg *CachingConfig) (time.Duration, error) {
 		return 0, fmt.Errorf("invalid cache ttl: %w", err)
 	}
 	return duration, nil
-}
-
-func buildHTTPOptions(cfg *HTTPConfig, transport http.RoundTripper) ([]luaservices.HTTPServiceOption, error) {
-	var opts []luaservices.HTTPServiceOption
-
-	if cfg.Timeout != "" {
-		duration, err := time.ParseDuration(cfg.Timeout)
-		if err != nil {
-			return nil, fmt.Errorf("invalid http timeout: %w", err)
-		}
-		opts = append(opts, luaservices.WithTimeout(duration))
-	}
-
-	if transport != nil {
-		opts = append(opts, luaservices.WithTransport(transport))
-	}
-
-	return opts, nil
 }
 
 // wrapWithCaching wraps a data source with the configured caching layer.

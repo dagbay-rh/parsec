@@ -36,8 +36,8 @@ func TestHTTPService_WithRequestOptions(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	service := NewHTTPService(context.Background(),
-		WithTimeout(5*time.Second),
+	client := &http.Client{Timeout: 5 * time.Second}
+	service := NewHTTPService(context.Background(), client,
 		WithRequestOptions(func(req *http.Request) error {
 			req.Header.Set("Authorization", "Bearer auto-added-token")
 			return nil
@@ -75,8 +75,8 @@ func TestHTTPService_RequestOptionsError(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	service := NewHTTPService(context.Background(),
-		WithTimeout(5*time.Second),
+	client := &http.Client{Timeout: 5 * time.Second}
+	service := NewHTTPService(context.Background(), client,
 		WithRequestOptions(func(req *http.Request) error {
 			return http.ErrServerClosed
 		}),
@@ -121,8 +121,8 @@ func TestHTTPService_RequestOptionsModifyURL(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	service := NewHTTPService(context.Background(),
-		WithTimeout(5*time.Second),
+	client := &http.Client{Timeout: 5 * time.Second}
+	service := NewHTTPService(context.Background(), client,
 		WithRequestOptions(func(req *http.Request) error {
 			q := req.URL.Query()
 			q.Add("api_key", "secret123")
@@ -170,8 +170,8 @@ func TestHTTPService_RequestOptionsAllMethods(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	service := NewHTTPService(context.Background(),
-		WithTimeout(5*time.Second),
+	client := &http.Client{Timeout: 5 * time.Second}
+	service := NewHTTPService(context.Background(), client,
 		WithRequestOptions(func(req *http.Request) error {
 			req.Header.Set("Authorization", "Bearer token")
 			return nil

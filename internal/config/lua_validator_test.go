@@ -53,7 +53,7 @@ end
 				},
 			},
 		},
-	}, nil, observer.NoOp())
+	}, testHTTPRegistry(t), observer.NoOp())
 	if err != nil {
 		t.Fatalf("NewTrustStore: %v", err)
 	}
@@ -97,7 +97,7 @@ end
 				},
 			},
 		},
-	}, nil, observer.NoOp())
+	}, testHTTPRegistry(t), observer.NoOp())
 
 	if err == nil {
 		t.Fatal("expected error for invalid caching type, got nil")

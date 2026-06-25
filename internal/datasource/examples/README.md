@@ -93,13 +93,11 @@ func main() {
         Name:         "user-data",
         Script:       string(script),
         ConfigSource: configSource,
-        HTTPOptions: []luaservices.HTTPServiceOption{
-            luaservices.WithTimeout(30 * time.Second),
-            luaservices.WithRequestOptions(func(req *http.Request) error {
-                apiKey, _ := configSource.Get("api_key")
-                req.Header.Set("Authorization", "Bearer "+apiKey.(string))
-                return nil
-            }),
+        HTTPClient: &http.Client{Timeout: 30 * time.Second},
+        RequestOptions: func(req *http.Request) error {
+            apiKey, _ := configSource.Get("api_key")
+            req.Header.Set("Authorization", "Bearer "+apiKey.(string))
+            return nil
         },
         CacheTTL: 5 * time.Minute,
     })

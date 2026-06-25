@@ -29,7 +29,8 @@ func TestHTTPService_Get(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	service := NewHTTPService(context.Background(), WithTimeout(5*time.Second))
+	client := &http.Client{Timeout: 5 * time.Second}
+	service := NewHTTPService(context.Background(), client)
 	service.Register(L)
 
 	script := `
@@ -66,7 +67,8 @@ func TestHTTPService_GetWithHeaders(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	service := NewHTTPService(context.Background(), WithTimeout(5*time.Second))
+	client := &http.Client{Timeout: 5 * time.Second}
+	service := NewHTTPService(context.Background(), client)
 	service.Register(L)
 
 	script := `
@@ -118,7 +120,8 @@ func TestHTTPService_Post(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	service := NewHTTPService(context.Background(), WithTimeout(5*time.Second))
+	client := &http.Client{Timeout: 5 * time.Second}
+	service := NewHTTPService(context.Background(), client)
 	service.Register(L)
 
 	// Also register JSON service for encoding
@@ -160,7 +163,8 @@ func TestHTTPService_Request(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	service := NewHTTPService(context.Background(), WithTimeout(5*time.Second))
+	client := &http.Client{Timeout: 5 * time.Second}
+	service := NewHTTPService(context.Background(), client)
 	service.Register(L)
 
 	script := `
@@ -184,7 +188,8 @@ func TestHTTPService_GetError(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	service := NewHTTPService(context.Background(), WithTimeout(1*time.Second))
+	client := &http.Client{Timeout: 1 * time.Second}
+	service := NewHTTPService(context.Background(), client)
 	service.Register(L)
 
 	// Use an invalid URL
@@ -233,7 +238,8 @@ func TestHTTPService_StatusCodes(t *testing.T) {
 			L := lua.NewState()
 			defer L.Close()
 
-			service := NewHTTPService(context.Background(), WithTimeout(5*time.Second))
+			client := &http.Client{Timeout: 5 * time.Second}
+			service := NewHTTPService(context.Background(), client)
 			service.Register(L)
 
 			script := `
@@ -272,7 +278,8 @@ func TestHTTPService_ResponseHeaders(t *testing.T) {
 	L := lua.NewState()
 	defer L.Close()
 
-	service := NewHTTPService(context.Background(), WithTimeout(5*time.Second))
+	client := &http.Client{Timeout: 5 * time.Second}
+	service := NewHTTPService(context.Background(), client)
 	service.Register(L)
 
 	script := `
@@ -325,7 +332,8 @@ func TestHTTPService_PropagatesContext(t *testing.T) {
 			ct := &capturingTransport{wrapped: http.DefaultTransport}
 			ctx := context.WithValue(context.Background(), ctxKey{}, "trace-123")
 
-			svc := NewHTTPService(ctx, WithTimeout(5*time.Second), WithTransport(ct))
+			client := &http.Client{Timeout: 5 * time.Second, Transport: ct}
+			svc := NewHTTPService(ctx, client)
 			L := lua.NewState()
 			defer L.Close()
 			svc.Register(L)
@@ -354,7 +362,8 @@ func TestHTTPService_CancelledContextReturnsError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	svc := NewHTTPService(ctx, WithTimeout(5*time.Second))
+	client := &http.Client{Timeout: 5 * time.Second}
+	svc := NewHTTPService(ctx, client)
 	L := lua.NewState()
 	defer L.Close()
 	svc.Register(L)

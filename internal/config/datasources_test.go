@@ -5,8 +5,18 @@ import (
 	"testing"
 
 	"github.com/project-kessel/parsec/internal/datasource"
+	"github.com/project-kessel/parsec/internal/httpclient"
 	"github.com/project-kessel/parsec/internal/observer"
 )
+
+func testHTTPRegistry(t *testing.T) *httpclient.Registry {
+	t.Helper()
+	r, err := NewHTTPClientRegistry(nil, nil)
+	if err != nil {
+		t.Fatalf("NewHTTPClientRegistry: %v", err)
+	}
+	return r
+}
 
 func TestNewDataSourceRegistry_Static(t *testing.T) {
 	t.Parallel()
@@ -20,7 +30,7 @@ func TestNewDataSourceRegistry_Static(t *testing.T) {
 				"role_fallback_enabled": true,
 			},
 		},
-	}, nil, observer.NoOp())
+	}, testHTTPRegistry(t), observer.NoOp())
 	if err != nil {
 		t.Fatalf("NewDataSourceRegistry: %v", err)
 	}
@@ -54,7 +64,7 @@ end
 				TTL:  "10m",
 			},
 		},
-	}, nil, obs)
+	}, testHTTPRegistry(t), obs)
 	if err != nil {
 		t.Fatalf("NewDataSourceRegistry: %v", err)
 	}
@@ -84,7 +94,7 @@ end
 				Type: "redis",
 			},
 		},
-	}, nil, observer.NoOp())
+	}, testHTTPRegistry(t), observer.NoOp())
 
 	if err == nil {
 		t.Fatal("expected error for invalid caching type, got nil")
