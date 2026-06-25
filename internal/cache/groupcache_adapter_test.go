@@ -19,28 +19,28 @@ type testEntry struct {
 func newTestAdapter(t *testing.T, clk clock.Clock, ttl time.Duration, fetchCount *atomic.Int64) *cache.GroupcacheAdapter[string, *testEntry] {
 	t.Helper()
 
-	adapter, err := cache.NewGroupcacheAdapter(cache.GroupcacheAdapterConfig[string, *testEntry]{
-		GroupName:      fmt.Sprintf("test-%s-%d", t.Name(), time.Now().UnixNano()),
-		CacheSizeBytes: 1 << 20,
-		Clock:          clk,
-		TTL:            func() cache.TTL { return ttl },
-		SerializeKey:   func(k string) (string, error) { return k, nil },
-		DeserializeKey: func(s string) (string, error) { return s, nil },
-		Fetch: func(_ context.Context, key string) (*testEntry, error) {
+	adapter, err := cache.NewGroupcacheAdapter(
+		fmt.Sprintf("test-%s-%d", t.Name(), time.Now().UnixNano()),
+		func(k string) (string, error) { return k, nil },
+		func(s string) (string, error) { return s, nil },
+		func(_ context.Context, key string) (*testEntry, error) {
 			fetchCount.Add(1)
 			return &testEntry{Value: "fetched:" + key}, nil
 		},
-		SerializeValue: func(v *testEntry) ([]byte, error) {
+		func(v *testEntry) ([]byte, error) {
 			return json.Marshal(v)
 		},
-		DeserializeValue: func(b []byte) (*testEntry, error) {
+		func(b []byte) (*testEntry, error) {
 			var entry testEntry
 			if err := json.Unmarshal(b, &entry); err != nil {
 				return nil, err
 			}
 			return &entry, nil
 		},
-	})
+		cache.WithClock(clk),
+		cache.WithCacheSizeBytes(1<<20),
+		cache.WithTTL(func() cache.TTL { return ttl }),
+	)
 	if err != nil {
 		t.Fatalf("NewGroupcacheAdapter failed: %v", err)
 	}
@@ -162,24 +162,24 @@ func TestGroupcacheAdapter_ZeroTTLCachesIndefinitely(t *testing.T) {
 func TestGroupcacheAdapter_FetchErrorPreventsCache(t *testing.T) {
 	clk := clock.NewFixtureClock(time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC))
 
-	adapter, err := cache.NewGroupcacheAdapter(cache.GroupcacheAdapterConfig[string, *testEntry]{
-		GroupName:      fmt.Sprintf("test-%s-%d", t.Name(), time.Now().UnixNano()),
-		CacheSizeBytes: 1 << 20,
-		Clock:          clk,
-		TTL:            func() cache.TTL { return 5 * time.Minute },
-		SerializeKey:   func(k string) (string, error) { return k, nil },
-		DeserializeKey: func(s string) (string, error) { return s, nil },
-		Fetch: func(_ context.Context, _ string) (*testEntry, error) {
+	adapter, err := cache.NewGroupcacheAdapter(
+		fmt.Sprintf("test-%s-%d", t.Name(), time.Now().UnixNano()),
+		func(k string) (string, error) { return k, nil },
+		func(s string) (string, error) { return s, nil },
+		func(_ context.Context, _ string) (*testEntry, error) {
 			return nil, fmt.Errorf("source unavailable")
 		},
-		SerializeValue: func(v *testEntry) ([]byte, error) {
+		func(v *testEntry) ([]byte, error) {
 			return json.Marshal(v)
 		},
-		DeserializeValue: func(b []byte) (*testEntry, error) {
+		func(b []byte) (*testEntry, error) {
 			var entry testEntry
 			return &entry, json.Unmarshal(b, &entry)
 		},
-	})
+		cache.WithClock(clk),
+		cache.WithCacheSizeBytes(1<<20),
+		cache.WithTTL(func() cache.TTL { return 5 * time.Minute }),
+	)
 	if err != nil {
 		t.Fatalf("NewGroupcacheAdapter failed: %v", err)
 	}
@@ -190,37 +190,40 @@ func TestGroupcacheAdapter_FetchErrorPreventsCache(t *testing.T) {
 	}
 }
 
-func TestGroupcacheAdapter_MissingConfigReturnsError(t *testing.T) {
+func TestNewGroupcacheAdapter_RejectsInvalidArgs(t *testing.T) {
+	sk := func(k string) (string, error) { return k, nil }
+	dk := func(s string) (string, error) { return s, nil }
+	fetch := func(_ context.Context, _ string) (*testEntry, error) { return nil, nil }
+	sv := func(_ *testEntry) ([]byte, error) { return nil, nil }
+	dv := func(_ []byte) (*testEntry, error) { return nil, nil }
+
 	tests := []struct {
-		name   string
-		config cache.GroupcacheAdapterConfig[string, *testEntry]
+		name             string
+		groupName        string
+		serializeKey     func(string) (string, error)
+		deserializeKey   func(string) (string, error)
+		fetch            func(context.Context, string) (*testEntry, error)
+		serializeValue   func(*testEntry) ([]byte, error)
+		deserializeValue func([]byte) (*testEntry, error)
 	}{
-		{
-			name:   "missing GroupName",
-			config: cache.GroupcacheAdapterConfig[string, *testEntry]{},
-		},
-		{
-			name: "missing SerializeKey",
-			config: cache.GroupcacheAdapterConfig[string, *testEntry]{
-				GroupName: "test-missing-sk",
-			},
-		},
-		{
-			name: "missing Fetch",
-			config: cache.GroupcacheAdapterConfig[string, *testEntry]{
-				GroupName:      "test-missing-fetch",
-				SerializeKey:   func(k string) (string, error) { return k, nil },
-				DeserializeKey: func(s string) (string, error) { return s, nil },
-			},
-		},
+		{"empty groupName", "", sk, dk, fetch, sv, dv},
+		{"nil serializeKey", "g", nil, dk, fetch, sv, dv},
+		{"nil deserializeKey", "g", sk, nil, fetch, sv, dv},
+		{"nil fetch", "g", sk, dk, nil, sv, dv},
+		{"nil serializeValue", "g", sk, dk, fetch, nil, dv},
+		{"nil deserializeValue", "g", sk, dk, fetch, sv, nil},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := cache.NewGroupcacheAdapter(tt.config)
+			_, err := cache.NewGroupcacheAdapter(
+				tt.groupName, tt.serializeKey, tt.deserializeKey,
+				tt.fetch, tt.serializeValue, tt.deserializeValue,
+			)
 			if err == nil {
-				t.Fatal("expected error for incomplete config")
+				t.Fatal("expected error for invalid argument")
 			}
 		})
 	}
 }
+

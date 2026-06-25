@@ -56,18 +56,15 @@ func NewDistributedCachingDataSource(source service.DataSource, config Distribut
 		config.Clock = clock.NewSystemClock()
 	}
 
-	adapter, err := cache.NewGroupcacheAdapter(cache.GroupcacheAdapterConfig[*service.DataSourceInput, *cachedEntry]{
-		GroupName:      config.GroupName,
-		CacheSizeBytes: config.CacheSizeBytes,
-		Clock:          config.Clock,
-		TTL:            func() cache.TTL { return cacheable.CacheTTL() },
-		SerializeKey: func(input *service.DataSourceInput) (string, error) {
+	adapter, err := cache.NewGroupcacheAdapter(
+		config.GroupName,
+		func(input *service.DataSourceInput) (string, error) {
 			return SerializeInputToJSON(input)
 		},
-		DeserializeKey: func(key string) (*service.DataSourceInput, error) {
+		func(key string) (*service.DataSourceInput, error) {
 			return DeserializeInputFromJSON(key)
 		},
-		Fetch: func(ctx context.Context, input *service.DataSourceInput) (*cachedEntry, error) {
+		func(ctx context.Context, input *service.DataSourceInput) (*cachedEntry, error) {
 			result, err := source.Fetch(ctx, input)
 			if err != nil {
 				return nil, fmt.Errorf("data source fetch failed: %w", err)
@@ -80,17 +77,20 @@ func NewDistributedCachingDataSource(source service.DataSource, config Distribut
 				ContentType: result.ContentType,
 			}, nil
 		},
-		SerializeValue: func(entry *cachedEntry) ([]byte, error) {
+		func(entry *cachedEntry) ([]byte, error) {
 			return json.Marshal(entry)
 		},
-		DeserializeValue: func(b []byte) (*cachedEntry, error) {
+		func(b []byte) (*cachedEntry, error) {
 			var entry cachedEntry
 			if err := json.Unmarshal(b, &entry); err != nil {
 				return nil, err
 			}
 			return &entry, nil
 		},
-	})
+		cache.WithClock(config.Clock),
+		cache.WithCacheSizeBytes(config.CacheSizeBytes),
+		cache.WithTTL(func() cache.TTL { return cacheable.CacheTTL() }),
+	)
 	if err != nil {
 		return source
 	}

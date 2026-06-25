@@ -180,18 +180,15 @@ func NewDistributedCachingValidator(name string, source Validator, config Distri
 		clk = clock.NewSystemClock()
 	}
 
-	adapter, err := cache.NewGroupcacheAdapter(cache.GroupcacheAdapterConfig[ValidatorInput, *Result]{
-		GroupName:      config.GroupName,
-		CacheSizeBytes: config.CacheSizeBytes,
-		Clock:          clk,
-		TTL:            func() cache.TTL { return cacheable.CacheTTL() },
-		SerializeKey: func(input ValidatorInput) (string, error) {
+	adapter, err := cache.NewGroupcacheAdapter(
+		config.GroupName,
+		func(input ValidatorInput) (string, error) {
 			return SerializeValidatorInputToJSON(input)
 		},
-		DeserializeKey: func(key string) (ValidatorInput, error) {
+		func(key string) (ValidatorInput, error) {
 			return DeserializeValidatorInputFromJSON(key)
 		},
-		Fetch: func(ctx context.Context, input ValidatorInput) (*Result, error) {
+		func(ctx context.Context, input ValidatorInput) (*Result, error) {
 			result, err := source.Validate(ctx, input.Credential)
 			if err != nil {
 				return nil, fmt.Errorf("validator failed: %w", err)
@@ -201,17 +198,20 @@ func NewDistributedCachingValidator(name string, source Validator, config Distri
 			}
 			return cloneResult(result), nil
 		},
-		SerializeValue: func(result *Result) ([]byte, error) {
+		func(result *Result) ([]byte, error) {
 			return json.Marshal(result)
 		},
-		DeserializeValue: func(b []byte) (*Result, error) {
+		func(b []byte) (*Result, error) {
 			var result Result
 			if err := json.Unmarshal(b, &result); err != nil {
 				return nil, err
 			}
 			return &result, nil
 		},
-	})
+		cache.WithClock(clk),
+		cache.WithCacheSizeBytes(config.CacheSizeBytes),
+		cache.WithTTL(func() cache.TTL { return cacheable.CacheTTL() }),
+	)
 	if err != nil {
 		return source
 	}

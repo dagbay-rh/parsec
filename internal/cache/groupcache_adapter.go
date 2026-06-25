@@ -29,77 +29,90 @@ type GroupcacheAdapter[K any, V any] struct {
 // TTL is the time-to-live for a cache entry.
 type TTL = time.Duration
 
-// GroupcacheAdapterConfig configures a [GroupcacheAdapter].
-type GroupcacheAdapterConfig[K any, V any] struct {
-	// GroupName identifies this groupcache group. Must be unique per process.
-	GroupName string
-
-	// CacheSizeBytes is the maximum size of the cache in bytes.
-	// Default: 64 MB.
-	CacheSizeBytes int64
-
-	// Clock provides the current time. Required for TTL bucketing.
-	Clock clock.Clock
-
-	// TTL returns the time-to-live for cached entries.
-	// Called on each Get to allow dynamic TTL (though typically static).
-	TTL func() TTL
-
-	// SerializeKey converts a domain key into a reversible string
-	// representation suitable for use as a groupcache key.
-	SerializeKey func(K) (string, error)
-
-	// DeserializeKey reconstructs a domain key from its serialized form.
-	// Called inside the groupcache getter, potentially on a remote peer.
-	DeserializeKey func(string) (K, error)
-
-	// Fetch retrieves the value from the underlying source on a cache miss.
-	// Returning an error prevents the result from being cached.
-	Fetch func(context.Context, K) (V, error)
-
-	// SerializeValue encodes a value for storage in groupcache.
-	SerializeValue func(V) ([]byte, error)
-
-	// DeserializeValue decodes a value retrieved from groupcache.
-	DeserializeValue func([]byte) (V, error)
+// groupcacheAdapterConfig holds optional configuration for a [GroupcacheAdapter].
+type groupcacheAdapterConfig struct {
+	clock          clock.Clock
+	cacheSizeBytes int64
+	ttl            func() TTL
 }
 
-// NewGroupcacheAdapter creates a [GroupcacheAdapter] from the given config.
-// Returns an error if required config fields are missing.
-func NewGroupcacheAdapter[K any, V any](config GroupcacheAdapterConfig[K, V]) (*GroupcacheAdapter[K, V], error) {
-	if config.Clock == nil {
-		config.Clock = clock.NewSystemClock()
+// GroupcacheAdapterOption configures optional behavior of a [GroupcacheAdapter].
+type GroupcacheAdapterOption func(*groupcacheAdapterConfig)
+
+// WithClock sets the clock used for TTL bucketing.
+// Default: [clock.NewSystemClock].
+func WithClock(c clock.Clock) GroupcacheAdapterOption {
+	return func(cfg *groupcacheAdapterConfig) {
+		cfg.clock = c
 	}
-	if config.CacheSizeBytes == 0 {
-		config.CacheSizeBytes = 64 << 20
+}
+
+// WithCacheSizeBytes sets the maximum cache size in bytes.
+// Default: 64 MB.
+func WithCacheSizeBytes(n int64) GroupcacheAdapterOption {
+	return func(cfg *groupcacheAdapterConfig) {
+		cfg.cacheSizeBytes = n
 	}
-	if config.GroupName == "" {
-		return nil, fmt.Errorf("cache: GroupName is required")
+}
+
+// WithTTL sets the function that returns the time-to-live for cached entries.
+// Called on each Get to allow dynamic TTL (though typically static).
+// If not set, entries are cached indefinitely.
+func WithTTL(ttl func() TTL) GroupcacheAdapterOption {
+	return func(cfg *groupcacheAdapterConfig) {
+		cfg.ttl = ttl
 	}
-	if config.SerializeKey == nil {
-		return nil, fmt.Errorf("cache: SerializeKey is required")
+}
+
+// NewGroupcacheAdapter creates a [GroupcacheAdapter].
+//
+// Required parameters are positional: groupName uniquely identifies the
+// groupcache group within the process, and the serialize/deserialize/fetch
+// functions handle domain-type conversion and origin fetches.
+func NewGroupcacheAdapter[K any, V any](
+	groupName string,
+	serializeKey func(K) (string, error),
+	deserializeKey func(string) (K, error),
+	fetch func(context.Context, K) (V, error),
+	serializeValue func(V) ([]byte, error),
+	deserializeValue func([]byte) (V, error),
+	opts ...GroupcacheAdapterOption,
+) (*GroupcacheAdapter[K, V], error) {
+	if groupName == "" {
+		return nil, fmt.Errorf("cache: groupName is required")
 	}
-	if config.DeserializeKey == nil {
-		return nil, fmt.Errorf("cache: DeserializeKey is required")
+	if serializeKey == nil {
+		return nil, fmt.Errorf("cache: serializeKey is required")
 	}
-	if config.Fetch == nil {
-		return nil, fmt.Errorf("cache: Fetch is required")
+	if deserializeKey == nil {
+		return nil, fmt.Errorf("cache: deserializeKey is required")
 	}
-	if config.SerializeValue == nil {
-		return nil, fmt.Errorf("cache: SerializeValue is required")
+	if fetch == nil {
+		return nil, fmt.Errorf("cache: fetch is required")
 	}
-	if config.DeserializeValue == nil {
-		return nil, fmt.Errorf("cache: DeserializeValue is required")
+	if serializeValue == nil {
+		return nil, fmt.Errorf("cache: serializeValue is required")
+	}
+	if deserializeValue == nil {
+		return nil, fmt.Errorf("cache: deserializeValue is required")
+	}
+
+	cfg := groupcacheAdapterConfig{
+		clock:          clock.NewSystemClock(),
+		cacheSizeBytes: 64 << 20,
+	}
+	for _, opt := range opts {
+		opt(&cfg)
 	}
 
 	a := &GroupcacheAdapter[K, V]{
-		clock:            config.Clock,
-		ttl:              config.TTL,
-		serializeKey:     config.SerializeKey,
-		deserializeKey:   config.DeserializeKey,
-		fetch:            config.Fetch,
-		serializeValue:   config.SerializeValue,
-		deserializeValue: config.DeserializeValue,
+		clock:            cfg.clock,
+		ttl:              cfg.ttl,
+		serializeKey:     serializeKey,
+		deserializeKey:   deserializeKey,
+		fetch:            fetch,
+		serializeValue:   serializeValue,
+		deserializeValue: deserializeValue,
 	}
 
 	getter := groupcache.GetterFunc(func(ctx context.Context, key string, dest groupcache.Sink) error {
@@ -123,7 +136,7 @@ func NewGroupcacheAdapter[K any, V any](config GroupcacheAdapterConfig[K, V]) (*
 		return dest.SetBytes(encoded)
 	})
 
-	a.group = groupcache.NewGroup(config.GroupName, config.CacheSizeBytes, getter)
+	a.group = groupcache.NewGroup(groupName, cfg.cacheSizeBytes, getter)
 	return a, nil
 }
 
