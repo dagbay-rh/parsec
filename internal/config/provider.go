@@ -356,31 +356,69 @@ func (p *Provider) HTTPFixtureProvider() httpfixture.FixtureProvider {
 	return p.httpFixtureProvider
 }
 
-// AuthzServerTokenTypes returns the configured token types for ext_authz
+// AuthzServerTokenTypes returns the configured token types for ext_authz.
+// Deprecated: prefer AuthzCheckPolicy which reads from the policy section.
 func (p *Provider) AuthzServerTokenTypes() ([]server.TokenTypeSpec, error) {
-	// If no authz server config, return nil (will use defaults)
 	if p.config.AuthzServer == nil || len(p.config.AuthzServer.TokenTypes) == 0 {
 		return nil, nil
 	}
+	return buildTokenTypeSpecs(p.config.AuthzServer.TokenTypes)
+}
 
-	var tokenTypes []server.TokenTypeSpec
-	for _, ttCfg := range p.config.AuthzServer.TokenTypes {
+// AuthzCheckPolicy returns the configured authz check policy for ext_authz.
+// When the policy section is present, uses its type and token_types.
+// Falls back to legacy top-level token_types for backward compatibility.
+// Defaults to a StaticAuthenticatedPolicy with the default transaction token
+// spec when nothing is configured.
+func (p *Provider) AuthzCheckPolicy() (server.AuthzCheckPolicy, error) {
+	if p.config.AuthzServer == nil {
+		return server.NewStaticAuthenticatedPolicy(nil), nil
+	}
+
+	policyCfg := p.config.AuthzServer.Policy
+
+	// Determine which token types to use:
+	// 1. Policy-level token_types (new config path)
+	// 2. Legacy top-level token_types (backward compat)
+	// 3. Default (nil -> NewStaticAuthenticatedPolicy handles it)
+	tokenTypeCfgs := policyCfg.TokenTypes
+	if len(tokenTypeCfgs) == 0 {
+		tokenTypeCfgs = p.config.AuthzServer.TokenTypes
+	}
+
+	tokenTypes, err := buildTokenTypeSpecs(tokenTypeCfgs)
+	if err != nil {
+		return nil, err
+	}
+
+	switch policyCfg.Type {
+	case "", "static_authenticated":
+		return server.NewStaticAuthenticatedPolicy(tokenTypes), nil
+	default:
+		return nil, fmt.Errorf("unknown authz check policy type: %q", policyCfg.Type)
+	}
+}
+
+// buildTokenTypeSpecs converts config token type entries to server.TokenTypeSpec values.
+func buildTokenTypeSpecs(cfgs []TokenTypeConfig) ([]server.TokenTypeSpec, error) {
+	if len(cfgs) == 0 {
+		return nil, nil
+	}
+
+	specs := make([]server.TokenTypeSpec, 0, len(cfgs))
+	for _, ttCfg := range cfgs {
 		if ttCfg.Type == "" {
 			return nil, fmt.Errorf("token type is required")
 		}
-
 		if ttCfg.HeaderName == "" {
 			return nil, fmt.Errorf("header_name is required for token type %s", ttCfg.Type)
 		}
-
-		// Use token type directly as service.TokenType (it's already a URN string)
-		tokenTypes = append(tokenTypes, server.TokenTypeSpec{
+		specs = append(specs, server.TokenTypeSpec{
 			Type:       service.TokenType(ttCfg.Type),
 			HeaderName: ttCfg.HeaderName,
 		})
 	}
-
-	return tokenTypes, nil
+	return specs, nil
 }
 
 // CredentialSources returns the global credential extraction sources shared by

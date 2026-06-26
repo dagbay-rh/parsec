@@ -648,6 +648,36 @@ func (m *compositeAuthzCheckProbe) SubjectValidationFailed(err error) {
 	}
 }
 
+func (m *compositeAuthzCheckProbe) SubjectAnonymous() {
+	for _, p := range m.probes {
+		p.SubjectAnonymous()
+	}
+}
+
+func (m *compositeAuthzCheckProbe) PolicyDecisionIssue(tokenTypeCount int, scope string) {
+	for _, p := range m.probes {
+		p.PolicyDecisionIssue(tokenTypeCount, scope)
+	}
+}
+
+func (m *compositeAuthzCheckProbe) PolicyDecisionPassthrough(reason string) {
+	for _, p := range m.probes {
+		p.PolicyDecisionPassthrough(reason)
+	}
+}
+
+func (m *compositeAuthzCheckProbe) PolicyDecisionDeny(reason string) {
+	for _, p := range m.probes {
+		p.PolicyDecisionDeny(reason)
+	}
+}
+
+func (m *compositeAuthzCheckProbe) PolicyEvaluationFailed(err error) {
+	for _, p := range m.probes {
+		p.PolicyEvaluationFailed(err)
+	}
+}
+
 func (m *compositeAuthzCheckProbe) End() {
 	for _, p := range m.probes {
 		p.End()

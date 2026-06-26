@@ -812,6 +812,7 @@ func TestAuthzServer_Check_Observability(t *testing.T) {
 			"ActorValidationSucceeded",
 			"SubjectCredentialExtracted",
 			"SubjectValidationSucceeded",
+			"PolicyDecisionIssue",
 			"End",
 		)
 	})
@@ -858,12 +859,17 @@ func TestAuthzServer_Check_Observability(t *testing.T) {
 			"ActorValidationSucceeded",
 			"SubjectCredentialExtracted",
 			"SubjectValidationSucceeded", // Still succeeds even for invalid token with StubValidator
+			"PolicyDecisionIssue",
 			"End",
 		)
 	})
 
-	t.Run("missing credentials calls probe correctly", func(t *testing.T) {
-		// Setup
+	t.Run("missing credentials triggers anonymous subject and policy denial", func(t *testing.T) {
+		// With the authz check policy, missing credentials results in an
+		// anonymous subject. The default StaticAuthenticatedPolicy denies
+		// anonymous subjects. This should NOT fire
+		// SubjectCredentialExtractionFailed (that's for malformed
+		// credentials, not absent ones).
 		fakeObs := service.NewFakeObserver(t)
 
 		trustStore := trust.NewStubStore()
@@ -887,17 +893,22 @@ func TestAuthzServer_Check_Observability(t *testing.T) {
 			},
 		}
 
-		_, err := authzServer.Check(ctx, req)
+		resp, err := authzServer.Check(ctx, req)
 		if err != nil {
 			t.Fatalf("Check failed: %v", err)
 		}
 
-		// Verify observer saw probe with credential extraction failure
+		// Verify denial (anonymous subjects not allowed by default policy)
+		if resp.Status.Code == 0 {
+			t.Error("expected denial for missing credentials, got OK")
+		}
+
 		p := fakeObs.AssertSingleProbe("AuthzCheckStarted", nil)
 		p.AssertProbeSequence(
 			"RequestAttributesParsed",
 			"ActorValidationSucceeded",
-			"SubjectCredentialExtractionFailed",
+			"SubjectAnonymous",
+			"PolicyDecisionDeny",
 			"End",
 		)
 	})

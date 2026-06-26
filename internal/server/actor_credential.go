@@ -23,10 +23,18 @@ type actorProbe interface {
 // context, emitting probe events along the way. Returns an anonymous result
 // when no actor credential is present.
 func authenticateActor(ctx context.Context, sources CredentialSources, store trust.Store, p actorProbe) (*trust.Result, error) {
+	result, _, err := authenticateActorWithExtraction(ctx, sources, store, p)
+	return result, err
+}
+
+// authenticateActorWithExtraction works like authenticateActor but also returns
+// the CredentialExtraction (nil when the actor is anonymous). This allows
+// callers to build a Principal with credential metadata.
+func authenticateActorWithExtraction(ctx context.Context, sources CredentialSources, store trust.Store, p actorProbe) (*trust.Result, *CredentialExtraction, error) {
 	ext, err := extractActorCredential(ctx, sources)
 	if err != nil {
 		p.ActorCredentialExtractionFailed(err)
-		return nil, fmt.Errorf("failed to extract actor credential: %w", err)
+		return nil, nil, fmt.Errorf("failed to extract actor credential: %w", err)
 	}
 
 	if ext != nil {
@@ -34,15 +42,15 @@ func authenticateActor(ctx context.Context, sources CredentialSources, store tru
 		actor, validationErr := validateCredential(ctx, store, ext)
 		if validationErr != nil {
 			p.ActorValidationFailed(validationErr)
-			return nil, fmt.Errorf("actor validation failed: %w", validationErr)
+			return nil, nil, fmt.Errorf("actor validation failed: %w", validationErr)
 		}
 		p.ActorValidationSucceeded(actor)
-		return actor, nil
+		return actor, ext, nil
 	}
 
 	actor := trust.AnonymousResult()
 	p.ActorValidationSucceeded(actor)
-	return actor, nil
+	return actor, nil, nil
 }
 
 // extractActorCredential extracts an actor credential from the gRPC context.

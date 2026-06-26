@@ -142,18 +142,23 @@ trust_domain: "parsec.example.com"  # Audience for issued tokens
 
 ### Authorization Server (ext_authz)
 
-Configure the Envoy ext_authz server behavior (optional):
+Configure the Envoy ext_authz server behavior (optional). The `policy` section
+controls how the authz check policy decides whether to issue tokens, pass
+through, or deny each request:
 
 ```yaml
 authz_server:
-  token_types:
-    - type: "urn:ietf:params:oauth:token-type:txn_token"
-      header_name: "Transaction-Token"
-    - type: "urn:ietf:params:oauth:token-type:access_token"
-      header_name: "Authorization"
+  policy:
+    type: static_authenticated    # denies anonymous, issues configured token types
+    token_types:
+      - type: "urn:ietf:params:oauth:token-type:txn_token"
+        header_name: "Transaction-Token"
+      - type: "urn:ietf:params:oauth:token-type:access_token"
+        header_name: "Authorization"
 ```
 
-If not specified, defaults to issuing a transaction token in the `Transaction-Token` header.
+If not specified, defaults to `static_authenticated` issuing a transaction
+token in the `Transaction-Token` header.
 
 ### Exchange Server
 
