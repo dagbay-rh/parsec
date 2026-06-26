@@ -109,6 +109,18 @@ func TestRoundTimestampToInterval(t *testing.T) {
 			interval: 30 * time.Second,
 			expected: time.Date(2025, 10, 9, 10, 0, 30, 0, time.UTC),
 		},
+		{
+			name:     "zero interval returns original time",
+			time:     time.Date(2025, 10, 9, 10, 2, 30, 0, time.UTC),
+			interval: 0,
+			expected: time.Date(2025, 10, 9, 10, 2, 30, 0, time.UTC),
+		},
+		{
+			name:     "negative interval returns original time",
+			time:     time.Date(2025, 10, 9, 10, 2, 30, 0, time.UTC),
+			interval: -5 * time.Minute,
+			expected: time.Date(2025, 10, 9, 10, 2, 30, 0, time.UTC),
+		},
 	}
 
 	for _, tt := range tests {

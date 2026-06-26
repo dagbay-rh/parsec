@@ -37,12 +37,16 @@ func StripTTLSuffix(key string) string {
 }
 
 // RoundTimestampToInterval rounds a timestamp down to the nearest interval
-// boundary. For example, with a 5-minute interval:
+// boundary. If interval is zero or negative, t is returned unchanged.
+// For example, with a 5-minute interval:
 //
 //   - 10:02:30 → 10:00:00
 //   - 10:05:00 → 10:05:00
 //   - 10:07:30 → 10:05:00
 func RoundTimestampToInterval(t time.Time, interval time.Duration) time.Time {
+	if interval <= 0 {
+		return t
+	}
 	unixNano := t.UnixNano()
 	intervalNano := interval.Nanoseconds()
 	roundedNano := (unixNano / intervalNano) * intervalNano
