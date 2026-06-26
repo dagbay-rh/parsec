@@ -146,7 +146,7 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 
 	case AuthzCheckAllowWithoutIssue:
 		p.PolicyDecisionAllowWithoutIssue(decision.Reason)
-		return s.allowWithoutIssueResponse(subjectExt), nil
+		return s.okResponse(nil, subjectExt), nil
 
 	case AuthzCheckIssue:
 		p.PolicyDecisionIssue(len(decision.TokenTypes), decision.Scope)
@@ -158,13 +158,14 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 	}
 }
 
-// issueResponse builds an OK response with issued tokens in headers.
+// issueResponse calls TokenService.IssueTokens and builds an OK response
+// with the issued tokens in headers.
 func (s *AuthzServer) issueResponse(
 	ctx context.Context,
 	decision AuthzCheckDecision,
 	subject, actor Principal,
 	reqAttrs *request.RequestAttributes,
-	ext *CredentialExtraction,
+	subjectExt *CredentialExtraction,
 ) (*authv3.CheckResponse, error) {
 	tokenTypes := make([]service.TokenType, len(decision.TokenTypes))
 	for i, spec := range decision.TokenTypes {
@@ -182,10 +183,10 @@ func (s *AuthzServer) issueResponse(
 		return s.denyResponse(codes.Internal, fmt.Sprintf("failed to issue tokens: %v", err)), nil
 	}
 
-	responseHeaders := make([]*corev3.HeaderValueOption, 0, len(issuedTokens))
+	tokenHeaders := make([]*corev3.HeaderValueOption, 0, len(issuedTokens))
 	for _, spec := range decision.TokenTypes {
 		if token, ok := issuedTokens[spec.Type]; ok {
-			responseHeaders = append(responseHeaders, &corev3.HeaderValueOption{
+			tokenHeaders = append(tokenHeaders, &corev3.HeaderValueOption{
 				Header: &corev3.HeaderValue{
 					Key:   spec.HeaderName,
 					Value: token.Value,
@@ -195,48 +196,21 @@ func (s *AuthzServer) issueResponse(
 		}
 	}
 
-	// Append credential rewrite headers if any
-	if ext != nil {
-		for name, value := range ext.HeadersToSet {
-			responseHeaders = append(responseHeaders, &corev3.HeaderValueOption{
-				Header: &corev3.HeaderValue{
-					Key:   name,
-					Value: value,
-				},
-				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
-			})
-		}
-	}
-
-	// Remove external credential headers - security boundary
-	var headersToRemove []string
-	if ext != nil {
-		headersToRemove = ext.HeadersToRemove
-	}
-
-	return &authv3.CheckResponse{
-		Status: &status.Status{
-			Code: int32(codes.OK),
-		},
-		HttpResponse: &authv3.CheckResponse_OkResponse{
-			OkResponse: &authv3.OkHttpResponse{
-				Headers:         responseHeaders,
-				HeadersToRemove: headersToRemove,
-			},
-		},
-	}, nil
+	return s.okResponse(tokenHeaders, subjectExt), nil
 }
 
-// allowWithoutIssueResponse builds an OK response without issuing tokens.
-// Credential headers are still sanitized when a credential was present.
-func (s *AuthzServer) allowWithoutIssueResponse(ext *CredentialExtraction) *authv3.CheckResponse {
-	var headersToRemove []string
-	var responseHeaders []*corev3.HeaderValueOption
+// okResponse builds an OK CheckResponse from optional token headers and
+// optional subject credential extraction. When subjectExt is non-nil, its
+// rewrite headers are appended and its removal list is applied to sanitize
+// external credentials from the upstream request.
+func (s *AuthzServer) okResponse(tokenHeaders []*corev3.HeaderValueOption, subjectExt *CredentialExtraction) *authv3.CheckResponse {
+	var headers []*corev3.HeaderValueOption
+	headers = append(headers, tokenHeaders...)
 
-	if ext != nil {
-		headersToRemove = ext.HeadersToRemove
-		for name, value := range ext.HeadersToSet {
-			responseHeaders = append(responseHeaders, &corev3.HeaderValueOption{
+	var headersToRemove []string
+	if subjectExt != nil {
+		for name, value := range subjectExt.HeadersToSet {
+			headers = append(headers, &corev3.HeaderValueOption{
 				Header: &corev3.HeaderValue{
 					Key:   name,
 					Value: value,
@@ -244,6 +218,7 @@ func (s *AuthzServer) allowWithoutIssueResponse(ext *CredentialExtraction) *auth
 				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
 			})
 		}
+		headersToRemove = subjectExt.HeadersToRemove
 	}
 
 	return &authv3.CheckResponse{
@@ -252,7 +227,7 @@ func (s *AuthzServer) allowWithoutIssueResponse(ext *CredentialExtraction) *auth
 		},
 		HttpResponse: &authv3.CheckResponse_OkResponse{
 			OkResponse: &authv3.OkHttpResponse{
-				Headers:         responseHeaders,
+				Headers:         headers,
 				HeadersToRemove: headersToRemove,
 			},
 		},
