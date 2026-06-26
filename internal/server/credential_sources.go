@@ -76,9 +76,3 @@ func (cs CredentialSources) Extract(ctx context.Context, cc CredentialContext) (
 	}
 	return nil, ErrNoCredentials
 }
-
-// validateCredential validates a credential from a CredentialExtraction against
-// a trust.Store.
-func validateCredential(ctx context.Context, store trust.Store, ext *CredentialExtraction) (*trust.Result, error) {
-	return store.Validate(ctx, ext.Credential)
-}

@@ -39,7 +39,7 @@ func authenticateActorWithExtraction(ctx context.Context, sources CredentialSour
 
 	if ext != nil {
 		p.ActorCredentialExtracted(ext.Credential, ext.HeadersToRemove)
-		actor, validationErr := validateCredential(ctx, store, ext)
+		actor, validationErr := store.Validate(ctx, ext.Credential)
 		if validationErr != nil {
 			p.ActorValidationFailed(validationErr)
 			return nil, nil, fmt.Errorf("actor validation failed: %w", validationErr)

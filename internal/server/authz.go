@@ -117,7 +117,7 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 				fmt.Sprintf("failed to filter trust store: %v", filterErr)), nil
 		}
 
-		result, validationErr := validateCredential(ctx, filteredStore, subjectExt)
+		result, validationErr := filteredStore.Validate(ctx, subjectExt.Credential)
 		if validationErr != nil {
 			p.SubjectValidationFailed(validationErr)
 			return s.denyResponse(codes.Unauthenticated, fmt.Sprintf("validation failed: %v", validationErr)), nil
