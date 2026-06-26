@@ -226,4 +226,3 @@ func TestNewGroupcacheAdapter_RejectsInvalidArgs(t *testing.T) {
 		})
 	}
 }
-

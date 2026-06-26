@@ -148,4 +148,3 @@ func TestAppendTTLSuffix(t *testing.T) {
 		}
 	})
 }
-

@@ -46,4 +46,3 @@ func RoundTimestampToInterval(t time.Time, interval time.Duration) time.Time {
 	roundedNano := (unixNano / intervalNano) * intervalNano
 	return time.Unix(0, roundedNano)
 }
-

@@ -161,7 +161,6 @@ func newLuaValidatorConfig(opts ...LuaValidatorOption) luaValidatorConfig {
 	return cfg
 }
 
-
 // CredentialTypes implements the Validator interface.
 func (v *LuaValidator) CredentialTypes() []CredentialType {
 	return slices.Clone(v.credentialTypes)

@@ -568,8 +568,8 @@ func TestJWTValidateMetrics(t *testing.T) {
 
 func TestLuaValidateMetrics(t *testing.T) {
 	tests := []struct {
-		name       string
-		action     func(probe interface {
+		name   string
+		action func(probe interface {
 			End()
 			ScriptLoadFailed(error)
 			ScriptExecutionFailed(error)

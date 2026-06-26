@@ -180,7 +180,6 @@ func (c *JSONCredential) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-
 // MarshalCredentialJSON serializes a [Credential] to JSON with a "type"
 // discriminator field. The concrete credential struct must have json tags.
 func MarshalCredentialJSON(c Credential) ([]byte, error) {
