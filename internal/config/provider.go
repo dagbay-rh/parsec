@@ -356,15 +356,6 @@ func (p *Provider) HTTPFixtureProvider() httpfixture.FixtureProvider {
 	return p.httpFixtureProvider
 }
 
-// AuthzServerTokenTypes returns the configured token types for ext_authz.
-// Deprecated: prefer AuthzCheckPolicy which reads from the policy section.
-func (p *Provider) AuthzServerTokenTypes() ([]server.TokenTypeSpec, error) {
-	if p.config.AuthzServer == nil || len(p.config.AuthzServer.TokenTypes) == 0 {
-		return nil, nil
-	}
-	return buildTokenTypeSpecs(p.config.AuthzServer.TokenTypes)
-}
-
 // AuthzCheckPolicy returns the configured authz check policy for ext_authz.
 // When the policy section is present, uses its type and token_types.
 // Falls back to legacy top-level token_types for backward compatibility.
