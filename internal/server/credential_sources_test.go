@@ -146,12 +146,15 @@ func TestCredentialSources_Extract(t *testing.T) {
 		}
 	})
 
-	t.Run("no credentials found", func(t *testing.T) {
+	t.Run("no credentials returns nil", func(t *testing.T) {
 		t.Parallel()
 		sources := DefaultCredentialSources()
-		_, err := sources.Extract(ctx, makeCC(nil))
-		if err == nil {
-			t.Fatal("expected error when no credentials present")
+		ext, err := sources.Extract(ctx, makeCC(nil))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ext != nil {
+			t.Fatalf("expected nil extraction, got %+v", ext)
 		}
 	})
 

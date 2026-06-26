@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"fmt"
 
 	"github.com/project-kessel/parsec/internal/trust"
@@ -70,18 +69,7 @@ func extractActorCredential(ctx context.Context, sources CredentialSources) (*Cr
 		return mtlsExtractionFromPeer(cc.TLSPeer), nil
 	}
 
-	if cc.Headers == nil {
-		return nil, nil
-	}
-
-	ext, err := sources.Extract(ctx, cc)
-	if err != nil {
-		if errors.Is(err, ErrNoCredentials) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("actor credential extraction failed: %w", err)
-	}
-	return ext, nil
+	return sources.Extract(ctx, cc)
 }
 
 // mtlsExtractionFromPeer builds a CredentialExtraction from TLS peer info.

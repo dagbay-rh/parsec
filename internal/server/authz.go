@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -98,13 +97,13 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 
 	subjectExt, err = s.credentialSources.Extract(ctx, cc)
 	if err != nil {
-		if errors.Is(err, ErrNoCredentials) {
-			subjectPrin = anonymousPrincipal()
-			p.SubjectAnonymous()
-		} else {
-			p.SubjectCredentialExtractionFailed(err)
-			return s.denyResponse(codes.Unauthenticated, fmt.Sprintf("failed to extract credentials: %v", err)), nil
-		}
+		p.SubjectCredentialExtractionFailed(err)
+		return s.denyResponse(codes.Unauthenticated, fmt.Sprintf("failed to extract credentials: %v", err)), nil
+	}
+
+	if subjectExt == nil {
+		subjectPrin = anonymousPrincipal()
+		p.SubjectAnonymous()
 	}
 
 	// If we got a credential, filter trust store and validate it

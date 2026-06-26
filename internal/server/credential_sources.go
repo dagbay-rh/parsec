@@ -7,10 +7,6 @@ import (
 	"github.com/project-kessel/parsec/internal/trust"
 )
 
-// ErrNoCredentials is returned when none of the configured sources found a
-// credential in the transport context.
-var ErrNoCredentials = errors.New("no credentials found in configured sources")
-
 // Credential source type strings used in config.
 const (
 	CredentialSourceTypeBearer = "authorization_bearer_opaque"
@@ -21,6 +17,7 @@ const (
 // Implementations handle specific credential presentation protocols (bearer
 // header, cookie, etc.).
 type CredentialSource interface {
+	// Returns (nil, nil) when no credential is found for this source.
 	Extract(ctx context.Context, cc CredentialContext) (*CredentialExtraction, error)
 }
 
@@ -52,8 +49,9 @@ func DefaultCredentialSources() CredentialSources {
 }
 
 // Extract iterates the configured sources in order and returns the first
-// successful extraction. Errors from individual sources are collected and
-// returned as a joined error when no source succeeds.
+// successful extraction. Returns (nil, nil) when no source finds a
+// credential. Errors from individual sources are collected and returned
+// as a joined error when no source succeeds.
 func (cs CredentialSources) Extract(ctx context.Context, cc CredentialContext) (*CredentialExtraction, error) {
 	if len(cs.sources) == 0 {
 		return nil, errors.New("credential sources must not be empty")
@@ -74,5 +72,5 @@ func (cs CredentialSources) Extract(ctx context.Context, cc CredentialContext) (
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}
-	return nil, ErrNoCredentials
+	return nil, nil
 }
