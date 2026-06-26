@@ -25,10 +25,12 @@ func AppendTTLSuffix(key string, now time.Time, ttl time.Duration) string {
 	return fmt.Sprintf("%s%s%d", key, ttlMarker, rounded.Unix())
 }
 
-// StripTTLSuffix removes the ":ttl:<timestamp>" suffix from a cache key.
+// StripTTLSuffix removes the trailing ":ttl:<timestamp>" suffix appended by
+// [AppendTTLSuffix].  It trims only the last marker so that keys whose body
+// happens to contain a literal ":ttl:" substring are preserved intact.
 // If the marker is not present, the key is returned unchanged.
 func StripTTLSuffix(key string) string {
-	if idx := strings.Index(key, ttlMarker); idx >= 0 {
+	if idx := strings.LastIndex(key, ttlMarker); idx >= 0 {
 		return key[:idx]
 	}
 	return key
