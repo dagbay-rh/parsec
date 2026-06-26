@@ -161,13 +161,19 @@ func TestGroupcacheAdapter_ZeroTTLCachesIndefinitely(t *testing.T) {
 
 func TestGroupcacheAdapter_FetchErrorPreventsCache(t *testing.T) {
 	clk := clock.NewFixtureClock(time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC))
+	var fetchCount atomic.Int64
+	shouldFail := true
 
 	adapter, err := cache.NewGroupcacheAdapter(
 		fmt.Sprintf("test-%s-%d", t.Name(), time.Now().UnixNano()),
 		func(k string) (string, error) { return k, nil },
 		func(s string) (string, error) { return s, nil },
-		func(_ context.Context, _ string) (*testEntry, error) {
-			return nil, fmt.Errorf("source unavailable")
+		func(_ context.Context, key string) (*testEntry, error) {
+			fetchCount.Add(1)
+			if shouldFail {
+				return nil, fmt.Errorf("source unavailable")
+			}
+			return &testEntry{Value: "fetched:" + key}, nil
 		},
 		func(v *testEntry) ([]byte, error) {
 			return json.Marshal(v)
@@ -184,9 +190,29 @@ func TestGroupcacheAdapter_FetchErrorPreventsCache(t *testing.T) {
 		t.Fatalf("NewGroupcacheAdapter failed: %v", err)
 	}
 
-	_, err = adapter.Get(context.Background(), "key-a")
+	ctx := context.Background()
+
+	// First Get: fetch fails, error returned.
+	_, err = adapter.Get(ctx, "key-a")
 	if err == nil {
 		t.Fatal("expected error from failed fetch")
+	}
+	if fetchCount.Load() != 1 {
+		t.Fatalf("fetch count = %d, want 1", fetchCount.Load())
+	}
+
+	// Second Get (same key, same TTL bucket): fetch must be called again,
+	// proving the error was not cached.
+	shouldFail = false
+	got, err := adapter.Get(ctx, "key-a")
+	if err != nil {
+		t.Fatalf("second Get failed: %v", err)
+	}
+	if fetchCount.Load() != 2 {
+		t.Fatalf("fetch count = %d, want 2 (error must not be cached)", fetchCount.Load())
+	}
+	if got.Value != "fetched:key-a" {
+		t.Errorf("value = %q, want %q", got.Value, "fetched:key-a")
 	}
 }
 
