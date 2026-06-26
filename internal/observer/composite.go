@@ -660,9 +660,9 @@ func (m *compositeAuthzCheckProbe) PolicyDecisionIssue(tokenTypeCount int, scope
 	}
 }
 
-func (m *compositeAuthzCheckProbe) PolicyDecisionPassthrough(reason string) {
+func (m *compositeAuthzCheckProbe) PolicyDecisionAllowWithoutIssue(reason string) {
 	for _, p := range m.probes {
-		p.PolicyDecisionPassthrough(reason)
+		p.PolicyDecisionAllowWithoutIssue(reason)
 	}
 }
 

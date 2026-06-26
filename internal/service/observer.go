@@ -129,9 +129,9 @@ type AuthzCheckProbe interface {
 	// issue tokens.
 	PolicyDecisionIssue(tokenTypeCount int, scope string)
 
-	// PolicyDecisionPassthrough is called when the authz check policy decides
-	// to pass through without issuing tokens.
-	PolicyDecisionPassthrough(reason string)
+	// PolicyDecisionAllowWithoutIssue is called when the authz check policy
+	// decides to allow the request without issuing tokens.
+	PolicyDecisionAllowWithoutIssue(reason string)
 
 	// PolicyDecisionDeny is called when the authz check policy decides to
 	// deny the request.
@@ -195,7 +195,7 @@ func (NoOpAuthzCheckProbe) SubjectValidationSucceeded(*trust.Result)            
 func (NoOpAuthzCheckProbe) SubjectValidationFailed(error)                         {}
 func (NoOpAuthzCheckProbe) SubjectAnonymous()                                     {}
 func (NoOpAuthzCheckProbe) PolicyDecisionIssue(int, string)                       {}
-func (NoOpAuthzCheckProbe) PolicyDecisionPassthrough(string)                      {}
+func (NoOpAuthzCheckProbe) PolicyDecisionAllowWithoutIssue(string)                {}
 func (NoOpAuthzCheckProbe) PolicyDecisionDeny(string)                             {}
 func (NoOpAuthzCheckProbe) PolicyEvaluationFailed(error)                          {}
 func (NoOpAuthzCheckProbe) End()                                                  {}

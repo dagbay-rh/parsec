@@ -88,7 +88,7 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 	// Only "no credential found" enters the anonymous path; malformed or
 	// invalid credentials are hard failures.
 	var subjectPrin Principal
-	var ext *CredentialExtraction
+	var subjectExt *CredentialExtraction
 
 	cc, err := CredentialContextFromCheckRequest(req)
 	if err != nil {
@@ -96,7 +96,7 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 		return s.denyResponse(codes.Unauthenticated, fmt.Sprintf("failed to extract credentials: %v", err)), nil
 	}
 
-	ext, err = s.credentialSources.Extract(ctx, cc)
+	subjectExt, err = s.credentialSources.Extract(ctx, cc)
 	if err != nil {
 		if errors.Is(err, ErrNoCredentials) {
 			subjectPrin = anonymousPrincipal()
@@ -108,8 +108,8 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 	}
 
 	// If we got a credential, filter trust store and validate it
-	if ext != nil {
-		p.SubjectCredentialExtracted(ext.Credential, ext.HeadersToRemove)
+	if subjectExt != nil {
+		p.SubjectCredentialExtracted(subjectExt.Credential, subjectExt.HeadersToRemove)
 
 		filteredStore, filterErr := s.trustStore.ForActor(ctx, actorResult, reqAttrs)
 		if filterErr != nil {
@@ -117,13 +117,13 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 				fmt.Sprintf("failed to filter trust store: %v", filterErr)), nil
 		}
 
-		result, validationErr := validateCredential(ctx, filteredStore, ext)
+		result, validationErr := validateCredential(ctx, filteredStore, subjectExt)
 		if validationErr != nil {
 			p.SubjectValidationFailed(validationErr)
 			return s.denyResponse(codes.Unauthenticated, fmt.Sprintf("validation failed: %v", validationErr)), nil
 		}
 		p.SubjectValidationSucceeded(result)
-		subjectPrin = newPrincipal(result, ext)
+		subjectPrin = newPrincipal(result, subjectExt)
 	}
 
 	// 4. Evaluate authz check policy
@@ -144,13 +144,13 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 		p.PolicyDecisionDeny(decision.Reason)
 		return s.denyResponse(codes.PermissionDenied, decision.Reason), nil
 
-	case AuthzCheckPassthrough:
-		p.PolicyDecisionPassthrough(decision.Reason)
-		return s.passthroughResponse(ext), nil
+	case AuthzCheckAllowWithoutIssue:
+		p.PolicyDecisionAllowWithoutIssue(decision.Reason)
+		return s.allowWithoutIssueResponse(subjectExt), nil
 
 	case AuthzCheckIssue:
 		p.PolicyDecisionIssue(len(decision.TokenTypes), decision.Scope)
-		return s.issueResponse(ctx, decision, subjectPrin, actorPrin, reqAttrs, ext)
+		return s.issueResponse(ctx, decision, subjectPrin, actorPrin, reqAttrs, subjectExt)
 
 	default:
 		return s.denyResponse(codes.Internal,
@@ -227,9 +227,9 @@ func (s *AuthzServer) issueResponse(
 	}, nil
 }
 
-// passthroughResponse builds an OK response without issuing tokens.
+// allowWithoutIssueResponse builds an OK response without issuing tokens.
 // Credential headers are still sanitized when a credential was present.
-func (s *AuthzServer) passthroughResponse(ext *CredentialExtraction) *authv3.CheckResponse {
+func (s *AuthzServer) allowWithoutIssueResponse(ext *CredentialExtraction) *authv3.CheckResponse {
 	var headersToRemove []string
 	var responseHeaders []*corev3.HeaderValueOption
 

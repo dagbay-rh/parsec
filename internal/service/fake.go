@@ -249,8 +249,8 @@ func (p *FakeProbe) PolicyDecisionIssue(tokenTypeCount int, scope string) {
 	p.recordCall("PolicyDecisionIssue", tokenTypeCount, scope)
 }
 
-func (p *FakeProbe) PolicyDecisionPassthrough(reason string) {
-	p.recordCall("PolicyDecisionPassthrough", reason)
+func (p *FakeProbe) PolicyDecisionAllowWithoutIssue(reason string) {
+	p.recordCall("PolicyDecisionAllowWithoutIssue", reason)
 }
 
 func (p *FakeProbe) PolicyDecisionDeny(reason string) {

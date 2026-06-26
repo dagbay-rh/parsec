@@ -34,9 +34,9 @@ const (
 	// TokenService.IssueTokens.
 	AuthzCheckIssue AuthzCheckAction = "issue"
 
-	// AuthzCheckPassthrough means the server should return OK without issuing
-	// tokens. Credential headers are still sanitized when present.
-	AuthzCheckPassthrough AuthzCheckAction = "passthrough"
+	// AuthzCheckAllowWithoutIssue means the server should return OK without
+	// issuing tokens. Credential headers are still sanitized when present.
+	AuthzCheckAllowWithoutIssue AuthzCheckAction = "allow_without_issue"
 
 	// AuthzCheckDeny means the server should return an authorization denial
 	// without calling token issuers or datasources.

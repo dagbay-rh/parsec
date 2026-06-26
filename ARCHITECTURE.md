@@ -59,7 +59,7 @@ Implements Envoy's external authorization protocol:
 **Authz Check Policy**: A pluggable policy layer sits between credential
 validation and token issuance. The policy receives `Principal` values for both
 subject and actor (which may be anonymous), plus the request attributes, and
-returns a decision: `issue`, `passthrough`, or `deny`. The default
+returns a decision: `issue`, `allow_without_issue`, or `deny`. The default
 `static_authenticated` policy denies anonymous subjects and issues statically
 configured token types for authenticated subjects.
 
@@ -493,7 +493,7 @@ func (ts *TokenService) IssueTokens(ctx context.Context,
      - Credential found → filter trust store, validate, wrap into Principal
                 ↓
 3. AuthzCheckPolicy.Decide(subject, actor, request)
-   - Returns issue / passthrough / deny
+   - Returns issue / allow_without_issue / deny
                 ↓
 4a. Issue → TokenService.IssueTokens()
    - Enrich with data sources
@@ -501,7 +501,7 @@ func (ts *TokenService) IssueTokens(ctx context.Context,
    - Build transaction context
    - Return CheckResponse OK with token headers, remove credential headers
                 ↓
-4b. Passthrough → Return CheckResponse OK without token headers
+4b. AllowWithoutIssue → Return CheckResponse OK without token headers
    - Still sanitize credential headers when present
                 ↓
 4c. Deny → Return CheckResponse Denied with reason
@@ -519,7 +519,7 @@ All major components are defined by interfaces, enabling:
 Example interfaces:
 - `trust.Validator` - Credential validation
 - `trust.Store` - Trust domain management
-- `server.AuthzCheckPolicy` - Pre-issuance policy (issue / passthrough / deny)
+- `server.AuthzCheckPolicy` - Pre-issuance policy (issue / allow_without_issue / deny)
 - `service.Issuer` - Token issuance
 - `service.DataSource` - Data enrichment
 - `service.ClaimMapper` - Claim transformation

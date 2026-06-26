@@ -340,10 +340,10 @@ func (p *loggingAuthzCheckProbe) PolicyDecisionIssue(tokenTypeCount int, scope s
 		Msg("Authz check policy: issue")
 }
 
-func (p *loggingAuthzCheckProbe) PolicyDecisionPassthrough(reason string) {
+func (p *loggingAuthzCheckProbe) PolicyDecisionAllowWithoutIssue(reason string) {
 	p.logger.Debug().
 		Str("reason", reason).
-		Msg("Authz check policy: passthrough")
+		Msg("Authz check policy: allow without issue")
 }
 
 func (p *loggingAuthzCheckProbe) PolicyDecisionDeny(reason string) {
