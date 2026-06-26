@@ -228,6 +228,55 @@ end
 	}
 }
 
+func TestCacheableLuaValidator_CacheKey_NilCredential(t *testing.T) {
+	const script = `
+function validate(input)
+  return {subject = "user", expires_at = 4102444800}
+end
+
+function validate_cache_key(input)
+  return {
+    credential = {
+      type = input.credential.type,
+      token = input.credential.token
+    }
+  }
+end
+`
+	validator, err := NewCacheableLuaValidator("test", script, []CredentialType{CredentialTypeBearer})
+	if err != nil {
+		t.Fatalf("NewCacheableLuaValidator: %v", err)
+	}
+
+	_, err = validator.CacheKey(nil)
+	if err == nil {
+		t.Fatal("expected error for nil credential")
+	}
+	if !strings.Contains(err.Error(), "credential cannot be nil") {
+		t.Fatalf("err=%v, want containing 'credential cannot be nil'", err)
+	}
+}
+
+func TestLuaValidator_Validate_NilCredential(t *testing.T) {
+	const script = `
+function validate(input)
+  return {subject = "user", expires_at = 4102444800}
+end
+`
+	validator, err := NewLuaValidator("test", script, []CredentialType{CredentialTypeBearer})
+	if err != nil {
+		t.Fatalf("NewLuaValidator: %v", err)
+	}
+
+	_, err = validator.Validate(context.Background(), nil)
+	if err == nil {
+		t.Fatal("expected error for nil credential")
+	}
+	if !strings.Contains(err.Error(), "credential cannot be nil") {
+		t.Fatalf("err=%v, want containing 'credential cannot be nil'", err)
+	}
+}
+
 func TestNewCacheableLuaValidator_RequiresValidateCacheKey(t *testing.T) {
 	_, err := NewCacheableLuaValidator("test", `function validate(input) return nil end`, []CredentialType{CredentialTypeBearer})
 	if err == nil || !strings.Contains(err.Error(), "script must define a 'validate_cache_key' function") {
