@@ -35,17 +35,11 @@ func (s *CookieCredentialSource) Extract(_ context.Context, cc CredentialContext
 		return nil, nil
 	}
 
-	ext := &CredentialExtraction{
-		Credential: &trust.BearerCredential{Token: token},
-		SourceName: s.sourceName(),
-	}
-	sanitized := sanitizeCookieHeader(cookieHeader, name)
-	if sanitized == "" {
-		ext.HeadersToRemove = []string{"cookie"}
-	} else {
-		ext.HeadersToSet = map[string]string{"cookie": sanitized}
-	}
-	return ext, nil
+	return &CredentialExtraction{
+		Credential:  &trust.BearerCredential{Token: token},
+		CookiesUsed: []string{name},
+		SourceName:  s.sourceName(),
+	}, nil
 }
 
 func (s *CookieCredentialSource) sourceName() string {
@@ -66,8 +60,13 @@ func cookieValue(cookieHeader, name string) (string, bool) {
 	return "", false
 }
 
-// sanitizeCookieHeader rebuilds a Cookie header value without the named cookie.
-func sanitizeCookieHeader(cookieHeader, omitName string) string {
+// sanitizeCookieHeader rebuilds a Cookie header value without the named
+// cookies. Returns an empty string when all cookies are omitted.
+func sanitizeCookieHeader(cookieHeader string, omitNames ...string) string {
+	omit := make(map[string]struct{}, len(omitNames))
+	for _, name := range omitNames {
+		omit[name] = struct{}{}
+	}
 	var remaining []string
 	for part := range strings.SplitSeq(cookieHeader, ";") {
 		part = strings.TrimSpace(part)
@@ -75,8 +74,10 @@ func sanitizeCookieHeader(cookieHeader, omitName string) string {
 			continue
 		}
 		key, _, ok := strings.Cut(part, "=")
-		if ok && key == omitName {
-			continue
+		if ok {
+			if _, skip := omit[key]; skip {
+				continue
+			}
 		}
 		remaining = append(remaining, part)
 	}

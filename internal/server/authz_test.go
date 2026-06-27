@@ -110,7 +110,7 @@ func TestAuthzServer_Check(t *testing.T) {
 			}
 		}
 		if !foundAuthRemoval {
-			t.Errorf("authorization header not in removal list. Headers to remove: %v", okResp.HeadersToRemove)
+			t.Errorf("authorization header not in removal list: %v", okResp.HeadersToRemove)
 		}
 	})
 
@@ -911,5 +911,98 @@ func TestAuthzServer_Check_Observability(t *testing.T) {
 			"PolicyDecisionDeny",
 			"End",
 		)
+	})
+}
+
+func TestCredentialSanitizationHeaders(t *testing.T) {
+	t.Run("rewrites cookie header when other cookies remain", func(t *testing.T) {
+		ext := &CredentialExtraction{
+			CookiesUsed: []string{"cs_jwt"},
+		}
+
+		headers, headersToRemove := removeCredentialPresentation(ext, map[string]string{
+			"cookie": "session=abc; cs_jwt=secret; theme=dark",
+		})
+
+		if len(headers) != 1 || headers[0].Header.Key != "cookie" {
+			t.Fatalf("expected one cookie rewrite header, got %d headers", len(headers))
+		}
+		if headers[0].Header.Value != "session=abc; theme=dark" {
+			t.Errorf("expected sanitized cookie %q, got %q",
+				"session=abc; theme=dark", headers[0].Header.Value)
+		}
+
+		for _, name := range headersToRemove {
+			if name == "cookie" {
+				t.Error("cookie should not be in removal list when other cookies remain")
+			}
+		}
+	})
+
+	t.Run("removes entire cookie header when credential is the only cookie", func(t *testing.T) {
+		ext := &CredentialExtraction{
+			CookiesUsed: []string{"cs_jwt"},
+		}
+
+		headers, headersToRemove := removeCredentialPresentation(ext, map[string]string{
+			"cookie": "cs_jwt=secret",
+		})
+
+		if len(headers) != 0 {
+			t.Errorf("expected no rewrite headers, got %d", len(headers))
+		}
+
+		found := false
+		for _, name := range headersToRemove {
+			if name == "cookie" {
+				found = true
+			}
+		}
+		if !found {
+			t.Error("expected cookie in removal list when credential is the only cookie")
+		}
+	})
+
+	t.Run("bearer headers used are returned for removal", func(t *testing.T) {
+		ext := &CredentialExtraction{
+			HeadersUsed: []string{"authorization"},
+		}
+
+		headers, headersToRemove := removeCredentialPresentation(ext, map[string]string{})
+
+		if len(headers) != 0 {
+			t.Errorf("expected no rewrite headers, got %d", len(headers))
+		}
+		if len(headersToRemove) != 1 || headersToRemove[0] != "authorization" {
+			t.Errorf("expected [authorization] for removal, got %v", headersToRemove)
+		}
+	})
+
+	t.Run("nil extraction returns nil", func(t *testing.T) {
+		headers, headersToRemove := removeCredentialPresentation(nil, map[string]string{
+			"cookie": "some=cookies",
+		})
+
+		if headers != nil {
+			t.Errorf("expected nil headers, got %v", headers)
+		}
+		if headersToRemove != nil {
+			t.Errorf("expected nil headersToRemove, got %v", headersToRemove)
+		}
+	})
+
+	t.Run("does not mutate the extraction HeadersUsed slice", func(t *testing.T) {
+		ext := &CredentialExtraction{
+			HeadersUsed: []string{"authorization"},
+			CookiesUsed: []string{"cs_jwt"},
+		}
+
+		_, _ = removeCredentialPresentation(ext, map[string]string{
+			"cookie": "cs_jwt=secret",
+		})
+
+		if len(ext.HeadersUsed) != 1 || ext.HeadersUsed[0] != "authorization" {
+			t.Errorf("HeadersUsed was mutated: %v", ext.HeadersUsed)
+		}
 	})
 }

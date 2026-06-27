@@ -108,7 +108,7 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 
 	// If we got a credential, filter trust store and validate it
 	if subjectExt != nil {
-		p.SubjectCredentialExtracted(subjectExt.Credential, subjectExt.HeadersToRemove)
+		p.SubjectCredentialExtracted(subjectExt.Credential, subjectExt.HeadersUsed)
 
 		filteredStore, filterErr := s.trustStore.ForActor(ctx, actorResult, reqAttrs)
 		if filterErr != nil {
@@ -145,11 +145,13 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 
 	case AuthzCheckAllowWithoutIssue:
 		p.PolicyDecisionAllowWithoutIssue(decision.Reason)
-		return s.okResponse(nil, subjectExt), nil
+		rewrite, remove := removeCredentialPresentation(subjectExt, req.GetAttributes().GetRequest().GetHttp().GetHeaders())
+		return s.okResponse(rewrite, remove), nil
 
 	case AuthzCheckIssue:
 		p.PolicyDecisionIssue(len(decision.TokenTypes), decision.Scope)
-		return s.issueResponse(ctx, decision, subjectPrin, actorPrin, reqAttrs, subjectExt)
+		rewrite, remove := removeCredentialPresentation(subjectExt, req.GetAttributes().GetRequest().GetHttp().GetHeaders())
+		return s.issueResponse(ctx, decision, subjectPrin, actorPrin, reqAttrs, rewrite, remove)
 
 	default:
 		return s.denyResponse(codes.Internal,
@@ -158,13 +160,14 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 }
 
 // issueResponse calls TokenService.IssueTokens and builds an OK response
-// with the issued tokens in headers.
+// with the issued tokens appended to any credential sanitization headers.
 func (s *AuthzServer) issueResponse(
 	ctx context.Context,
 	decision AuthzCheckDecision,
 	subject, actor Principal,
 	reqAttrs *request.RequestAttributes,
-	subjectExt *CredentialExtraction,
+	credHeaders []*corev3.HeaderValueOption,
+	headersToRemove []string,
 ) (*authv3.CheckResponse, error) {
 	tokenTypes := make([]service.TokenType, len(decision.TokenTypes))
 	for i, spec := range decision.TokenTypes {
@@ -182,10 +185,11 @@ func (s *AuthzServer) issueResponse(
 		return s.denyResponse(codes.Internal, fmt.Sprintf("failed to issue tokens: %v", err)), nil
 	}
 
-	tokenHeaders := make([]*corev3.HeaderValueOption, 0, len(issuedTokens))
+	headers := make([]*corev3.HeaderValueOption, 0, len(credHeaders)+len(issuedTokens))
+	headers = append(headers, credHeaders...)
 	for _, spec := range decision.TokenTypes {
 		if token, ok := issuedTokens[spec.Type]; ok {
-			tokenHeaders = append(tokenHeaders, &corev3.HeaderValueOption{
+			headers = append(headers, &corev3.HeaderValueOption{
 				Header: &corev3.HeaderValue{
 					Key:   spec.HeaderName,
 					Value: token.Value,
@@ -195,31 +199,47 @@ func (s *AuthzServer) issueResponse(
 		}
 	}
 
-	return s.okResponse(tokenHeaders, subjectExt), nil
+	return s.okResponse(headers, headersToRemove), nil
 }
 
-// okResponse builds an OK CheckResponse from optional token headers and
-// optional subject credential extraction. When subjectExt is non-nil, its
-// rewrite headers are appended and its removal list is applied to sanitize
-// external credentials from the upstream request.
-func (s *AuthzServer) okResponse(tokenHeaders []*corev3.HeaderValueOption, subjectExt *CredentialExtraction) *authv3.CheckResponse {
-	var headers []*corev3.HeaderValueOption
-	headers = append(headers, tokenHeaders...)
+// removeCredentialPresentation builds the Envoy header mutations needed to
+// strip credential material from the upstream request. Headers listed in
+// ext.HeadersUsed are returned for removal. Cookies listed in ext.CookiesUsed
+// are removed from the "cookie" entry in requestHeaders: if all cookies are
+// consumed the cookie header is added to the removal list; otherwise a
+// rewritten Cookie header option is returned.
+//
+// Returns (nil, nil) when ext is nil.
+func removeCredentialPresentation(ext *CredentialExtraction, requestHeaders map[string]string) ([]*corev3.HeaderValueOption, []string) {
+	if ext == nil {
+		return nil, nil
+	}
 
-	var headersToRemove []string
-	if subjectExt != nil {
-		for name, value := range subjectExt.HeadersToSet {
+	var headers []*corev3.HeaderValueOption
+	headersToRemove := append([]string(nil), ext.HeadersUsed...)
+
+	cookieHeader := requestHeaders["cookie"]
+	if len(ext.CookiesUsed) > 0 && cookieHeader != "" {
+		sanitized := sanitizeCookieHeader(cookieHeader, ext.CookiesUsed...)
+		if sanitized == "" {
+			headersToRemove = append(headersToRemove, "cookie")
+		} else {
 			headers = append(headers, &corev3.HeaderValueOption{
 				Header: &corev3.HeaderValue{
-					Key:   name,
-					Value: value,
+					Key:   "cookie",
+					Value: sanitized,
 				},
 				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
 			})
 		}
-		headersToRemove = subjectExt.HeadersToRemove
 	}
 
+	return headers, headersToRemove
+}
+
+// okResponse wraps pre-built header options and a removal list into an
+// OK [authv3.CheckResponse].
+func (s *AuthzServer) okResponse(headers []*corev3.HeaderValueOption, headersToRemove []string) *authv3.CheckResponse {
 	return &authv3.CheckResponse{
 		Status: &status.Status{
 			Code: int32(codes.OK),

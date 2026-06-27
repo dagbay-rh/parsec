@@ -37,7 +37,7 @@ func authenticateActorWithExtraction(ctx context.Context, sources CredentialSour
 	}
 
 	if ext != nil {
-		p.ActorCredentialExtracted(ext.Credential, ext.HeadersToRemove)
+		p.ActorCredentialExtracted(ext.Credential, ext.HeadersUsed)
 		actor, validationErr := store.Validate(ctx, ext.Credential)
 		if validationErr != nil {
 			p.ActorValidationFailed(validationErr)

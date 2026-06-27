@@ -37,8 +37,8 @@ func TestCredentialSources_Extract(t *testing.T) {
 		if bearer.Token != "jwt-token" {
 			t.Fatalf("unexpected token: %q", bearer.Token)
 		}
-		if len(ext.HeadersToRemove) != 1 || ext.HeadersToRemove[0] != "authorization" {
-			t.Fatalf("unexpected headers: %v", ext.HeadersToRemove)
+		if len(ext.HeadersUsed) != 1 || ext.HeadersUsed[0] != "authorization" {
+			t.Fatalf("unexpected headers: %v", ext.HeadersUsed)
 		}
 	})
 
@@ -73,15 +73,12 @@ func TestCredentialSources_Extract(t *testing.T) {
 		if bearer.Token != "cookie-jwt" {
 			t.Fatalf("unexpected token: %q", bearer.Token)
 		}
-		if len(ext.HeadersToRemove) != 0 {
-			t.Fatalf("expected no header removals, got %v", ext.HeadersToRemove)
-		}
-		if ext.HeadersToSet["cookie"] != "session=abc; other=1" {
-			t.Fatalf("expected sanitized cookie header, got %q", ext.HeadersToSet["cookie"])
+		if len(ext.CookiesUsed) != 1 || ext.CookiesUsed[0] != "cs_jwt" {
+			t.Fatalf("expected CookiesUsed=[cs_jwt], got %v", ext.CookiesUsed)
 		}
 	})
 
-	t.Run("cookie only credential is removed entirely", func(t *testing.T) {
+	t.Run("cookie only credential reports cookie used", func(t *testing.T) {
 		t.Parallel()
 		sources := NewCredentialSources(NewCookieCredentialSource("cs-jwt-cookie", "cs_jwt"))
 		ext, err := sources.Extract(ctx, makeCC(map[string]string{
@@ -90,11 +87,11 @@ func TestCredentialSources_Extract(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(ext.HeadersToRemove) != 1 || ext.HeadersToRemove[0] != "cookie" {
-			t.Fatalf("expected cookie header removal, got %v", ext.HeadersToRemove)
+		if len(ext.CookiesUsed) != 1 || ext.CookiesUsed[0] != "cs_jwt" {
+			t.Fatalf("expected CookiesUsed=[cs_jwt], got %v", ext.CookiesUsed)
 		}
-		if len(ext.HeadersToSet) != 0 {
-			t.Fatalf("expected no header overrides, got %v", ext.HeadersToSet)
+		if len(ext.HeadersUsed) != 0 {
+			t.Fatalf("expected no HeadersUsed (response builder handles cookie header), got %v", ext.HeadersUsed)
 		}
 	})
 

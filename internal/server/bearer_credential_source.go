@@ -34,9 +34,9 @@ func (s *BearerCredentialSource) Extract(_ context.Context, cc CredentialContext
 	}
 
 	return &CredentialExtraction{
-		Credential:      &trust.BearerCredential{Token: token},
-		HeadersToRemove: []string{"authorization"},
-		SourceName:      s.sourceName(),
+		Credential:  &trust.BearerCredential{Token: token},
+		HeadersUsed: []string{"authorization"},
+		SourceName:  s.sourceName(),
 	}, nil
 }
 

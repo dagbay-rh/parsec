@@ -22,11 +22,15 @@ type CredentialSource interface {
 }
 
 // CredentialExtraction is the result of extracting a credential from a request.
+// HeadersUsed lists whole headers that carried the credential (e.g.
+// "authorization"). CookiesUsed lists individual cookie names that carried the
+// credential. Callers decide what to do with this information (e.g. strip
+// the headers, rewrite the Cookie header, etc.).
 type CredentialExtraction struct {
-	Credential      trust.Credential
-	HeadersToRemove []string
-	HeadersToSet    map[string]string
-	SourceName      string
+	Credential  trust.Credential
+	HeadersUsed []string
+	CookiesUsed []string
+	SourceName  string
 }
 
 // CredentialSources is an ordered collection of CredentialSource instances.
