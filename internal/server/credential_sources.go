@@ -49,7 +49,11 @@ func NewCredentialSources(sources ...CredentialSource) CredentialSources {
 // DefaultCredentialSources returns the default credential sources
 // (authorization bearer only).
 func DefaultCredentialSources() CredentialSources {
-	return NewCredentialSources(NewBearerCredentialSource(CredentialSourceTypeBearer))
+	src, err := NewBearerCredentialSource(CredentialSourceTypeBearer)
+	if err != nil {
+		panic("BUG: default bearer source name is invalid: " + err.Error())
+	}
+	return NewCredentialSources(src)
 }
 
 // Extract iterates the configured sources in order and returns the first

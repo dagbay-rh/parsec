@@ -1006,3 +1006,109 @@ func TestCredentialSanitizationHeaders(t *testing.T) {
 		}
 	})
 }
+
+func TestAuthzServer_Check_AllowWithoutIssue(t *testing.T) {
+	ctx := context.Background()
+
+	trustStore := trust.NewStubStore()
+	stubValidator := trust.NewStubValidator(trust.CredentialTypeBearer)
+	trustStore.AddValidator(stubValidator)
+
+	// A policy that returns AllowWithoutIssue for authenticated subjects
+	policy := &stubPolicy{decision: AuthzCheckDecision{
+		Action: AuthzCheckAllowWithoutIssue,
+		Reason: "passthrough",
+	}}
+
+	authzServer := NewAuthzServer(trustStore, nil, policy, DefaultCredentialSources(), nil)
+
+	req := &authv3.CheckRequest{
+		Attributes: &authv3.AttributeContext{
+			Request: &authv3.AttributeContext_Request{
+				Http: &authv3.AttributeContext_HttpRequest{
+					Method: "GET",
+					Path:   "/health",
+					Headers: map[string]string{
+						"authorization": "Bearer valid-token",
+					},
+				},
+			},
+		},
+	}
+
+	resp, err := authzServer.Check(ctx, req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if resp.Status.Code != 0 {
+		t.Errorf("expected OK, got code %d: %s", resp.Status.Code, resp.Status.Message)
+	}
+
+	okResp := resp.GetOkResponse()
+	if okResp == nil {
+		t.Fatal("expected OK response, got nil")
+	}
+
+	// Should still sanitize credential headers
+	foundAuthRemoval := false
+	for _, name := range okResp.HeadersToRemove {
+		if name == "authorization" {
+			foundAuthRemoval = true
+		}
+	}
+	if !foundAuthRemoval {
+		t.Errorf("expected authorization header removed even in AllowWithoutIssue, got %v", okResp.HeadersToRemove)
+	}
+}
+
+func TestAuthzServer_Check_NilHttpRequest(t *testing.T) {
+	ctx := context.Background()
+
+	authzServer := NewAuthzServer(trust.NewStubStore(), nil, nil, DefaultCredentialSources(), nil)
+
+	req := &authv3.CheckRequest{
+		Attributes: &authv3.AttributeContext{
+			Request: &authv3.AttributeContext_Request{
+				// Http is nil
+			},
+		},
+	}
+
+	resp, err := authzServer.Check(ctx, req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should deny — nil HTTP request means credential context extraction fails
+	if resp.Status.Code == 0 {
+		t.Error("expected denial for nil HTTP request, got OK")
+	}
+}
+
+func TestBuildRequestAttributes_NilHttp(t *testing.T) {
+	srv := NewAuthzServer(nil, nil, nil, DefaultCredentialSources(), nil)
+
+	req := &authv3.CheckRequest{
+		Attributes: &authv3.AttributeContext{
+			Request: &authv3.AttributeContext_Request{},
+		},
+	}
+
+	attrs := srv.buildRequestAttributes(req)
+	if attrs.Method != "" {
+		t.Errorf("expected empty method, got %q", attrs.Method)
+	}
+	if attrs.Path != "" {
+		t.Errorf("expected empty path, got %q", attrs.Path)
+	}
+}
+
+// stubPolicy is a simple AuthzCheckPolicy that returns a fixed decision.
+type stubPolicy struct {
+	decision AuthzCheckDecision
+}
+
+func (p *stubPolicy) Decide(_ context.Context, _ AuthzCheckPolicyInput) (AuthzCheckDecision, error) {
+	return p.decision, nil
+}

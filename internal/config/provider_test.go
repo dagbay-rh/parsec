@@ -56,7 +56,7 @@ func TestProvider_CredentialSources(t *testing.T) {
 		{
 			name:    "cookie without cookie_name",
 			sources: []CredentialSourceConfig{{Name: "cookie", Type: "cookie_bearer_opaque"}},
-			wantErr: `cookie_name is required for type "cookie_bearer_opaque"`,
+			wantErr: `cookie_name is required`,
 		},
 	}
 

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/project-kessel/parsec/internal/trust"
@@ -14,39 +15,33 @@ type CookieCredentialSource struct {
 }
 
 // NewCookieCredentialSource returns a CookieCredentialSource with the given
-// source name and cookie name.
-func NewCookieCredentialSource(name, cookieName string) *CookieCredentialSource {
-	return &CookieCredentialSource{SourceName: name, CookieName: cookieName}
+// source name and cookie name. Both are required.
+func NewCookieCredentialSource(name, cookieName string) (*CookieCredentialSource, error) {
+	if name == "" {
+		return nil, fmt.Errorf("cookie credential source: name is required")
+	}
+	if cookieName == "" {
+		return nil, fmt.Errorf("cookie credential source: cookie_name is required")
+	}
+	return &CookieCredentialSource{SourceName: name, CookieName: cookieName}, nil
 }
 
 func (s *CookieCredentialSource) Extract(_ context.Context, cc CredentialContext) (*CredentialExtraction, error) {
-	name := s.CookieName
-	if name == "" {
-		name = "cs_jwt"
-	}
-
 	cookieHeader := cc.Headers["cookie"]
 	if cookieHeader == "" {
 		return nil, nil
 	}
 
-	token, ok := cookieValue(cookieHeader, name)
+	token, ok := cookieValue(cookieHeader, s.CookieName)
 	if !ok || token == "" {
 		return nil, nil
 	}
 
 	return &CredentialExtraction{
 		Credential:  &trust.BearerCredential{Token: token},
-		CookiesUsed: []string{name},
-		SourceName:  s.sourceName(),
+		CookiesUsed: []string{s.CookieName},
+		SourceName:  s.SourceName,
 	}, nil
-}
-
-func (s *CookieCredentialSource) sourceName() string {
-	if s.SourceName != "" {
-		return s.SourceName
-	}
-	return CredentialSourceTypeCookie
 }
 
 func cookieValue(cookieHeader, name string) (string, bool) {
