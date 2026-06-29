@@ -30,17 +30,22 @@ func TestCredentialSources_Extract(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	makeCC := func(headers map[string]string) CredentialContext {
+	makeCC := func(t *testing.T, headers map[string]string) CredentialContext {
+		t.Helper()
+		cookies, err := parseCookies(headers["cookie"])
+		if err != nil {
+			t.Fatalf("parseCookies: %v", err)
+		}
 		return CredentialContext{
 			Headers: headers,
-			Cookies: parseCookies(headers["cookie"]),
+			Cookies: cookies,
 		}
 	}
 
 	t.Run("bearer from authorization header", func(t *testing.T) {
 		t.Parallel()
 		sources := DefaultCredentialSources()
-		ext, err := sources.Extract(ctx, makeCC(map[string]string{
+		ext, err := sources.Extract(ctx, makeCC(t, map[string]string{
 			"authorization": "Bearer jwt-token",
 		}))
 		if err != nil {
@@ -64,7 +69,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 	t.Run("bearer scheme is case-insensitive", func(t *testing.T) {
 		t.Parallel()
 		sources := DefaultCredentialSources()
-		ext, err := sources.Extract(ctx, makeCC(map[string]string{
+		ext, err := sources.Extract(ctx, makeCC(t, map[string]string{
 			"authorization": "bearer jwt-token",
 		}))
 		if err != nil {
@@ -79,7 +84,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 	t.Run("cookie", func(t *testing.T) {
 		t.Parallel()
 		sources := NewCredentialSources(mustCookieSource(t, "cs-jwt-cookie", "cs_jwt"))
-		ext, err := sources.Extract(ctx, makeCC(map[string]string{
+		ext, err := sources.Extract(ctx, makeCC(t, map[string]string{
 			"cookie": "session=abc; cs_jwt=cookie-jwt; other=1",
 		}))
 		if err != nil {
@@ -100,7 +105,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 	t.Run("cookie only credential reports cookie used", func(t *testing.T) {
 		t.Parallel()
 		sources := NewCredentialSources(mustCookieSource(t, "cs-jwt-cookie", "cs_jwt"))
-		ext, err := sources.Extract(ctx, makeCC(map[string]string{
+		ext, err := sources.Extract(ctx, makeCC(t, map[string]string{
 			"cookie": "cs_jwt=cookie-jwt",
 		}))
 		if err != nil {
@@ -120,7 +125,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 			mustBearerSource(t, "authorization-bearer"),
 			mustCookieSource(t, "cs-jwt-cookie", "cs_jwt"),
 		)
-		ext, err := sources.Extract(ctx, makeCC(map[string]string{
+		ext, err := sources.Extract(ctx, makeCC(t, map[string]string{
 			"authorization": "Bearer header-jwt",
 			"cookie":        "cs_jwt=cookie-jwt",
 		}))
@@ -142,7 +147,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 			mustBearerSource(t, "authorization-bearer"),
 			mustCookieSource(t, "cs-jwt-cookie", "cs_jwt"),
 		)
-		ext, err := sources.Extract(ctx, makeCC(map[string]string{
+		ext, err := sources.Extract(ctx, makeCC(t, map[string]string{
 			"cookie": "cs_jwt=cookie-jwt",
 		}))
 		if err != nil {
@@ -156,7 +161,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 	t.Run("empty sources returns error", func(t *testing.T) {
 		t.Parallel()
 		sources := NewCredentialSources()
-		_, err := sources.Extract(ctx, makeCC(nil))
+		_, err := sources.Extract(ctx, makeCC(t, nil))
 		if err == nil {
 			t.Fatal("expected error for empty sources")
 		}
@@ -165,7 +170,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 	t.Run("no credentials returns nil", func(t *testing.T) {
 		t.Parallel()
 		sources := DefaultCredentialSources()
-		ext, err := sources.Extract(ctx, makeCC(nil))
+		ext, err := sources.Extract(ctx, makeCC(t, nil))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -177,7 +182,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 	t.Run("cookie with quoted value", func(t *testing.T) {
 		t.Parallel()
 		sources := NewCredentialSources(mustCookieSource(t, "cs-jwt-cookie", "cs_jwt"))
-		ext, err := sources.Extract(ctx, makeCC(map[string]string{
+		ext, err := sources.Extract(ctx, makeCC(t, map[string]string{
 			"cookie": `session=abc; cs_jwt="quoted-jwt-token"; other=1`,
 		}))
 		if err != nil {
@@ -192,7 +197,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 	t.Run("bearer with extra whitespace trims token", func(t *testing.T) {
 		t.Parallel()
 		sources := DefaultCredentialSources()
-		ext, err := sources.Extract(ctx, makeCC(map[string]string{
+		ext, err := sources.Extract(ctx, makeCC(t, map[string]string{
 			"authorization": "Bearer  extra-space-token",
 		}))
 		if err != nil {
@@ -223,7 +228,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 	t.Run("cookie source returns nil when named cookie is absent", func(t *testing.T) {
 		t.Parallel()
 		sources := NewCredentialSources(mustCookieSource(t, "c", "cs_jwt"))
-		ext, err := sources.Extract(ctx, makeCC(map[string]string{
+		ext, err := sources.Extract(ctx, makeCC(t, map[string]string{
 			"cookie": "session=abc; other=1",
 		}))
 		if err != nil {
@@ -237,7 +242,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 	t.Run("cookie source errors when cookie value is empty", func(t *testing.T) {
 		t.Parallel()
 		sources := NewCredentialSources(mustCookieSource(t, "c", "cs_jwt"))
-		_, err := sources.Extract(ctx, makeCC(map[string]string{
+		_, err := sources.Extract(ctx, makeCC(t, map[string]string{
 			"cookie": "cs_jwt=",
 		}))
 		if err == nil {
@@ -248,7 +253,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 	t.Run("cookie source errors when cookie value is only quotes", func(t *testing.T) {
 		t.Parallel()
 		sources := NewCredentialSources(mustCookieSource(t, "c", "cs_jwt"))
-		_, err := sources.Extract(ctx, makeCC(map[string]string{
+		_, err := sources.Extract(ctx, makeCC(t, map[string]string{
 			"cookie": `cs_jwt=""`,
 		}))
 		if err == nil {
@@ -259,7 +264,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 	t.Run("cookie source errors on duplicate cookie name", func(t *testing.T) {
 		t.Parallel()
 		sources := NewCredentialSources(mustCookieSource(t, "c", "cs_jwt"))
-		_, err := sources.Extract(ctx, makeCC(map[string]string{
+		_, err := sources.Extract(ctx, makeCC(t, map[string]string{
 			"cookie": "cs_jwt=first; cs_jwt=second",
 		}))
 		if err == nil {
@@ -270,7 +275,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 	t.Run("cookie source returns nil when no cookie header", func(t *testing.T) {
 		t.Parallel()
 		sources := NewCredentialSources(mustCookieSource(t, "c", "cs_jwt"))
-		ext, err := sources.Extract(ctx, makeCC(map[string]string{}))
+		ext, err := sources.Extract(ctx, makeCC(t, map[string]string{}))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -282,7 +287,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 	t.Run("bearer source errors on non-bearer scheme", func(t *testing.T) {
 		t.Parallel()
 		sources := NewCredentialSources(mustBearerSource(t, "bearer"))
-		_, err := sources.Extract(ctx, makeCC(map[string]string{
+		_, err := sources.Extract(ctx, makeCC(t, map[string]string{
 			"authorization": "Basic dXNlcjpwYXNz",
 		}))
 		if err == nil {
@@ -293,7 +298,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 	t.Run("bearer source errors on empty token after scheme", func(t *testing.T) {
 		t.Parallel()
 		sources := NewCredentialSources(mustBearerSource(t, "bearer"))
-		_, err := sources.Extract(ctx, makeCC(map[string]string{
+		_, err := sources.Extract(ctx, makeCC(t, map[string]string{
 			"authorization": "Bearer ",
 		}))
 		if err == nil {
@@ -317,7 +322,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 			&stubErrCredentialSource{err: err1},
 			&stubErrCredentialSource{err: err2},
 		)
-		_, err := sources.Extract(ctx, makeCC(nil))
+		_, err := sources.Extract(ctx, makeCC(t, nil))
 		if !errors.Is(err, err1) || !errors.Is(err, err2) {
 			t.Fatalf("expected joined errors, got %v", err)
 		}

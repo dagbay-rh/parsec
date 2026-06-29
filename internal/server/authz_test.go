@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,15 @@ import (
 	"github.com/project-kessel/parsec/internal/service"
 	"github.com/project-kessel/parsec/internal/trust"
 )
+
+func mustParseCookies(t *testing.T, header string) []*http.Cookie {
+	t.Helper()
+	cookies, err := parseCookies(header)
+	if err != nil {
+		t.Fatalf("parseCookies(%q): %v", header, err)
+	}
+	return cookies
+}
 
 func TestAuthzServer_Check(t *testing.T) {
 	ctx := context.Background()
@@ -920,7 +930,7 @@ func TestCredentialSanitizationHeaders(t *testing.T) {
 			CookiesUsed: []string{"cs_jwt"},
 		}
 
-		headers, headersToRemove := removeCredentialPresentation(ext, parseCookies("session=abc; cs_jwt=secret; theme=dark"))
+		headers, headersToRemove := removeCredentialPresentation(ext, mustParseCookies(t, "session=abc; cs_jwt=secret; theme=dark"))
 
 		if len(headers) != 1 || headers[0].Header.Key != "cookie" {
 			t.Fatalf("expected one cookie rewrite header, got %d headers", len(headers))
@@ -942,7 +952,7 @@ func TestCredentialSanitizationHeaders(t *testing.T) {
 			CookiesUsed: []string{"cs_jwt"},
 		}
 
-		headers, headersToRemove := removeCredentialPresentation(ext, parseCookies("cs_jwt=secret"))
+		headers, headersToRemove := removeCredentialPresentation(ext, mustParseCookies(t, "cs_jwt=secret"))
 
 		if len(headers) != 0 {
 			t.Errorf("expected no rewrite headers, got %d", len(headers))
@@ -975,7 +985,7 @@ func TestCredentialSanitizationHeaders(t *testing.T) {
 	})
 
 	t.Run("nil extraction returns nil", func(t *testing.T) {
-		headers, headersToRemove := removeCredentialPresentation(nil, parseCookies("some=cookies"))
+		headers, headersToRemove := removeCredentialPresentation(nil, mustParseCookies(t, "some=cookies"))
 
 		if headers != nil {
 			t.Errorf("expected nil headers, got %v", headers)
@@ -991,7 +1001,7 @@ func TestCredentialSanitizationHeaders(t *testing.T) {
 			CookiesUsed: []string{"cs_jwt"},
 		}
 
-		_, _ = removeCredentialPresentation(ext, parseCookies("cs_jwt=secret"))
+		_, _ = removeCredentialPresentation(ext, mustParseCookies(t, "cs_jwt=secret"))
 
 		if len(ext.HeadersUsed) != 1 || ext.HeadersUsed[0] != "authorization" {
 			t.Errorf("HeadersUsed was mutated: %v", ext.HeadersUsed)
@@ -1073,7 +1083,7 @@ func TestSanitizeCookieHeader_roundTrip(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := sanitizeCookieHeader(parseCookies(tt.header), tt.omit...)
+			got := sanitizeCookieHeader(mustParseCookies(t, tt.header), tt.omit...)
 			if got != tt.want {
 				t.Errorf("round trip mismatch:\n  input: %q\n  got:   %q\n  want:  %q", tt.header, got, tt.want)
 			}

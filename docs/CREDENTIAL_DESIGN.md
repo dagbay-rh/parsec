@@ -162,7 +162,7 @@ result, err := validateCredential(ctx, store, ext)
 mTLS actor extraction reads TLS peer info from `CredentialContext` before falling through to the bearer source chain. A future `MTLSCredentialSource` will replace the inline check in `extractActorCredential`:
 
 ```go
-cc := CredentialContextFromGRPC(ctx)
+cc, err := CredentialContextFromGRPC(ctx)
 // cc.TLSPeer.Certificates populated from gRPC TLS state
 
 ext, err := extractActorCredential(ctx, actorSources)

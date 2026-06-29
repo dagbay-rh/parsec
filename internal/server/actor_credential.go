@@ -61,7 +61,10 @@ func authenticateActorWithExtraction(ctx context.Context, sources CredentialSour
 //
 // Returns (nil, nil) if no actor authentication is present.
 func extractActorCredential(ctx context.Context, sources CredentialSources) (*CredentialExtraction, error) {
-	cc := CredentialContextFromGRPC(ctx)
+	cc, err := CredentialContextFromGRPC(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	// mTLS takes priority. A future MTLSCredentialSource can replace this
 	// once the interface supports TLS peer info natively.
