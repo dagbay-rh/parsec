@@ -106,10 +106,8 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 	if subjectExt == nil {
 		subjectPrin = anonymousPrincipal()
 		p.SubjectAnonymous()
-	}
-
-	// If we got a credential, filter trust store and validate it
-	if subjectExt != nil {
+	} else {
+		// If we got a credential, filter trust store and validate it
 		p.SubjectCredentialExtracted(subjectExt.Credential, subjectExt.HeadersUsed)
 
 		filteredStore, filterErr := s.trustStore.ForActor(ctx, actorResult, reqAttrs)
