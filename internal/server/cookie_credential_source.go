@@ -27,7 +27,10 @@ func NewCookieCredentialSource(name, cookieName string) (*CookieCredentialSource
 }
 
 func (s *CookieCredentialSource) Extract(_ context.Context, cc CredentialContext) (*CredentialExtraction, error) {
-	token, ok := cookieValue(cc.Cookies, s.CookieName)
+	token, ok, err := cookieValue(cc.Cookies, s.CookieName)
+	if err != nil {
+		return nil, err
+	}
 	if !ok {
 		return nil, nil
 	}
@@ -42,11 +45,19 @@ func (s *CookieCredentialSource) Extract(_ context.Context, cc CredentialContext
 	}, nil
 }
 
-func cookieValue(cookies []*http.Cookie, name string) (string, bool) {
+// cookieValue returns the value of the uniquely named cookie. If multiple
+// cookies share the same name, it returns an error to reject the ambiguity.
+func cookieValue(cookies []*http.Cookie, name string) (string, bool, error) {
+	found := false
+	var value string
 	for _, c := range cookies {
 		if c.Name == name {
-			return c.Value, true
+			if found {
+				return "", false, fmt.Errorf("multiple cookies named %q: ambiguous credential", name)
+			}
+			value = c.Value
+			found = true
 		}
 	}
-	return "", false
+	return value, found, nil
 }

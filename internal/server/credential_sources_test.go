@@ -256,6 +256,17 @@ func TestCredentialSources_Extract(t *testing.T) {
 		}
 	})
 
+	t.Run("cookie source errors on duplicate cookie name", func(t *testing.T) {
+		t.Parallel()
+		sources := NewCredentialSources(mustCookieSource(t, "c", "cs_jwt"))
+		_, err := sources.Extract(ctx, makeCC(map[string]string{
+			"cookie": "cs_jwt=first; cs_jwt=second",
+		}))
+		if err == nil {
+			t.Fatal("expected error for duplicate cookie name")
+		}
+	})
+
 	t.Run("cookie source returns nil when no cookie header", func(t *testing.T) {
 		t.Parallel()
 		sources := NewCredentialSources(mustCookieSource(t, "c", "cs_jwt"))
