@@ -1,0 +1,102 @@
+# parsec Configuration - Registry Auth Testing
+#
+# For manually testing registry auth (basic_auth) against the stage
+# container-registry-authorizer service.
+#
+# Prerequisites:
+#   - Client TLS certs at ./tmp/client.crt and ./tmp/client.key
+#   - Base64-encoded credentials in ./tmp/cred.txt (format: base64(org_id|username:password))
+#
+# Usage:
+#   ./bin/parsec serve --config ./configs/examples/parsec-registry-auth.yaml
+#
+#   grpcurl -plaintext \
+#     -d '{
+#       "attributes": {
+#         "request": {
+#           "http": {
+#             "method": "GET",
+#             "path": "/api/something",
+#             "headers": {
+#               "authorization": "Basic '"$(cat tmp/cred.txt)"'"
+#             }
+#           }
+#         }
+#       }
+#     }' \
+#     localhost:9090 envoy.service.auth.v3.Authorization/Check
+
+server:
+  grpc_port: 9090
+  http_port: 8080
+
+observability:
+  type: logging
+  log_level: debug
+  log_format: json
+
+trust_domain: "parsec.example.com"
+
+exchange_server:
+  claims_filter:
+    type: stub
+
+# Named HTTP clients
+http_clients:
+  - name: registry-mtls
+    timeout: "30s"
+    client_cert_source:
+      type: file
+      cert: "./local/client.crt"
+      key: "./local/client.key"
+
+# Credential sources — basic auth first, then bearer fallback
+credential_sources:
+  - name: basic-auth
+    type: authorization_basic_auth
+  - name: authorization-bearer
+    type: authorization_bearer_opaque
+
+trust_store:
+  type: stub_store
+  validators:
+    - name: registry-auth
+      type: lua_validator
+      script_file: ./configs/scripts/registry_auth.lua
+      credential_types: ["basic_auth"]
+      http_client: registry-mtls
+      config:
+        registry_url: "https://container-registry-authorizer.stage.api.redhat.com/v1/authorization"
+        trust_domain: "registry.redhat.com"
+        username_pattern: "^%d+|.+"
+      caching:
+        type: in_memory
+        ttl: "5m"
+
+data_sources: []
+
+issuers:
+  - token_type: "urn:ietf:params:oauth:token-type:txn_token"
+    type: stub
+    issuer_url: "https://parsec.example.com"
+    ttl: 5m
+    transaction_context:
+      - type: cel
+        name: redhat-identity-mapper
+        script_file: ./configs/scripts/redhat_identity.cel
+    request_context:
+      - type: request_attributes
+
+  - token_type: "urn:redhat:params:oauth:token-type:rh-identity"
+    type: unsigned
+    claim_mappers:
+      - type: cel
+        name: redhat-identity-mapper
+        script_file: ./configs/scripts/redhat_identity.cel
+
+authz_server:
+  token_types:
+    - type: "urn:ietf:params:oauth:token-type:txn_token"
+      header_name: "Transaction-Token"
+    - type: "urn:redhat:params:oauth:token-type:rh-identity"
+      header_name: "x-rh-identity"

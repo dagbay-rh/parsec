@@ -4,6 +4,7 @@
 //   { "identity": { ... }, "entitlements": {} }
 //
 // Supports:
+//   - Registry Auth tokens (credential_type is "basic_auth" and auth_type is "registry-auth")
 //   - Service Account tokens (preferred_username starts with "service-account-")
 //   - Console API tokens (scope contains "api.console")
 //
@@ -12,6 +13,22 @@
 //
 // Based on: https://github.com/RedHatInsights/insights-3scale
 
+has(request.additional.credential_type) && request.additional.credential_type == "basic_auth" && has(subject.claims.auth_type) && subject.claims.auth_type == "registry-auth" ? {
+  "identity": {
+    "auth_type": "registry-auth",
+    "org_id": has(subject.claims.org_id) ? subject.claims.org_id : "",
+    "type": "User",
+    "user": {
+      "username": has(subject.subject) ? subject.subject : ""
+    },
+    "internal": {
+      "org_id": has(subject.claims.org_id) ? subject.claims.org_id : "",
+      "cross_access": false,
+      "auth_time": has(request.additional.auth_time_ms) ? request.additional.auth_time_ms : 0
+    }
+  },
+  "entitlements": {}
+} : (
 isServiceAccountToken(subject.claims) ? {
   "identity": {
     "auth_type": "jwt-auth",
@@ -69,4 +86,5 @@ isServiceAccountToken(subject.claims) ? {
     },
     "entitlements": {}
   } : fail("unsupported_token_type")
+)
 )
