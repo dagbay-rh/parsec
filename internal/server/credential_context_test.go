@@ -48,6 +48,9 @@ func TestCredentialContextFromCheckRequest(t *testing.T) {
 		if tc.Headers["cookie"] != "a=b" {
 			t.Errorf("expected cookie header, got %q", tc.Headers["cookie"])
 		}
+		if len(tc.Cookies) != 1 || tc.Cookies[0].Name != "a" || tc.Cookies[0].Value != "b" {
+			t.Errorf("expected one parsed cookie a=b, got %v", tc.Cookies)
+		}
 		if tc.TLSPeer != nil {
 			t.Error("expected nil TLSPeer for HTTP check request")
 		}
@@ -106,9 +109,12 @@ func TestCredentialContextFromCheckRequest(t *testing.T) {
 			},
 		}
 
-		_, err := CredentialContextFromCheckRequest(req)
+		cc, err := CredentialContextFromCheckRequest(req)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
+		}
+		if cc.Cookies != nil {
+			t.Errorf("expected nil Cookies when no cookie header present, got %v", cc.Cookies)
 		}
 	})
 }

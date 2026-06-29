@@ -33,6 +33,7 @@ func TestCredentialSources_Extract(t *testing.T) {
 	makeCC := func(headers map[string]string) CredentialContext {
 		return CredentialContext{
 			Headers: headers,
+			Cookies: parseCookies(headers["cookie"]),
 		}
 	}
 

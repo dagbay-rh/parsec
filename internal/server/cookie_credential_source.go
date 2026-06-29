@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
-	"strings"
+	"net/http"
 
 	"github.com/project-kessel/parsec/internal/trust"
 )
@@ -27,12 +27,7 @@ func NewCookieCredentialSource(name, cookieName string) (*CookieCredentialSource
 }
 
 func (s *CookieCredentialSource) Extract(_ context.Context, cc CredentialContext) (*CredentialExtraction, error) {
-	cookieHeader := cc.Headers["cookie"]
-	if cookieHeader == "" {
-		return nil, nil
-	}
-
-	token, ok := cookieValue(cookieHeader, s.CookieName)
+	token, ok := cookieValue(cc.Cookies, s.CookieName)
 	if !ok {
 		return nil, nil
 	}
@@ -47,37 +42,11 @@ func (s *CookieCredentialSource) Extract(_ context.Context, cc CredentialContext
 	}, nil
 }
 
-func cookieValue(cookieHeader, name string) (string, bool) {
-	for part := range strings.SplitSeq(cookieHeader, ";") {
-		part = strings.TrimSpace(part)
-		key, value, ok := strings.Cut(part, "=")
-		if ok && key == name {
-			return strings.Trim(value, `"`), true
+func cookieValue(cookies []*http.Cookie, name string) (string, bool) {
+	for _, c := range cookies {
+		if c.Name == name {
+			return c.Value, true
 		}
 	}
 	return "", false
-}
-
-// sanitizeCookieHeader rebuilds a Cookie header value without the named
-// cookies. Returns an empty string when all cookies are omitted.
-func sanitizeCookieHeader(cookieHeader string, omitNames ...string) string {
-	omit := make(map[string]struct{}, len(omitNames))
-	for _, name := range omitNames {
-		omit[name] = struct{}{}
-	}
-	var remaining []string
-	for part := range strings.SplitSeq(cookieHeader, ";") {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		key, _, ok := strings.Cut(part, "=")
-		if ok {
-			if _, skip := omit[key]; skip {
-				continue
-			}
-		}
-		remaining = append(remaining, part)
-	}
-	return strings.Join(remaining, "; ")
 }

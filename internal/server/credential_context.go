@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"fmt"
+	"net/http"
 	"strings"
 
 	authv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
@@ -24,6 +25,7 @@ type TLSPeerInfo struct {
 // before credential extraction.
 type CredentialContext struct {
 	Headers map[string]string // normalized lowercase header keys
+	Cookies []*http.Cookie    // parsed from the cookie header; nil when absent
 	TLSPeer *TLSPeerInfo      // mTLS client cert info; nil when absent
 }
 
@@ -34,8 +36,10 @@ func CredentialContextFromCheckRequest(req *authv3.CheckRequest) (CredentialCont
 	if httpReq == nil {
 		return CredentialContext{}, fmt.Errorf("no HTTP request attributes")
 	}
+	headers := normalizeHeaderKeys(httpReq.GetHeaders())
 	return CredentialContext{
-		Headers: normalizeHeaderKeys(httpReq.GetHeaders()),
+		Headers: headers,
+		Cookies: parseCookies(headers["cookie"]),
 	}, nil
 }
 
@@ -51,6 +55,7 @@ func CredentialContextFromGRPC(ctx context.Context) CredentialContext {
 				tc.Headers[strings.ToLower(k)] = vals[0]
 			}
 		}
+		tc.Cookies = parseCookies(tc.Headers["cookie"])
 	}
 
 	if p, ok := peer.FromContext(ctx); ok {
@@ -64,6 +69,17 @@ func CredentialContextFromGRPC(ctx context.Context) CredentialContext {
 	}
 
 	return tc
+}
+
+func parseCookies(cookieHeader string) []*http.Cookie {
+	if cookieHeader == "" {
+		return nil
+	}
+	cookies, err := http.ParseCookie(cookieHeader)
+	if err != nil {
+		return nil
+	}
+	return cookies
 }
 
 func normalizeHeaderKeys(headers map[string]string) map[string]string {

@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	authv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
@@ -145,12 +147,12 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 
 	case AuthzCheckAllowWithoutIssue:
 		p.PolicyDecisionAllowWithoutIssue(decision.Reason)
-		rewrite, remove := removeCredentialPresentation(subjectExt, req.GetAttributes().GetRequest().GetHttp().GetHeaders())
+		rewrite, remove := removeCredentialPresentation(subjectExt, cc.Cookies)
 		return s.okResponse(rewrite, remove), nil
 
 	case AuthzCheckIssue:
 		p.PolicyDecisionIssue(len(decision.TokenTypes), decision.Scope)
-		rewrite, remove := removeCredentialPresentation(subjectExt, req.GetAttributes().GetRequest().GetHttp().GetHeaders())
+		rewrite, remove := removeCredentialPresentation(subjectExt, cc.Cookies)
 		return s.issueResponse(ctx, decision, subjectPrin, actorPrin, reqAttrs, rewrite, remove)
 
 	default:
@@ -205,12 +207,12 @@ func (s *AuthzServer) issueResponse(
 // removeCredentialPresentation builds the Envoy header mutations needed to
 // strip credential material from the upstream request. Headers listed in
 // ext.HeadersUsed are returned for removal. Cookies listed in ext.CookiesUsed
-// are removed from the "cookie" entry in requestHeaders: if all cookies are
-// consumed the cookie header is added to the removal list; otherwise a
-// rewritten Cookie header option is returned.
+// are removed from cookies: if all cookies are consumed the cookie header is
+// added to the removal list; otherwise a rewritten Cookie header option is
+// returned.
 //
 // Returns (nil, nil) when ext is nil.
-func removeCredentialPresentation(ext *CredentialExtraction, requestHeaders map[string]string) ([]*corev3.HeaderValueOption, []string) {
+func removeCredentialPresentation(ext *CredentialExtraction, cookies []*http.Cookie) ([]*corev3.HeaderValueOption, []string) {
 	if ext == nil {
 		return nil, nil
 	}
@@ -218,9 +220,8 @@ func removeCredentialPresentation(ext *CredentialExtraction, requestHeaders map[
 	var headers []*corev3.HeaderValueOption
 	headersToRemove := append([]string(nil), ext.HeadersUsed...)
 
-	cookieHeader := requestHeaders["cookie"]
-	if len(ext.CookiesUsed) > 0 && cookieHeader != "" {
-		sanitized := sanitizeCookieHeader(cookieHeader, ext.CookiesUsed...)
+	if len(ext.CookiesUsed) > 0 && len(cookies) > 0 {
+		sanitized := sanitizeCookieHeader(cookies, ext.CookiesUsed...)
 		if sanitized == "" {
 			headersToRemove = append(headersToRemove, "cookie")
 		} else {
@@ -235,6 +236,23 @@ func removeCredentialPresentation(ext *CredentialExtraction, requestHeaders map[
 	}
 
 	return headers, headersToRemove
+}
+
+// sanitizeCookieHeader rebuilds a Cookie header value without the named
+// cookies. Returns an empty string when all cookies are omitted.
+func sanitizeCookieHeader(cookies []*http.Cookie, omitNames ...string) string {
+	omit := make(map[string]struct{}, len(omitNames))
+	for _, name := range omitNames {
+		omit[name] = struct{}{}
+	}
+
+	var remaining []string
+	for _, c := range cookies {
+		if _, skip := omit[c.Name]; !skip {
+			remaining = append(remaining, c.String())
+		}
+	}
+	return strings.Join(remaining, "; ")
 }
 
 // okResponse wraps pre-built header options and a removal list into an
