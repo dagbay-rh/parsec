@@ -368,22 +368,31 @@ func (p *Provider) AuthzCheckPolicy() (server.AuthzCheckPolicy, error) {
 
 	policyCfg := p.config.AuthzServer.Policy
 
-	// Determine which token types to use:
-	// 1. Policy-level token_types (new config path)
-	// 2. Legacy top-level token_types (backward compat)
-	// 3. Default (nil -> NewStaticAuthenticatedPolicy handles it)
-	tokenTypeCfgs := policyCfg.TokenTypes
-	if len(tokenTypeCfgs) == 0 {
-		tokenTypeCfgs = p.config.AuthzServer.TokenTypes
-	}
-
-	tokenTypes, err := buildTokenTypeSpecs(tokenTypeCfgs)
-	if err != nil {
-		return nil, err
-	}
-
 	switch policyCfg.Type {
-	case "", "static_authenticated":
+	case "":
+		// Legacy case predating the policy config.
+		// In this case, use top level token types and
+		// implicitly use the static_authenticated policy.
+
+		// If there is any policy config, though, error. It means type is missing.
+		if len(policyCfg.TokenTypes) > 0 {
+			return nil, fmt.Errorf("authz_server.policy.type is required when policy section is defined")
+		}
+
+		tokenTypes, err := buildTokenTypeSpecs(p.config.AuthzServer.TokenTypes)
+		if err != nil {
+			return nil, err
+		}
+		return server.NewStaticAuthenticatedPolicy(tokenTypes), nil
+	case "static_authenticated":
+		// Prevent ambiguity with legacy fallback path.
+		if len(p.config.AuthzServer.TokenTypes) > 0 {
+			return nil, fmt.Errorf("authz_server.token_types and authz_server.policy are mutually exclusive; use policy.token_types instead")
+		}
+		tokenTypes, err := buildTokenTypeSpecs(policyCfg.TokenTypes)
+		if err != nil {
+			return nil, err
+		}
 		return server.NewStaticAuthenticatedPolicy(tokenTypes), nil
 	default:
 		return nil, fmt.Errorf("unknown authz check policy type: %q", policyCfg.Type)
