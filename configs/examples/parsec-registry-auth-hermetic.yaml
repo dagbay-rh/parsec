@@ -1,0 +1,90 @@
+# parsec Configuration - Registry Auth Hermetic Testing
+#
+# For testing registry auth (basic_auth) without external dependencies.
+# All HTTP calls are stubbed with fixtures.
+#
+# Usage:
+#   ./bin/parsec serve --config ./configs/examples/parsec-registry-auth-hermetic.yaml
+#
+#   buf curl --protocol grpc --http2-prior-knowledge \
+#     -d '{"attributes":{"request":{"http":{"method":"GET","path":"/api/test","headers":{"authorization":"Basic '"$(echo -n '123|alice:secret' | base64)"'"}}}}}' \
+#     http://localhost:9090/envoy.service.auth.v3.Authorization/Check
+
+server:
+  grpc_port: 9090
+  http_port: 8080
+
+observability:
+  type: logging
+  log_level: debug
+  log_format: json
+
+trust_domain: "parsec.example.com"
+
+exchange_server:
+  claims_filter:
+    type: stub
+
+# Fixtures replace real HTTP calls with canned responses
+fixtures:
+  # Registry auth service fixture — grants pull access for any credentials
+  - type: http_rule
+    request:
+      method: POST
+      url: "https://registry-auth.example.com/registry-authorizer/v1/authorization"
+      url_type: exact
+    response:
+      status: 200
+      headers:
+        Content-Type: application/json
+      body: '{"access":{"pull":"granted"}}'
+
+# Credential sources — basic auth first, then bearer fallback
+credential_sources:
+  - name: basic-auth
+    type: authorization_basic_auth
+  - name: authorization-bearer
+    type: authorization_bearer_opaque
+
+trust_store:
+  type: stub_store
+  validators:
+    - name: registry-auth
+      type: lua_validator
+      script_file: ./configs/scripts/registry_auth.lua
+      credential_types: ["basic_auth"]
+      config:
+        registry_url: "https://registry-auth.example.com/registry-authorizer/v1/authorization"
+        trust_domain: "registry.example.com"
+        username_pattern: "^%d+|.+"
+      caching:
+        type: in_memory
+        ttl: "5m"
+
+data_sources: []
+
+issuers:
+  - token_type: "urn:ietf:params:oauth:token-type:txn_token"
+    type: stub
+    issuer_url: "https://parsec.example.com"
+    ttl: 5m
+    transaction_context:
+      - type: cel
+        name: redhat-identity-mapper
+        script_file: ./configs/scripts/redhat_identity.cel
+    request_context:
+      - type: request_attributes
+
+  - token_type: "urn:redhat:params:oauth:token-type:rh-identity"
+    type: unsigned
+    claim_mappers:
+      - type: cel
+        name: redhat-identity-mapper
+        script_file: ./configs/scripts/redhat_identity.cel
+
+authz_server:
+  token_types:
+    - type: "urn:ietf:params:oauth:token-type:txn_token"
+      header_name: "Transaction-Token"
+    - type: "urn:redhat:params:oauth:token-type:rh-identity"
+      header_name: "x-rh-identity"
