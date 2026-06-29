@@ -149,7 +149,7 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 		return s.okResponse(rewrite, remove), nil
 
 	case AuthzCheckIssue:
-		p.PolicyDecisionIssue(len(decision.TokenTypes), decision.Scope)
+		p.PolicyDecisionIssue(len(decision.TokenTypes), decision.Scope, decision.Reason)
 		rewrite, remove := removeCredentialPresentation(subjectExt, cc.Cookies)
 		return s.issueResponse(ctx, decision, subjectPrin, actorPrin, reqAttrs, rewrite, remove)
 

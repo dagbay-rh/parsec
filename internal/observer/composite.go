@@ -654,9 +654,9 @@ func (m *compositeAuthzCheckProbe) SubjectAnonymous() {
 	}
 }
 
-func (m *compositeAuthzCheckProbe) PolicyDecisionIssue(tokenTypeCount int, scope string) {
+func (m *compositeAuthzCheckProbe) PolicyDecisionIssue(tokenTypeCount int, scope string, reason string) {
 	for _, p := range m.probes {
-		p.PolicyDecisionIssue(tokenTypeCount, scope)
+		p.PolicyDecisionIssue(tokenTypeCount, scope, reason)
 	}
 }
 

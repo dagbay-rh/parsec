@@ -333,10 +333,11 @@ func (p *loggingAuthzCheckProbe) SubjectAnonymous() {
 		Msg("No subject credential found, treating as anonymous")
 }
 
-func (p *loggingAuthzCheckProbe) PolicyDecisionIssue(tokenTypeCount int, scope string) {
+func (p *loggingAuthzCheckProbe) PolicyDecisionIssue(tokenTypeCount int, scope string, reason string) {
 	p.logger.Debug().
 		Int("token_type_count", tokenTypeCount).
 		Str("scope", scope).
+		Str("reason", reason).
 		Msg("Authz check policy: issue")
 }
 

@@ -245,8 +245,8 @@ func (p *FakeProbe) SubjectAnonymous() {
 	p.recordCall("SubjectAnonymous")
 }
 
-func (p *FakeProbe) PolicyDecisionIssue(tokenTypeCount int, scope string) {
-	p.recordCall("PolicyDecisionIssue", tokenTypeCount, scope)
+func (p *FakeProbe) PolicyDecisionIssue(tokenTypeCount int, scope string, reason string) {
+	p.recordCall("PolicyDecisionIssue", tokenTypeCount, scope, reason)
 }
 
 func (p *FakeProbe) PolicyDecisionAllowWithoutIssue(reason string) {
