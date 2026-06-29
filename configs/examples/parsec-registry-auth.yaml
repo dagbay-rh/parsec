@@ -4,8 +4,8 @@
 # container-registry-authorizer service.
 #
 # Prerequisites:
-#   - Client TLS certs at ./tmp/client.crt and ./tmp/client.key
-#   - Base64-encoded credentials in ./tmp/cred.txt (format: base64(org_id|username:password))
+#   - Client TLS certs at ./local/client.crt and ./local/client.key
+#   - Base64-encoded credentials in ./local/cred.txt (format: base64(org_id|username:password))
 #
 # Usage:
 #   ./bin/parsec serve --config ./configs/examples/parsec-registry-auth.yaml
@@ -16,9 +16,9 @@
 #         "request": {
 #           "http": {
 #             "method": "GET",
-#             "path": "/api/something",
+#             "path": "/api/anything",
 #             "headers": {
-#               "authorization": "Basic '"$(cat tmp/cred.txt)"'"
+#               "authorization": "Basic '"$(cat local/cred.txt)"'"
 #             }
 #           }
 #         }
