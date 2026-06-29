@@ -36,8 +36,8 @@ type AuthzServer struct {
 }
 
 // NewAuthzServer creates a new ext_authz server.
-// policy decides, for each request, whether to issue tokens, pass through,
-// or deny. If nil, a [StaticAuthenticatedPolicy] with default token types
+// policy decides, for each request, whether to issue tokens, allow without
+// issue, or deny. If nil, a [StaticAuthenticatedPolicy] with default token types
 // is used (preserving pre-policy behavior).
 // credentialSources defines where credentials are extracted from for both
 // subject and actor authentication.

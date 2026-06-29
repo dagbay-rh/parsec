@@ -1017,7 +1017,7 @@ func TestAuthzServer_Check_AllowWithoutIssue(t *testing.T) {
 	// A policy that returns AllowWithoutIssue for authenticated subjects
 	policy := &stubPolicy{decision: AuthzCheckDecision{
 		Action: AuthzCheckAllowWithoutIssue,
-		Reason: "passthrough",
+		Reason: "allow without issue",
 	}}
 
 	authzServer := NewAuthzServer(trustStore, nil, policy, DefaultCredentialSources(), nil)

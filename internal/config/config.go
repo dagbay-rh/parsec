@@ -53,7 +53,7 @@ type ServerConfig struct {
 // AuthzServerConfig configures the ext_authz authorization server
 type AuthzServerConfig struct {
 	// Policy configures the authz check policy that decides, for each
-	// ext_authz request, whether to issue tokens, pass through, or deny.
+	// ext_authz request, whether to issue tokens, allow without issue, or deny.
 	Policy AuthzCheckPolicyConfig `koanf:"policy"`
 
 	// TokenTypes specifies which token types to issue and how to deliver them.

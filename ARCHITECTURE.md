@@ -53,7 +53,7 @@ Both services issue transaction tokens following the [draft-ietf-oauth-transacti
 Implements Envoy's external authorization protocol:
 - Receives requests from Envoy with external credentials
 - Validates credentials against trust store
-- Evaluates an **authz check policy** that decides whether to issue tokens, pass through without tokens, or deny the request
+- Evaluates an **authz check policy** that decides whether to issue tokens, allow without issuing tokens, or deny the request
 - Returns authorization decision with tokens (if issued) in custom headers
 
 **Authz Check Policy**: A pluggable policy layer sits between credential
