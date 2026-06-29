@@ -33,8 +33,11 @@ func (s *CookieCredentialSource) Extract(_ context.Context, cc CredentialContext
 	}
 
 	token, ok := cookieValue(cookieHeader, s.CookieName)
-	if !ok || token == "" {
+	if !ok {
 		return nil, nil
+	}
+	if token == "" {
+		return nil, fmt.Errorf("cookie %q present but token is empty", s.CookieName)
 	}
 
 	return &CredentialExtraction{

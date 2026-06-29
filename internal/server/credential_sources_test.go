@@ -233,17 +233,25 @@ func TestCredentialSources_Extract(t *testing.T) {
 		}
 	})
 
-	t.Run("cookie source returns nil when cookie value is empty", func(t *testing.T) {
+	t.Run("cookie source errors when cookie value is empty", func(t *testing.T) {
 		t.Parallel()
 		sources := NewCredentialSources(mustCookieSource(t, "c", "cs_jwt"))
-		ext, err := sources.Extract(ctx, makeCC(map[string]string{
+		_, err := sources.Extract(ctx, makeCC(map[string]string{
 			"cookie": "cs_jwt=",
 		}))
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		if err == nil {
+			t.Fatal("expected error for empty cookie value")
 		}
-		if ext != nil {
-			t.Fatalf("expected nil extraction for empty cookie value, got %+v", ext)
+	})
+
+	t.Run("cookie source errors when cookie value is only quotes", func(t *testing.T) {
+		t.Parallel()
+		sources := NewCredentialSources(mustCookieSource(t, "c", "cs_jwt"))
+		_, err := sources.Extract(ctx, makeCC(map[string]string{
+			"cookie": `cs_jwt=""`,
+		}))
+		if err == nil {
+			t.Fatal("expected error for quoted-empty cookie value")
 		}
 	})
 
