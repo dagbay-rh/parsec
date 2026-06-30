@@ -110,9 +110,9 @@ func (c *InMemoryCachingDataSource) Fetch(ctx context.Context, input *service.Da
 		c.mu.Lock()
 		delete(c.entries, cacheKeyStr)
 		c.mu.Unlock()
+	} else {
+		p.CacheMiss()
 	}
-
-	p.CacheMiss()
 
 	// Cache miss - fetch from source using the original (full) input
 	result, err := c.source.Fetch(ctx, input)

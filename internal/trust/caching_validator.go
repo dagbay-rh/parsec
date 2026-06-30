@@ -112,9 +112,9 @@ func (v *InMemoryCachingValidator) Validate(ctx context.Context, credential Cred
 		v.mu.Lock()
 		delete(v.entries, cacheKey)
 		v.mu.Unlock()
+	} else {
+		p.CacheMiss()
 	}
-
-	p.CacheMiss()
 
 	result, err := v.source.Validate(ctx, credential)
 	if err != nil {

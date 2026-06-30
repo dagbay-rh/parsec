@@ -573,6 +573,30 @@ func (v *countingCacheableValidator) CacheKey(credential Credential) (ValidatorI
 	return ValidatorInput{Credential: credential}, nil
 }
 
+// recordingInMemoryValidateProbe captures which cache-outcome method was called.
+type recordingInMemoryValidateProbe struct {
+	NoOpInMemoryValidateProbe
+	hitCalled     bool
+	missCalled    bool
+	expiredCalled bool
+}
+
+func (p *recordingInMemoryValidateProbe) CacheHit()     { p.hitCalled = true }
+func (p *recordingInMemoryValidateProbe) CacheMiss()    { p.missCalled = true }
+func (p *recordingInMemoryValidateProbe) CacheExpired() { p.expiredCalled = true }
+
+// recordingInMemoryValidateObserver collects a probe per Validate call.
+type recordingInMemoryValidateObserver struct {
+	NoOpTrustObserver
+	probes []*recordingInMemoryValidateProbe
+}
+
+func (o *recordingInMemoryValidateObserver) InMemoryValidateStarted(ctx context.Context, _ string) (context.Context, InMemoryValidateProbe) {
+	p := &recordingInMemoryValidateProbe{}
+	o.probes = append(o.probes, p)
+	return ctx, p
+}
+
 func TestInMemoryCachingValidator(t *testing.T) {
 	clk := clock.NewFixtureClock(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC))
 	source := &countingCacheableValidator{
@@ -610,6 +634,59 @@ func TestInMemoryCachingValidator(t *testing.T) {
 	}
 	if source.count != 2 {
 		t.Fatalf("count=%d, want 2 after expiry", source.count)
+	}
+}
+
+func TestInMemoryCachingValidator_CacheOutcomesAreMutuallyExclusive(t *testing.T) {
+	clk := clock.NewFixtureClock(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC))
+	source := &countingCacheableValidator{
+		expiresAt: clk.Now().Add(time.Hour),
+	}
+	obs := &recordingInMemoryValidateObserver{}
+	cached := NewInMemoryCachingValidator("test", source, obs,
+		WithValidatorCacheClock(clk),
+		WithValidatorCacheTTL(time.Minute),
+	)
+	cred := &BearerCredential{Token: "abc"}
+
+	// Call 0: cold miss — entry not in cache.
+	if _, err := cached.Validate(context.Background(), cred); err != nil {
+		t.Fatalf("cold miss: %v", err)
+	}
+	p := obs.probes[0]
+	if !p.missCalled {
+		t.Fatal("cold miss: expected CacheMiss")
+	}
+	if p.hitCalled || p.expiredCalled {
+		t.Fatalf("cold miss: unexpected hit=%v expired=%v", p.hitCalled, p.expiredCalled)
+	}
+
+	// Call 1: cache hit.
+	if _, err := cached.Validate(context.Background(), cred); err != nil {
+		t.Fatalf("cache hit: %v", err)
+	}
+	p = obs.probes[1]
+	if !p.hitCalled {
+		t.Fatal("cache hit: expected CacheHit")
+	}
+	if p.missCalled || p.expiredCalled {
+		t.Fatalf("cache hit: unexpected miss=%v expired=%v", p.missCalled, p.expiredCalled)
+	}
+
+	// Call 2: expired — entry found but stale. CacheExpired only, not CacheMiss.
+	clk.Advance(2 * time.Minute)
+	if _, err := cached.Validate(context.Background(), cred); err != nil {
+		t.Fatalf("expired: %v", err)
+	}
+	p = obs.probes[2]
+	if !p.expiredCalled {
+		t.Fatal("expired: expected CacheExpired")
+	}
+	if p.missCalled {
+		t.Fatal("expired: CacheMiss must not be called when CacheExpired was called")
+	}
+	if p.hitCalled {
+		t.Fatalf("expired: unexpected CacheHit")
 	}
 }
 
