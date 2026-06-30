@@ -200,10 +200,10 @@ func NewDistributedCachingValidator(name string, source Validator, obs Distribut
 	adapter, err := cache.NewGroupcacheAdapter(
 		config.GroupName,
 		func(input ValidatorInput) (string, error) {
-			return SerializeValidatorInputToJSON(input)
+			return serializeValidatorInput(input)
 		},
 		func(key string) (ValidatorInput, error) {
-			return DeserializeValidatorInputFromJSON(key)
+			return deserializeValidatorInput(key)
 		},
 		func(ctx context.Context, input ValidatorInput) (*Result, error) {
 			result, err := source.Validate(ctx, input.Credential)
@@ -273,8 +273,7 @@ func (v *DistributedCachingValidator) Validate(ctx context.Context, credential C
 	return result, nil
 }
 
-// SerializeValidatorInputToJSON serializes a validator input into a reversible cache key.
-func SerializeValidatorInputToJSON(input ValidatorInput) (string, error) {
+func serializeValidatorInput(input ValidatorInput) (string, error) {
 	jsonBytes, err := json.Marshal(input)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal validator input: %w", err)
@@ -282,21 +281,12 @@ func SerializeValidatorInputToJSON(input ValidatorInput) (string, error) {
 	return string(jsonBytes), nil
 }
 
-// DeserializeValidatorInputFromJSON deserializes a validator cache key.
-func DeserializeValidatorInputFromJSON(key string) (ValidatorInput, error) {
+func deserializeValidatorInput(key string) (ValidatorInput, error) {
 	var input ValidatorInput
 	if err := json.Unmarshal([]byte(key), &input); err != nil {
 		return ValidatorInput{}, fmt.Errorf("failed to unmarshal validator input: %w", err)
 	}
 	return input, nil
-}
-
-func serializeValidatorInput(input ValidatorInput) (string, error) {
-	keyBytes, err := json.Marshal(input)
-	if err != nil {
-		return "", fmt.Errorf("failed to serialize validator input: %w", err)
-	}
-	return string(keyBytes), nil
 }
 
 func validatorCacheExpiry(now time.Time, ttl time.Duration, result *Result) (time.Time, bool) {
