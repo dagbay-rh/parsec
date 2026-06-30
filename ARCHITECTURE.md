@@ -53,8 +53,15 @@ Both services issue transaction tokens following the [draft-ietf-oauth-transacti
 Implements Envoy's external authorization protocol:
 - Receives requests from Envoy with external credentials
 - Validates credentials against trust store
-- Issues transaction token
-- Returns authorization decision with token in custom header
+- Evaluates an **authz check policy** that decides whether to issue tokens, allow without issuing tokens, or deny the request
+- Returns authorization decision with tokens (if issued) in custom headers
+
+**Authz Check Policy**: A pluggable policy layer sits between credential
+validation and token issuance. The policy receives `Principal` values for both
+subject and actor (which may be anonymous), plus the request attributes, and
+returns a decision: `issue`, `allow_without_issue`, or `deny`. The default
+`static_authenticated` policy denies anonymous subjects and issues statically
+configured token types for authenticated subjects.
 
 ### 2. Token Exchange Service
 
@@ -97,10 +104,11 @@ parsec/
 │
 ├── internal/
 │   ├── server/
-│   │   ├── server.go            # gRPC + HTTP server setup
-│   │   ├── authz.go             # ext_authz implementation
-│   │   ├── exchange.go          # Token exchange implementation
-│   │   └── form_marshaler.go    # RFC 8693 form encoding support
+│   │   ├── server.go               # gRPC + HTTP server setup
+│   │   ├── authz.go                # ext_authz implementation
+│   │   ├── authz_check_policy.go   # Authz check policy types & StaticAuthenticatedPolicy
+│   │   ├── exchange.go             # Token exchange implementation
+│   │   └── form_marshaler.go       # RFC 8693 form encoding support
 │   │
 │   ├── trust/                   # Trust and credential validation
 │   │   ├── validator.go         # Validator interface and credential types
@@ -478,26 +486,25 @@ func (ts *TokenService) IssueTokens(ctx context.Context,
    - Optional mTLS peer certificate
                 ↓
 2. AuthzServer.Check()
-   - Extract subject credential from Authorization header
-   - Extract actor credential from mTLS peer certificate
-   - Apply actor-based filtering to trust store
+   - Authenticate actor (mTLS cert or gRPC metadata), wrap into Principal
+   - Extract subject credential from request headers
+     - No credential found → anonymous Principal
+     - Malformed credential → hard denial
+     - Credential found → filter trust store, validate, wrap into Principal
                 ↓
-3. Store.Validate(subject_credential)
-   - Validate credential against trust domain
-   - Return trust.Result
+3. AuthzCheckPolicy.Decide(subject, actor, request)
+   - Returns issue / allow_without_issue / deny
                 ↓
-4. TokenService.IssueTokens()
+4a. Issue → TokenService.IssueTokens()
    - Enrich with data sources
    - Apply claim mappers
    - Build transaction context
+   - Return CheckResponse OK with token headers, remove credential headers
                 ↓
-5. Issuer.Issue()
-   - Generate transaction token
+4b. AllowWithoutIssue → Return CheckResponse OK without token headers
+   - Still sanitize credential headers when present
                 ↓
-6. Return CheckResponse
-   - Status: OK/Denied
-   - Headers: Transaction-Token header added
-   - Headers: Original Authorization header removed
+4c. Deny → Return CheckResponse Denied with reason
 ```
 
 ## Key Design Patterns
@@ -512,6 +519,7 @@ All major components are defined by interfaces, enabling:
 Example interfaces:
 - `trust.Validator` - Credential validation
 - `trust.Store` - Trust domain management
+- `server.AuthzCheckPolicy` - Pre-issuance policy (issue / allow_without_issue / deny)
 - `service.Issuer` - Token issuance
 - `service.DataSource` - Data enrichment
 - `service.ClaimMapper` - Claim transformation
@@ -592,7 +600,8 @@ tokenService := service.NewTokenService(
 claimsFilterRegistry := server.NewStubClaimsFilterRegistry()
 
 // 8. Inject into servers
-authzServer := server.NewAuthzServer(trustStore, tokenService, nil, credentialSources, obs)
+policy := server.NewStaticAuthenticatedPolicy(nil) // default: deny anonymous, issue txn token
+authzServer := server.NewAuthzServer(trustStore, tokenService, policy, credentialSources, obs)
 exchangeServer := server.NewExchangeServer(trustStore, tokenService, claimsFilterRegistry, credentialSources, obs)
 
 // 9. Create and start server
@@ -654,7 +663,7 @@ tokenService := service.NewTokenService(
 )
 
 // Test full flow
-authzServer := server.NewAuthzServer(trustStore, tokenService, nil, credentialSources, obs)
+authzServer := server.NewAuthzServer(trustStore, tokenService, nil, credentialSources, obs) // nil policy = default
 response, err := authzServer.Check(ctx, envoyRequest)
 assert.Equal(t, CheckResponse_OK, response.Status.Code)
 ```
