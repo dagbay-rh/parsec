@@ -189,8 +189,9 @@ type CachingConfig struct {
 	// Options: "in_memory", "distributed", "none"
 	Type string `koanf:"type"`
 
-	// TTL is the cache time-to-live for cacheable script-backed implementations.
-	TTL string `koanf:"ttl"` // Duration string like "5m"
+	// TTL is the cache time-to-live (e.g. "5m"). Omit for the default (5m).
+	// Set to "0s" to cache indefinitely (no expiry).
+	TTL string `koanf:"ttl"`
 
 	// Distributed caching fields
 	GroupName string `koanf:"group_name"` // For groupcache

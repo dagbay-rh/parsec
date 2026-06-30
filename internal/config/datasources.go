@@ -139,7 +139,7 @@ func cachingEnabled(cfg *CachingConfig) bool {
 
 func parseCacheTTL(cfg *CachingConfig) (time.Duration, error) {
 	if cfg == nil || cfg.TTL == "" {
-		return 0, nil
+		return defaultCacheTTL, nil
 	}
 	duration, err := time.ParseDuration(cfg.TTL)
 	if err != nil {
@@ -173,9 +173,6 @@ func wrapWithCaching(ds service.DataSource, cfg CachingConfig, obs observer.Obse
 	cacheTTL, err := parseCacheTTL(&cfg)
 	if err != nil {
 		return nil, err
-	}
-	if cacheTTL == 0 {
-		cacheTTL = defaultCacheTTL
 	}
 
 	switch cfg.Type {

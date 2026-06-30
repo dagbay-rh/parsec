@@ -210,9 +210,6 @@ func wrapValidatorWithCaching(name string, validator trust.Validator, cfg Cachin
 	if err != nil {
 		return nil, err
 	}
-	if cacheTTL == 0 {
-		cacheTTL = defaultCacheTTL
-	}
 
 	switch cfg.Type {
 	case "in_memory":
