@@ -31,16 +31,9 @@ Envoy CheckRequest (Authorization: Basic <base64>)
   - Returns trust.Result with org_id and auth_type claims
   |
   v
-[AuthzServer.Check]
-  - Populates request.Additional:
-      credential_source = "basic-auth"
-      credential_type   = "basic_auth"
-  |
-  v
 [CEL Claim Mapper]
   - Detects registry auth via:
-      request.additional.credential_type == "basic_auth"
-      && subject.claims.auth_type == "registry-auth"
+      subject.claims.auth_type == "registry-auth"
   - Maps claims into x-rh-identity envelope
   |
   v
@@ -132,29 +125,15 @@ The Lua script makes HTTP calls via a named HTTP client resolved from the `http_
 
 The HTTP client is injected into the Lua sandbox's `http` module, so `http.post()` calls in the script use the configured client transparently.
 
-### Credential Type Metadata
-
-The authz server populates `request.Additional` after credential extraction:
-
-```go
-reqAttrs.Additional["credential_source"] = ext.SourceName              // "basic-auth"
-reqAttrs.Additional["credential_type"]   = string(ext.Credential.Type()) // "basic_auth"
-```
-
-These are accessible in CEL expressions as `request.additional.credential_source`, `request.additional.credential_type`, etc.
-
 ### CEL Integration
 
-Registry auth is detected in CEL mapper expressions using a dual check on credential type and validator-set claims:
+Registry auth is detected in CEL mapper expressions by checking the validator-set claim:
 
 ```cel
-has(request.additional.credential_type)
-  && request.additional.credential_type == "basic_auth"
-  && has(subject.claims.auth_type)
-  && subject.claims.auth_type == "registry-auth"
+has(subject.claims.auth_type) && subject.claims.auth_type == "registry-auth"
 ```
 
-This avoids a dedicated CEL function. `credential_type` is transport-level metadata (how the credential was presented), while `auth_type` is a validator-set claim (what kind of auth the registry service confirmed). Both must match to prevent a bearer token with spoofed claims from being treated as registry auth.
+The `auth_type` claim is set by the Lua validator on successful validation. Since the trust store routes credentials by type, only `basic_auth` credentials reach the registry auth validator — a bearer token cannot produce this claim.
 
 ## Configuration
 
@@ -229,5 +208,4 @@ Key test scenarios:
 - Registry returns non-200 / denies access / returns malformed JSON
 - Username parsing edge cases (multiple pipes, empty parts)
 - BasicAuth extraction (case-insensitive scheme, invalid base64, coexistence with bearer)
-- Credential metadata flows through to issued tokens
 - Credential JSON roundtrip serialization for `BasicAuthCredential`

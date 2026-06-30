@@ -4,7 +4,7 @@
 //   { "identity": { ... }, "entitlements": {} }
 //
 // Supports:
-//   - Registry Auth tokens (credential_type is "basic_auth" and auth_type is "registry-auth")
+//   - Registry Auth tokens (auth_type is "registry-auth")
 //   - Service Account tokens (preferred_username starts with "service-account-")
 //   - Console API tokens (scope contains "api.console")
 //
@@ -13,7 +13,7 @@
 //
 // Based on: https://github.com/RedHatInsights/insights-3scale
 
-has(request.additional.credential_type) && request.additional.credential_type == "basic_auth" && has(subject.claims.auth_type) && subject.claims.auth_type == "registry-auth" ? {
+has(subject.claims.auth_type) && subject.claims.auth_type == "registry-auth" ? {
   "identity": {
     "auth_type": "registry-auth",
     "org_id": has(subject.claims.org_id) ? subject.claims.org_id : "",
