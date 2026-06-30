@@ -38,8 +38,12 @@ type CacheableValidator interface {
 	CacheKey(credential Credential) (ValidatorInput, error)
 }
 
-// Result contains the validated information about the subject
-// All fields are exported and JSON-serializable
+// Result contains the validated information about the subject.
+// All fields are exported and JSON-serializable.
+//
+// Callers must treat Result and its reference-type fields (Claims, Audience)
+// as read-only. Results may be shared across goroutines and cached; mutating
+// a returned Result corrupts shared state.
 type Result struct {
 	// Subject is the unique identifier of the authenticated subject
 	Subject string `json:"subject"`

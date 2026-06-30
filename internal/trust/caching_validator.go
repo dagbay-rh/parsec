@@ -4,13 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
-	"slices"
 	"sync"
 	"time"
 
 	"github.com/project-kessel/parsec/internal/cache"
-	"github.com/project-kessel/parsec/internal/claims"
 	"github.com/project-kessel/parsec/internal/clock"
 )
 
@@ -106,7 +103,7 @@ func (v *InMemoryCachingValidator) Validate(ctx context.Context, credential Cred
 	if found {
 		if entry.expiresAt.IsZero() || v.clock.Now().Before(entry.expiresAt) {
 			p.CacheHit()
-			return cloneResult(entry.result), nil
+			return entry.result, nil
 		}
 		p.CacheExpired()
 		v.mu.Lock()
@@ -125,7 +122,7 @@ func (v *InMemoryCachingValidator) Validate(ctx context.Context, credential Cred
 	if expiresAt, ok := validatorCacheExpiry(v.clock.Now(), v.cacheTTL, result); ok {
 		v.mu.Lock()
 		v.entries[cacheKey] = &validatorCacheEntry{
-			result:    cloneResult(result),
+			result:    result,
 			expiresAt: expiresAt,
 		}
 		v.mu.Unlock()
@@ -216,7 +213,7 @@ func NewDistributedCachingValidator(name string, source Validator, obs Distribut
 			if _, ok := validatorCacheExpiry(clk.Now(), cacheTTL, result); !ok {
 				return nil, fmt.Errorf("validator result is already expired")
 			}
-			return cloneResult(result), nil
+			return result, nil
 		},
 		func(result *Result) ([]byte, error) {
 			return json.Marshal(result)
@@ -273,7 +270,7 @@ func (v *DistributedCachingValidator) Validate(ctx context.Context, credential C
 		return nil, ErrExpiredToken
 	}
 
-	return cloneResult(result), nil
+	return result, nil
 }
 
 // SerializeValidatorInputToJSON serializes a validator input into a reversible cache key.
@@ -320,14 +317,3 @@ func validatorCacheExpiry(now time.Time, ttl time.Duration, result *Result) (tim
 	return expiresAt, true
 }
 
-func cloneResult(result *Result) *Result {
-	if result == nil {
-		return nil
-	}
-	cloned := *result
-	if result.Claims != nil {
-		cloned.Claims = claims.Claims(maps.Clone(result.Claims))
-	}
-	cloned.Audience = slices.Clone(result.Audience)
-	return &cloned
-}
