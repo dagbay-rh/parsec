@@ -103,11 +103,12 @@ ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourc
         req.Header.Set("Authorization", "Bearer " + apiKey.(string))
         return nil
     },
-    CacheTTL:     5 * time.Minute,
 })
 
 // Wrap with caching layer
-cachedDS := datasource.NewInMemoryCachingDataSource(ds)
+cachedDS := datasource.NewInMemoryCachingDataSource(ds, obs,
+    datasource.WithCacheTTL(5 * time.Minute),
+)
 ```
 
 ## Configuration
@@ -131,7 +132,6 @@ cachedDS := datasource.NewInMemoryCachingDataSource(ds)
 | `ConfigSource` | `lua.ConfigSource` | No | Configuration source for the script |
 | `HTTPTimeout` | `time.Duration` | No | HTTP request timeout (default: 30s) |
 | `HTTPRequestOptions` | `lua.RequestOptions` | No | Function to modify HTTP requests |
-| `CacheTTL` | `time.Duration` | No | Cache TTL (default: 5m) |
 
 ## Script Requirements
 
@@ -426,18 +426,20 @@ Only `CacheableLuaDataSource` implements the `Cacheable` interface and can be wr
 ```go
 // Create cacheable data source
 cacheableDS, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-    Name:         "user-data",
-    Script:       script,
-    CacheTTL:     5 * time.Minute,
+    Name:   "user-data",
+    Script: script,
 })
 
-// Wrap with in-memory caching
-cachedDS := datasource.NewInMemoryCachingDataSource(cacheableDS)
+// Wrap with in-memory caching (TTL is configured on the wrapper)
+cachedDS := datasource.NewInMemoryCachingDataSource(cacheableDS, obs,
+    datasource.WithCacheTTL(5 * time.Minute),
+)
 
 // Or distributed caching
 cachedDS := datasource.NewDistributedCachingDataSource(cacheableDS, datasource.DistributedCachingConfig{
     GroupName:      "lua-datasource",
     CacheSizeBytes: 64 << 20,  // 64MB
+    CacheTTL:       5 * time.Minute,
 })
 ```
 

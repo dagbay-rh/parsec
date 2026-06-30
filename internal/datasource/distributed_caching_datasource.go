@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/project-kessel/parsec/internal/cache"
 	"github.com/project-kessel/parsec/internal/clock"
@@ -31,6 +32,10 @@ type DistributedCachingConfig struct {
 	// Clock provides the current time for TTL bucketing.
 	// Default: system clock.
 	Clock clock.Clock
+
+	// CacheTTL is the time-to-live for cached entries.
+	// 0 means no TTL-based expiration (cache indefinitely).
+	CacheTTL time.Duration
 }
 
 // NewDistributedCachingDataSource wraps a data source with distributed caching using groupcache.
@@ -89,7 +94,7 @@ func NewDistributedCachingDataSource(source service.DataSource, config Distribut
 		},
 		cache.WithClock(config.Clock),
 		cache.WithCacheSizeBytes(config.CacheSizeBytes),
-		cache.WithTTL(func() cache.TTL { return cacheable.CacheTTL() }),
+		cache.WithTTL(func() cache.TTL { return config.CacheTTL }),
 	)
 	if err != nil {
 		return source

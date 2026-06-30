@@ -364,9 +364,6 @@ type DataSourceInput struct {
 type Cacheable interface {
     // CacheKey returns a masked copy of input with only fields that affect result
     CacheKey(input *DataSourceInput) DataSourceInput
-    
-    // CacheTTL returns the time-to-live for cached entries
-    CacheTTL() time.Duration
 }
 ```
 
@@ -538,7 +535,7 @@ Data sources are fetched lazily during claim mapping:
 ### Caching Layers
 
 Data sources and script-backed validators support transparent caching:
-- **`Cacheable` / `CacheableValidator` interfaces**: Define cache key and TTL
+- **`Cacheable` / `CacheableValidator` interfaces**: Define cache key derivation
 - **In-memory caching**: Fast local cache with LRU eviction
 - **Distributed caching**: groupcache for multi-instance deployments
 - Automatic cache key generation from inputs

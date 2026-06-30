@@ -21,7 +21,6 @@ type ScriptName = string
 const (
 	validateFuncName         = "validate"
 	validateCacheKeyFuncName = "validate_cache_key"
-	defaultLuaValidatorTTL   = 5 * time.Minute
 )
 
 // ValidatorInput is the Lua validator ABI input. It wraps a [Credential] in a
@@ -75,7 +74,6 @@ type luaValidatorConfig struct {
 	configSource luaservices.ConfigSource
 	httpOpts     []luaservices.HTTPServiceOption
 	observer     LuaValidatorObserver
-	cacheTTL     time.Duration
 }
 
 // LuaValidatorOption configures optional settings for Lua validators.
@@ -99,13 +97,6 @@ func WithLuaHTTPOptions(opts ...luaservices.HTTPServiceOption) LuaValidatorOptio
 func WithLuaValidatorObserver(observer LuaValidatorObserver) LuaValidatorOption {
 	return func(cfg *luaValidatorConfig) {
 		cfg.observer = observer
-	}
-}
-
-// WithLuaValidatorCacheTTL sets the TTL used by CacheableLuaValidator.
-func WithLuaValidatorCacheTTL(ttl time.Duration) LuaValidatorOption {
-	return func(cfg *luaValidatorConfig) {
-		cfg.cacheTTL = ttl
 	}
 }
 
@@ -241,7 +232,6 @@ func (v *LuaValidator) Validate(ctx context.Context, credential Credential) (*Re
 // CacheableLuaValidator is a Lua validator that implements CacheableValidator.
 type CacheableLuaValidator struct {
 	*LuaValidator
-	cacheTTL time.Duration
 }
 
 // NewCacheableLuaValidator creates a Lua validator with validate_cache_key(input).
@@ -254,14 +244,8 @@ func NewCacheableLuaValidator(name ScriptName, script string, credentialTypes []
 		return nil, err
 	}
 
-	cfg := newLuaValidatorConfig(opts...)
-	if cfg.cacheTTL == 0 {
-		cfg.cacheTTL = defaultLuaValidatorTTL
-	}
-
 	return &CacheableLuaValidator{
 		LuaValidator: base,
-		cacheTTL:     cfg.cacheTTL,
 	}, nil
 }
 
@@ -307,11 +291,6 @@ func (v *CacheableLuaValidator) CacheKey(credential Credential) (ValidatorInput,
 	}
 
 	return luaTableToValidatorInput(ret.(*lua.LTable))
-}
-
-// CacheTTL implements CacheableValidator.
-func (v *CacheableLuaValidator) CacheTTL() time.Duration {
-	return v.cacheTTL
 }
 
 func validatorInputToLuaTable(L *lua.LState, input ValidatorInput) (*lua.LTable, error) {

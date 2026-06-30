@@ -12,6 +12,8 @@ import (
 	"github.com/project-kessel/parsec/internal/service"
 )
 
+const defaultCacheTTL = 5 * time.Minute
+
 // NewDataSourceRegistry creates a data source registry from configuration.
 // The observer provides cache lifecycle events for data sources that use caching.
 func NewDataSourceRegistry(cfg []DataSourceConfig, transport http.RoundTripper, obs observer.Observer) (*service.DataSourceRegistry, error) {
@@ -78,18 +80,12 @@ func newLuaDataSource(cfg DataSourceConfig, transport http.RoundTripper, obs obs
 	var baseDS service.DataSource
 
 	if cachingEnabled(cfg.Caching) {
-		cacheTTL, err := parseCacheTTL(cfg.Caching)
-		if err != nil {
-			return nil, err
-		}
-
 		cacheable, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
 			Name:         cfg.Name,
 			Script:       script,
 			ConfigSource: configSource,
 			HTTPOptions:  httpOptions,
 			Observer:     obs,
-			CacheTTL:     cacheTTL,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create cacheable lua data source: %w", err)
@@ -174,9 +170,19 @@ func buildHTTPOptions(cfg *HTTPConfig, transport http.RoundTripper) ([]luaservic
 // This is the coupling point where the central observer is narrowed to
 // the cache-specific CacheObserver sub-interface.
 func wrapWithCaching(ds service.DataSource, cfg CachingConfig, obs observer.Observer) (service.DataSource, error) {
+	cacheTTL, err := parseCacheTTL(&cfg)
+	if err != nil {
+		return nil, err
+	}
+	if cacheTTL == 0 {
+		cacheTTL = defaultCacheTTL
+	}
+
 	switch cfg.Type {
 	case "in_memory":
-		return datasource.NewInMemoryCachingDataSource(ds, obs), nil
+		return datasource.NewInMemoryCachingDataSource(ds, obs,
+			datasource.WithCacheTTL(cacheTTL),
+		), nil
 
 	case "distributed":
 		groupName := cfg.GroupName
@@ -192,6 +198,7 @@ func wrapWithCaching(ds service.DataSource, cfg CachingConfig, obs observer.Obse
 		cachingCfg := datasource.DistributedCachingConfig{
 			GroupName:      groupName,
 			CacheSizeBytes: cacheSize,
+			CacheTTL:       cacheTTL,
 		}
 
 		return datasource.NewDistributedCachingDataSource(ds, cachingCfg), nil

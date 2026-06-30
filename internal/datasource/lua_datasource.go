@@ -3,7 +3,6 @@ package datasource
 import (
 	"context"
 	"fmt"
-	"time"
 
 	lua "github.com/yuin/gopher-lua"
 
@@ -321,10 +320,9 @@ func luaTableToMap(tbl *lua.LTable) map[string]interface{} {
 	return result
 }
 
-// CacheableLuaDataSource is a Lua data source that implements the Cacheable interface
+// CacheableLuaDataSource is a Lua data source that implements the Cacheable interface.
 type CacheableLuaDataSource struct {
 	*LuaDataSource
-	cacheTTL time.Duration
 }
 
 // CacheableLuaDataSourceConfig configures a cacheable Lua data source
@@ -333,8 +331,17 @@ type CacheableLuaDataSourceConfig struct {
 	Name string
 
 	// Script is the Lua script to execute
+	//
 	// The script should define a function called 'fetch' that takes an input table
 	// and returns a result table with 'data' and 'content_type' fields
+	//
+	// The script must define fetch_cache_key(input), which returns a modified input
+	// table with only the fields relevant for caching.
+	//
+	// Example:
+	//   function fetch_cache_key(input)
+	//     return {subject = {subject = input.subject.subject}}
+	//   end
 	Script string
 
 	// ConfigSource provides configuration values available to the script via config.get()
@@ -348,26 +355,10 @@ type CacheableLuaDataSourceConfig struct {
 	// Observer for Lua-specific execution events on the inner Lua data source.
 	// If nil, NewLuaDataSource substitutes NoOpDataSourceObserver{}.
 	Observer LuaObserver
-
-	// The script must define fetch_cache_key(input), which returns a modified input
-	// table with only the fields relevant for caching.
-	//
-	// Example:
-	//   function fetch_cache_key(input)
-	//     return {subject = {subject = input.subject.subject}}
-	//   end
-	// CacheTTL is the cache time-to-live
-	// Default: 5 minutes
-	CacheTTL time.Duration
 }
 
-// NewCacheableLuaDataSource creates a new cacheable Lua data source
+// NewCacheableLuaDataSource creates a new cacheable Lua data source.
 func NewCacheableLuaDataSource(config CacheableLuaDataSourceConfig) (*CacheableLuaDataSource, error) {
-	if config.CacheTTL == 0 {
-		config.CacheTTL = 5 * time.Minute
-	}
-
-	// Create the base data source
 	baseDS, err := NewLuaDataSource(LuaDataSourceConfig{
 		Name:         config.Name,
 		Script:       config.Script,
@@ -385,7 +376,6 @@ func NewCacheableLuaDataSource(config CacheableLuaDataSourceConfig) (*CacheableL
 
 	return &CacheableLuaDataSource{
 		LuaDataSource: baseDS,
-		cacheTTL:      config.CacheTTL,
 	}, nil
 }
 
@@ -428,9 +418,4 @@ func (ds *CacheableLuaDataSource) CacheKey(input *service.DataSourceInput) servi
 	// Convert result back to DataSourceInput
 	maskedInput := ds.luaTableToInput(ret.(*lua.LTable))
 	return maskedInput
-}
-
-// CacheTTL implements the Cacheable interface
-func (ds *CacheableLuaDataSource) CacheTTL() time.Duration {
-	return ds.cacheTTL
 }

@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	luaservices "github.com/project-kessel/parsec/internal/lua"
 	"github.com/project-kessel/parsec/internal/request"
@@ -499,47 +498,6 @@ end
 	}
 }
 
-func TestCacheableLuaDataSource_CacheTTL(t *testing.T) {
-	script := `
-function fetch(input) return {} end
-function fetch_cache_key(input) return input end
-`
-
-	tests := []struct {
-		name string
-		ttl  time.Duration
-		want time.Duration
-	}{
-		{
-			name: "custom TTL",
-			ttl:  10 * time.Minute,
-			want: 10 * time.Minute,
-		},
-		{
-			name: "default TTL",
-			ttl:  0,
-			want: 5 * time.Minute,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ds, err := NewCacheableLuaDataSource(CacheableLuaDataSourceConfig{
-				Name:     "test",
-				Script:   script,
-				CacheTTL: tt.ttl,
-			})
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if got := ds.CacheTTL(); got != tt.want {
-				t.Errorf("CacheTTL() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestLuaDataSource_Fetch_ErrorHandling(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -668,7 +626,6 @@ end
 		ConfigSource: luaservices.NewMapConfigSource(map[string]interface{}{
 			"api_key": "test-key-123",
 		}),
-		CacheTTL: 10 * time.Minute,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -721,10 +678,5 @@ end
 	}
 	if maskedInput.RequestAttributes != nil {
 		t.Errorf("masked request_attributes should be nil")
-	}
-
-	// Test CacheTTL
-	if ds.CacheTTL() != 10*time.Minute {
-		t.Errorf("CacheTTL() = %v, want %v", ds.CacheTTL(), 10*time.Minute)
 	}
 }

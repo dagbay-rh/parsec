@@ -19,6 +19,7 @@ type InMemoryCachingValidator struct {
 	name      string
 	source    Validator
 	cacheable CacheableValidator
+	cacheTTL  time.Duration
 	clock     clock.Clock
 	observer  ValidatorCacheObserver
 	mu        sync.RWMutex
@@ -37,6 +38,14 @@ type InMemoryCachingValidatorOption func(*InMemoryCachingValidator)
 func WithValidatorCacheClock(clk clock.Clock) InMemoryCachingValidatorOption {
 	return func(v *InMemoryCachingValidator) {
 		v.clock = clk
+	}
+}
+
+// WithValidatorCacheTTL sets the time-to-live for cached entries.
+// Return 0 to let result expiration be the only expiry bound.
+func WithValidatorCacheTTL(ttl time.Duration) InMemoryCachingValidatorOption {
+	return func(v *InMemoryCachingValidator) {
+		v.cacheTTL = ttl
 	}
 }
 
@@ -111,7 +120,7 @@ func (v *InMemoryCachingValidator) Validate(ctx context.Context, credential Cred
 		return nil, err
 	}
 
-	if expiresAt, ok := validatorCacheExpiry(v.clock.Now(), v.cacheable.CacheTTL(), result); ok {
+	if expiresAt, ok := validatorCacheExpiry(v.clock.Now(), v.cacheTTL, result); ok {
 		v.mu.Lock()
 		v.entries[cacheKey] = &validatorCacheEntry{
 			result:    cloneResult(result),
@@ -157,6 +166,10 @@ type DistributedValidatorCachingConfig struct {
 	GroupName      string
 	CacheSizeBytes int64
 	Clock          clock.Clock
+
+	// CacheTTL is the time-to-live for cached entries.
+	// 0 means no TTL cap; result expiration is the only expiry bound.
+	CacheTTL time.Duration
 }
 
 // NewDistributedCachingValidator wraps a validator with groupcache if it
@@ -180,6 +193,7 @@ func NewDistributedCachingValidator(name string, source Validator, config Distri
 		clk = clock.NewSystemClock()
 	}
 
+	cacheTTL := config.CacheTTL
 	adapter, err := cache.NewGroupcacheAdapter(
 		config.GroupName,
 		func(input ValidatorInput) (string, error) {
@@ -193,7 +207,7 @@ func NewDistributedCachingValidator(name string, source Validator, config Distri
 			if err != nil {
 				return nil, fmt.Errorf("validator failed: %w", err)
 			}
-			if _, ok := validatorCacheExpiry(clk.Now(), cacheable.CacheTTL(), result); !ok {
+			if _, ok := validatorCacheExpiry(clk.Now(), cacheTTL, result); !ok {
 				return nil, fmt.Errorf("validator result is already expired")
 			}
 			return cloneResult(result), nil
@@ -210,7 +224,7 @@ func NewDistributedCachingValidator(name string, source Validator, config Distri
 		},
 		cache.WithClock(clk),
 		cache.WithCacheSizeBytes(config.CacheSizeBytes),
-		cache.WithTTL(func() cache.TTL { return cacheable.CacheTTL() }),
+		cache.WithTTL(func() cache.TTL { return cacheTTL }),
 	)
 	if err != nil {
 		return source

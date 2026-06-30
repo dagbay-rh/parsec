@@ -28,17 +28,14 @@ type Validator interface {
 }
 
 // CacheableValidator is an optional interface for validators whose successful
-// validation results can be cached.
+// validation results can be cached. The cache TTL is configured on the
+// caching wrapper, not on the validator itself.
 type CacheableValidator interface {
 	// CacheKey returns a masked validator input containing only the fields that
 	// affect the validation result. For distributed caches, the returned input
 	// must be sufficient to reconstruct a Credential and call Validate on a
 	// cache miss.
 	CacheKey(credential Credential) (ValidatorInput, error)
-
-	// CacheTTL returns the time-to-live for cached entries. Return 0 to let
-	// result expiration be the only expiry bound.
-	CacheTTL() time.Duration
 }
 
 // Result contains the validated information about the subject

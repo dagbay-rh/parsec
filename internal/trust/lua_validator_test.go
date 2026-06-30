@@ -223,9 +223,6 @@ end
 	if bearer.Token != "abc" {
 		t.Fatalf("Token=%q, want abc", bearer.Token)
 	}
-	if validator.CacheTTL() != defaultLuaValidatorTTL {
-		t.Fatalf("CacheTTL=%v, want %v", validator.CacheTTL(), defaultLuaValidatorTTL)
-	}
 }
 
 func TestCacheableLuaValidator_CacheKey_NilCredential(t *testing.T) {
@@ -491,24 +488,6 @@ func TestNewCacheableLuaValidator_RequiresValidateCacheKey(t *testing.T) {
 	}
 }
 
-func TestCacheableLuaValidator_CustomTTL(t *testing.T) {
-	const script = `
-function validate(input) return {subject = "user"} end
-function validate_cache_key(input)
-  return {credential = {type = input.credential.type, token = input.credential.token}}
-end
-`
-	ttl := 10 * time.Minute
-	validator, err := NewCacheableLuaValidator("test", script, []CredentialType{CredentialTypeBearer},
-		WithLuaValidatorCacheTTL(ttl))
-	if err != nil {
-		t.Fatalf("NewCacheableLuaValidator: %v", err)
-	}
-	if validator.CacheTTL() != ttl {
-		t.Fatalf("CacheTTL=%v, want %v", validator.CacheTTL(), ttl)
-	}
-}
-
 func TestCacheableLuaValidator_CacheKey_ScriptError(t *testing.T) {
 	const script = `
 function validate(input) return {subject = "user"} end
@@ -571,7 +550,6 @@ func TestNewLuaValidatorConfig_NilOverrides(t *testing.T) {
 
 type countingCacheableValidator struct {
 	count     int
-	ttl       time.Duration
 	expiresAt time.Time
 }
 
@@ -595,17 +573,15 @@ func (v *countingCacheableValidator) CacheKey(credential Credential) (ValidatorI
 	return ValidatorInput{Credential: credential}, nil
 }
 
-func (v *countingCacheableValidator) CacheTTL() time.Duration {
-	return v.ttl
-}
-
 func TestInMemoryCachingValidator(t *testing.T) {
 	clk := clock.NewFixtureClock(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC))
 	source := &countingCacheableValidator{
-		ttl:       time.Minute,
 		expiresAt: clk.Now().Add(time.Hour),
 	}
-	cached := NewInMemoryCachingValidator("test", source, NoOpTrustObserver{}, WithValidatorCacheClock(clk))
+	cached := NewInMemoryCachingValidator("test", source, NoOpTrustObserver{},
+		WithValidatorCacheClock(clk),
+		WithValidatorCacheTTL(time.Minute),
+	)
 
 	cred := &BearerCredential{Token: "abc"}
 	result, err := cached.Validate(context.Background(), cred)
@@ -639,12 +615,12 @@ func TestInMemoryCachingValidator(t *testing.T) {
 
 func TestDistributedCachingValidator(t *testing.T) {
 	source := &countingCacheableValidator{
-		ttl:       time.Hour,
 		expiresAt: time.Now().Add(time.Hour),
 	}
 	cached := NewDistributedCachingValidator("test-distributed", source, DistributedValidatorCachingConfig{
 		GroupName:      "test-validator-distributed-cache",
 		CacheSizeBytes: 1 << 20,
+		CacheTTL:       time.Hour,
 	})
 
 	cred := &BearerCredential{Token: "abc"}

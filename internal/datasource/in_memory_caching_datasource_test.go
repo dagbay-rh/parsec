@@ -15,7 +15,6 @@ import (
 type mockCacheableDataSource struct {
 	name       string
 	fetchCount int // Track how many times Fetch is called
-	ttl        time.Duration
 }
 
 func (m *mockCacheableDataSource) Name() string {
@@ -39,10 +38,6 @@ func (m *mockCacheableDataSource) CacheKey(input *service.DataSourceInput) servi
 		}
 	}
 	return masked
-}
-
-func (m *mockCacheableDataSource) CacheTTL() time.Duration {
-	return m.ttl
 }
 
 // mockNonCacheableDataSource doesn't implement Cacheable
@@ -76,10 +71,9 @@ func TestInMemoryCachingDataSource(t *testing.T) {
 	t.Run("caches results for cacheable source", func(t *testing.T) {
 		source := &mockCacheableDataSource{
 			name: "test-source",
-			ttl:  1 * time.Hour,
 		}
 
-		cached := newTestCachingDataSource(t, source)
+		cached := newTestCachingDataSource(t, source, WithCacheTTL(1*time.Hour))
 
 		input := &service.DataSourceInput{
 			Subject: &trust.Result{
@@ -118,10 +112,9 @@ func TestInMemoryCachingDataSource(t *testing.T) {
 
 		source := &mockCacheableDataSource{
 			name: "test-source",
-			ttl:  50 * time.Millisecond,
 		}
 
-		cached := newTestCachingDataSource(t, source, WithClock(clk))
+		cached := newTestCachingDataSource(t, source, WithClock(clk), WithCacheTTL(50*time.Millisecond))
 
 		input := &service.DataSourceInput{
 			Subject: &trust.Result{
@@ -154,10 +147,9 @@ func TestInMemoryCachingDataSource(t *testing.T) {
 	t.Run("different cache keys result in different cache entries", func(t *testing.T) {
 		source := &mockCacheableDataSource{
 			name: "test-source",
-			ttl:  1 * time.Hour,
 		}
 
-		cached := newTestCachingDataSource(t, source)
+		cached := newTestCachingDataSource(t, source, WithCacheTTL(1*time.Hour))
 
 		input1 := &service.DataSourceInput{
 			Subject: &trust.Result{
@@ -208,10 +200,9 @@ func TestInMemoryCachingDataSource(t *testing.T) {
 
 		source := &mockCacheableDataSource{
 			name: "test-source",
-			ttl:  50 * time.Millisecond,
 		}
 
-		cached := newTestCachingDataSource(t, source, WithClock(clk)).(*InMemoryCachingDataSource)
+		cached := newTestCachingDataSource(t, source, WithClock(clk), WithCacheTTL(50*time.Millisecond)).(*InMemoryCachingDataSource)
 
 		input := &service.DataSourceInput{
 			Subject: &trust.Result{
