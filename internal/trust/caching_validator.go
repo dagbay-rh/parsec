@@ -306,4 +306,3 @@ func validatorCacheExpiry(now time.Time, ttl time.Duration, result *Result) (tim
 	}
 	return expiresAt, true
 }
-
