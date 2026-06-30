@@ -231,7 +231,7 @@ func wrapValidatorWithCaching(name string, validator trust.Validator, cfg Cachin
 			cacheSize = 64 << 20
 		}
 
-		return trust.NewDistributedCachingValidator(name, validator, trust.DistributedValidatorCachingConfig{
+		return trust.NewDistributedCachingValidator(name, validator, obs, trust.DistributedValidatorCachingConfig{
 			GroupName:      groupName,
 			CacheSizeBytes: cacheSize,
 			CacheTTL:       cacheTTL,

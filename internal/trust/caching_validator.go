@@ -21,7 +21,7 @@ type InMemoryCachingValidator struct {
 	cacheable CacheableValidator
 	cacheTTL  time.Duration
 	clock     clock.Clock
-	observer  ValidatorCacheObserver
+	observer  InMemoryCachingValidatorObserver
 	mu        sync.RWMutex
 	entries   map[string]*validatorCacheEntry
 }
@@ -51,7 +51,7 @@ func WithValidatorCacheTTL(ttl time.Duration) InMemoryCachingValidatorOption {
 
 // NewInMemoryCachingValidator wraps a validator with in-memory caching if it
 // implements CacheableValidator. It returns the original validator otherwise.
-func NewInMemoryCachingValidator(name string, source Validator, obs ValidatorCacheObserver, opts ...InMemoryCachingValidatorOption) Validator {
+func NewInMemoryCachingValidator(name string, source Validator, obs InMemoryCachingValidatorObserver, opts ...InMemoryCachingValidatorOption) Validator {
 	cacheable, ok := source.(CacheableValidator)
 	if !ok {
 		return source
@@ -84,16 +84,18 @@ func (v *InMemoryCachingValidator) CredentialTypes() []CredentialType {
 
 // Validate checks the cache first, then validates on a miss.
 func (v *InMemoryCachingValidator) Validate(ctx context.Context, credential Credential) (*Result, error) {
-	ctx, p := v.observer.ValidatorCacheFetchStarted(ctx, v.name)
+	ctx, p := v.observer.InMemoryValidateStarted(ctx, v.name)
 	defer p.End()
 
 	cacheInput, err := v.cacheable.CacheKey(credential)
 	if err != nil {
+		p.CacheKeyFailed(err)
 		return v.source.Validate(ctx, credential)
 	}
 
 	cacheKey, err := serializeValidatorInput(cacheInput)
 	if err != nil {
+		p.CacheKeyFailed(err)
 		return v.source.Validate(ctx, credential)
 	}
 
@@ -116,7 +118,7 @@ func (v *InMemoryCachingValidator) Validate(ctx context.Context, credential Cred
 
 	result, err := v.source.Validate(ctx, credential)
 	if err != nil {
-		p.FetchFailed(err)
+		p.SourceFailed(err)
 		return nil, err
 	}
 
@@ -159,6 +161,7 @@ type DistributedCachingValidator struct {
 	cacheable CacheableValidator
 	adapter   *cache.GroupcacheAdapter[ValidatorInput, *Result]
 	clock     clock.Clock
+	observer  DistributedCachingValidatorObserver
 }
 
 // DistributedValidatorCachingConfig configures DistributedCachingValidator.
@@ -174,7 +177,7 @@ type DistributedValidatorCachingConfig struct {
 
 // NewDistributedCachingValidator wraps a validator with groupcache if it
 // implements CacheableValidator. It returns the original validator otherwise.
-func NewDistributedCachingValidator(name string, source Validator, config DistributedValidatorCachingConfig) Validator {
+func NewDistributedCachingValidator(name string, source Validator, obs DistributedCachingValidatorObserver, config DistributedValidatorCachingConfig) Validator {
 	cacheable, ok := source.(CacheableValidator)
 	if !ok {
 		return source
@@ -184,6 +187,9 @@ func NewDistributedCachingValidator(name string, source Validator, config Distri
 	}
 	if config.GroupName == "" {
 		config.GroupName = "validator:" + name
+	}
+	if obs == nil {
+		obs = NoOpTrustObserver{}
 	}
 	if config.CacheSizeBytes == 0 {
 		config.CacheSizeBytes = 64 << 20
@@ -236,6 +242,7 @@ func NewDistributedCachingValidator(name string, source Validator, config Distri
 		cacheable: cacheable,
 		adapter:   adapter,
 		clock:     clk,
+		observer:  obs,
 	}
 }
 
@@ -246,17 +253,23 @@ func (v *DistributedCachingValidator) CredentialTypes() []CredentialType {
 
 // Validate implements Validator.
 func (v *DistributedCachingValidator) Validate(ctx context.Context, credential Credential) (*Result, error) {
+	ctx, p := v.observer.DistributedValidateStarted(ctx, v.name)
+	defer p.End()
+
 	cacheInput, err := v.cacheable.CacheKey(credential)
 	if err != nil {
+		p.CacheKeyFailed(err)
 		return v.source.Validate(ctx, credential)
 	}
 
 	result, err := v.adapter.Get(ctx, cacheInput)
 	if err != nil {
-		return nil, fmt.Errorf("groupcache validator fetch failed: %w", err)
+		p.GetFailed(err)
+		return nil, fmt.Errorf("groupcache validator get failed: %w", err)
 	}
 
 	if !result.ExpiresAt.IsZero() && !v.clock.Now().Before(result.ExpiresAt) {
+		p.ResultExpired()
 		return nil, ErrExpiredToken
 	}
 

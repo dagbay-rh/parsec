@@ -23,11 +23,15 @@ var (
 	luaValidateResultTokenInvalid     = attribute.String("result", "token_invalid")
 	luaValidateResultConversionFailed = attribute.String("result", "conversion_failed")
 
-	validatorCacheResultHit     = attribute.String("result", "hit")
-	validatorCacheResultMiss    = attribute.String("result", "miss")
-	validatorCacheResultExpired = attribute.String("result", "expired")
-	validatorCacheResultError   = attribute.String("result", "error")
-	validatorCacheResultUnknown = attribute.String("result", "unknown")
+	inMemoryResultCacheKeyFailed = attribute.String("result", "cache_key_failed")
+	inMemoryResultHit            = attribute.String("result", "hit")
+	inMemoryResultExpired        = attribute.String("result", "expired")
+	inMemoryResultMiss           = attribute.String("result", "miss")
+	inMemoryResultSourceFailed   = attribute.String("result", "source_failed")
+
+	distributedResultCacheKeyFailed = attribute.String("result", "cache_key_failed")
+	distributedResultGetFailed      = attribute.String("result", "get_failed")
+	distributedResultExpired        = attribute.String("result", "result_expired")
 )
 
 var (
@@ -35,13 +39,18 @@ var (
 	validatorTypeLua = attribute.String("validator_type", "lua")
 )
 
+var (
+	cacheTypeInMemory    = attribute.String("cache_type", "in_memory")
+	cacheTypeDistributed = attribute.String("cache_type", "distributed")
+)
+
 type trustObserver struct {
 	trust.NoOpTrustObserver
 
-	validationDuration          metric.Float64Histogram
-	validateDuration            metric.Float64Histogram
-	validatorCacheFetchDuration metric.Float64Histogram
-	actorFilterDuration         metric.Float64Histogram
+	validationDuration               metric.Float64Histogram
+	validateDuration                 metric.Float64Histogram
+	cachingValidatorValidateDuration metric.Float64Histogram
+	actorFilterDuration              metric.Float64Histogram
 }
 
 func newTrustObserver(m metric.Meter) (*trustObserver, error) {
@@ -59,8 +68,8 @@ func newTrustObserver(m metric.Meter) (*trustObserver, error) {
 	if err != nil {
 		return nil, err
 	}
-	vcfd, err := m.Float64Histogram("parsec.trust.validator.cache.fetch.duration",
-		metric.WithDescription("Validator cache fetch duration in seconds"),
+	cvvd, err := m.Float64Histogram("parsec.trust.caching.validate.duration",
+		metric.WithDescription("Caching validator validate duration in seconds"),
 		metric.WithUnit("s"),
 	)
 	if err != nil {
@@ -75,10 +84,10 @@ func newTrustObserver(m metric.Meter) (*trustObserver, error) {
 	}
 
 	return &trustObserver{
-		validationDuration:          vd,
-		validateDuration:            vald,
-		validatorCacheFetchDuration: vcfd,
-		actorFilterDuration:         afd,
+		validationDuration:               vd,
+		validateDuration:                 vald,
+		cachingValidatorValidateDuration: cvvd,
+		actorFilterDuration:              afd,
 	}, nil
 }
 
@@ -206,39 +215,83 @@ func (p *luaValidateProbe) End() {
 	p.obs.validateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
 }
 
-// --- validator cache fetch probe ---
+// --- in-memory caching validator probe ---
 
-func (o *trustObserver) ValidatorCacheFetchStarted(ctx context.Context, validatorName string) (context.Context, trust.ValidatorCacheFetchProbe) {
-	return ctx, &validatorCacheFetchProbe{
+func (o *trustObserver) InMemoryValidateStarted(ctx context.Context, validatorName string) (context.Context, trust.InMemoryValidateProbe) {
+	return ctx, &inMemoryValidateProbe{
 		obs: o, ctx: ctx, startTime: time.Now(),
 		status:    successStatusAttr,
+		result:    resultSuccess,
+		cacheType: cacheTypeInMemory,
 		validator: attribute.String("validator", validatorName),
 	}
 }
 
-type validatorCacheFetchProbe struct {
-	trust.NoOpValidatorCacheFetchProbe
+type inMemoryValidateProbe struct {
+	trust.NoOpInMemoryValidateProbe
 	obs       *trustObserver
 	ctx       context.Context
 	startTime time.Time
 	status    attribute.KeyValue
 	result    attribute.KeyValue
+	cacheType attribute.KeyValue
 	validator attribute.KeyValue
 }
 
-func (p *validatorCacheFetchProbe) CacheHit()     { p.result = validatorCacheResultHit }
-func (p *validatorCacheFetchProbe) CacheMiss()    { p.result = validatorCacheResultMiss }
-func (p *validatorCacheFetchProbe) CacheExpired() { p.result = validatorCacheResultExpired }
-func (p *validatorCacheFetchProbe) FetchFailed(_ error) {
+func (p *inMemoryValidateProbe) CacheKeyFailed(_ error) {
 	p.status = errorStatusAttr
-	p.result = validatorCacheResultError
+	p.result = inMemoryResultCacheKeyFailed
 }
-func (p *validatorCacheFetchProbe) End() {
-	if p.result == (attribute.KeyValue{}) {
-		p.result = validatorCacheResultUnknown
+func (p *inMemoryValidateProbe) CacheHit()     { p.result = inMemoryResultHit }
+func (p *inMemoryValidateProbe) CacheExpired() { p.result = inMemoryResultExpired }
+func (p *inMemoryValidateProbe) CacheMiss()    { p.result = inMemoryResultMiss }
+func (p *inMemoryValidateProbe) SourceFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = inMemoryResultSourceFailed
+}
+func (p *inMemoryValidateProbe) End() {
+	attrs := metric.WithAttributeSet(attribute.NewSet(p.cacheType, p.validator, p.result, p.status))
+	p.obs.cachingValidatorValidateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+}
+
+// --- distributed caching validator probe ---
+
+func (o *trustObserver) DistributedValidateStarted(ctx context.Context, validatorName string) (context.Context, trust.DistributedValidateProbe) {
+	return ctx, &distributedValidateProbe{
+		obs: o, ctx: ctx, startTime: time.Now(),
+		status:    successStatusAttr,
+		result:    resultSuccess,
+		cacheType: cacheTypeDistributed,
+		validator: attribute.String("validator", validatorName),
 	}
-	attrs := metric.WithAttributeSet(attribute.NewSet(p.validator, p.result, p.status))
-	p.obs.validatorCacheFetchDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+}
+
+type distributedValidateProbe struct {
+	trust.NoOpDistributedValidateProbe
+	obs       *trustObserver
+	ctx       context.Context
+	startTime time.Time
+	status    attribute.KeyValue
+	result    attribute.KeyValue
+	cacheType attribute.KeyValue
+	validator attribute.KeyValue
+}
+
+func (p *distributedValidateProbe) CacheKeyFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = distributedResultCacheKeyFailed
+}
+func (p *distributedValidateProbe) GetFailed(_ error) {
+	p.status = errorStatusAttr
+	p.result = distributedResultGetFailed
+}
+func (p *distributedValidateProbe) ResultExpired() {
+	p.status = errorStatusAttr
+	p.result = distributedResultExpired
+}
+func (p *distributedValidateProbe) End() {
+	attrs := metric.WithAttributeSet(attribute.NewSet(p.cacheType, p.validator, p.result, p.status))
+	p.obs.cachingValidatorValidateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
 }
 
 // --- actor filter probe ---
@@ -269,6 +322,7 @@ var (
 	_ trust.ValidationProbe          = (*validationProbe)(nil)
 	_ trust.JWTValidateProbe         = (*jwtValidateProbe)(nil)
 	_ trust.LuaValidateProbe         = (*luaValidateProbe)(nil)
-	_ trust.ValidatorCacheFetchProbe = (*validatorCacheFetchProbe)(nil)
+	_ trust.InMemoryValidateProbe    = (*inMemoryValidateProbe)(nil)
+	_ trust.DistributedValidateProbe = (*distributedValidateProbe)(nil)
 	_ trust.ForActorProbe            = (*forActorProbe)(nil)
 )

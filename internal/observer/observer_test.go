@@ -122,6 +122,33 @@ func TestNoOp_AllProbeMethodsCallable(t *testing.T) {
 		p.End()
 	}
 	{
+		_, p := obs.LuaValidateStarted(ctx, "lua-validator")
+		p.ScriptLoadFailed(errors.New("x"))
+		p.ScriptExecutionFailed(errors.New("x"))
+		p.InvalidReturnType("number")
+		p.TokenInvalid(errors.New("x"))
+		p.ValidationRejected()
+		p.ResultConversionFailed(errors.New("x"))
+		p.ValidationCompleted()
+		p.End()
+	}
+	{
+		_, p := obs.InMemoryValidateStarted(ctx, "v")
+		p.CacheKeyFailed(errors.New("x"))
+		p.CacheHit()
+		p.CacheExpired()
+		p.CacheMiss()
+		p.SourceFailed(errors.New("x"))
+		p.End()
+	}
+	{
+		_, p := obs.DistributedValidateStarted(ctx, "v")
+		p.CacheKeyFailed(errors.New("x"))
+		p.GetFailed(errors.New("x"))
+		p.ResultExpired()
+		p.End()
+	}
+	{
 		_, p := obs.InitPopulationStarted(ctx)
 		p.InitialCachePopulationFailed(errors.New("x"))
 		p.End()
@@ -269,19 +296,20 @@ func TestCompositeAll_ShutdownCascadesToAllChildren(t *testing.T) {
 
 func TestCompose_DelegatesToCorrectSubObserver(t *testing.T) {
 	var (
-		cacheCalled    atomic.Int32
-		luaCalled      atomic.Int32
-		keyRotCalled   atomic.Int32
-		kmsCalled      atomic.Int32
-		diskCalled     atomic.Int32
-		memCalled      atomic.Int32
-		trustCalled    atomic.Int32
-		filterCalled   atomic.Int32
-		jwtCalled      atomic.Int32
-		luaValCalled   atomic.Int32
-		valCacheCalled atomic.Int32
-		jwksCalled     atomic.Int32
-		srvCalled      atomic.Int32
+		cacheCalled      atomic.Int32
+		luaCalled        atomic.Int32
+		keyRotCalled     atomic.Int32
+		kmsCalled        atomic.Int32
+		diskCalled       atomic.Int32
+		memCalled        atomic.Int32
+		trustCalled      atomic.Int32
+		filterCalled     atomic.Int32
+		jwtCalled        atomic.Int32
+		luaValCalled     atomic.Int32
+		inMemCacheCalled atomic.Int32
+		distCacheCalled  atomic.Int32
+		jwksCalled       atomic.Int32
+		srvCalled        atomic.Int32
 	)
 
 	obs := Compose(
@@ -292,11 +320,12 @@ func TestCompose_DelegatesToCorrectSubObserver(t *testing.T) {
 		}{&spyDSCacheObserver{called: &cacheCalled}, &spyLuaDSObserver{called: &luaCalled}},
 		&spyKeysObserver{rotCalled: &keyRotCalled, kmsCalled: &kmsCalled, diskCalled: &diskCalled, memCalled: &memCalled},
 		&spyTrustObserver{
-			called:         &trustCalled,
-			filterCalled:   &filterCalled,
-			jwtCalled:      &jwtCalled,
-			luaValCalled:   &luaValCalled,
-			valCacheCalled: &valCacheCalled,
+			called:           &trustCalled,
+			filterCalled:     &filterCalled,
+			jwtCalled:        &jwtCalled,
+			luaValCalled:     &luaValCalled,
+			inMemCacheCalled: &inMemCacheCalled,
+			distCacheCalled:  &distCacheCalled,
 		},
 		struct {
 			server.JWKSObserver
@@ -356,9 +385,14 @@ func TestCompose_DelegatesToCorrectSubObserver(t *testing.T) {
 		t.Errorf("LuaValidateStarted: expected Lua validator observer called once, got %d", luaValCalled.Load())
 	}
 
-	obs.ValidatorCacheFetchStarted(ctx, "lua-validator")
-	if valCacheCalled.Load() != 1 {
-		t.Errorf("ValidatorCacheFetchStarted: expected validator cache observer called once, got %d", valCacheCalled.Load())
+	obs.InMemoryValidateStarted(ctx, "lua-validator")
+	if inMemCacheCalled.Load() != 1 {
+		t.Errorf("InMemoryValidateStarted: expected in-memory caching validator observer called once, got %d", inMemCacheCalled.Load())
+	}
+
+	obs.DistributedValidateStarted(ctx, "lua-validator")
+	if distCacheCalled.Load() != 1 {
+		t.Errorf("DistributedValidateStarted: expected distributed caching validator observer called once, got %d", distCacheCalled.Load())
 	}
 
 	obs.CacheRefreshStarted(ctx)
@@ -382,19 +416,20 @@ func TestCompositeAll_SingleChild_ReturnsSame(t *testing.T) {
 
 func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 	var (
-		cache1, cache2       atomic.Int32
-		lua1, lua2           atomic.Int32
-		rot1, rot2           atomic.Int32
-		kms1, kms2           atomic.Int32
-		disk1, disk2         atomic.Int32
-		mem1, mem2           atomic.Int32
-		trust1, trust2       atomic.Int32
-		filter1, filter2     atomic.Int32
-		jwt1, jwt2           atomic.Int32
-		luaVal1, luaVal2     atomic.Int32
-		valCache1, valCache2 atomic.Int32
-		jwks1, jwks2         atomic.Int32
-		srv1, srv2           atomic.Int32
+		cache1, cache2           atomic.Int32
+		lua1, lua2               atomic.Int32
+		rot1, rot2               atomic.Int32
+		kms1, kms2               atomic.Int32
+		disk1, disk2             atomic.Int32
+		mem1, mem2               atomic.Int32
+		trust1, trust2           atomic.Int32
+		filter1, filter2         atomic.Int32
+		jwt1, jwt2               atomic.Int32
+		luaVal1, luaVal2         atomic.Int32
+		inMemCache1, inMemCache2 atomic.Int32
+		distCache1, distCache2   atomic.Int32
+		jwks1, jwks2             atomic.Int32
+		srv1, srv2               atomic.Int32
 	)
 
 	child1 := Compose(
@@ -405,11 +440,12 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 		}{&spyDSCacheObserver{called: &cache1}, &spyLuaDSObserver{called: &lua1}},
 		&spyKeysObserver{rotCalled: &rot1, kmsCalled: &kms1, diskCalled: &disk1, memCalled: &mem1},
 		&spyTrustObserver{
-			called:         &trust1,
-			filterCalled:   &filter1,
-			jwtCalled:      &jwt1,
-			luaValCalled:   &luaVal1,
-			valCacheCalled: &valCache1,
+			called:           &trust1,
+			filterCalled:     &filter1,
+			jwtCalled:        &jwt1,
+			luaValCalled:     &luaVal1,
+			inMemCacheCalled: &inMemCache1,
+			distCacheCalled:  &distCache1,
 		},
 		struct {
 			server.JWKSObserver
@@ -424,11 +460,12 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 		}{&spyDSCacheObserver{called: &cache2}, &spyLuaDSObserver{called: &lua2}},
 		&spyKeysObserver{rotCalled: &rot2, kmsCalled: &kms2, diskCalled: &disk2, memCalled: &mem2},
 		&spyTrustObserver{
-			called:         &trust2,
-			filterCalled:   &filter2,
-			jwtCalled:      &jwt2,
-			luaValCalled:   &luaVal2,
-			valCacheCalled: &valCache2,
+			called:           &trust2,
+			filterCalled:     &filter2,
+			jwtCalled:        &jwt2,
+			luaValCalled:     &luaVal2,
+			inMemCacheCalled: &inMemCache2,
+			distCacheCalled:  &distCache2,
 		},
 		struct {
 			server.JWKSObserver
@@ -449,7 +486,8 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 	composite.ForActorStarted(ctx)
 	composite.JWTValidateStarted(ctx, "https://issuer.example.com")
 	composite.LuaValidateStarted(ctx, "lua-validator")
-	composite.ValidatorCacheFetchStarted(ctx, "lua-validator")
+	composite.InMemoryValidateStarted(ctx, "lua-validator")
+	composite.DistributedValidateStarted(ctx, "lua-validator")
 	composite.CacheRefreshStarted(ctx)
 	composite.StopStarted(ctx)
 
@@ -467,7 +505,8 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 		{"TrustForActor", &filter1, &filter2},
 		{"JWTValidate", &jwt1, &jwt2},
 		{"LuaValidate", &luaVal1, &luaVal2},
-		{"ValidatorCache", &valCache1, &valCache2},
+		{"InMemoryValidate", &inMemCache1, &inMemCache2},
+		{"DistributedValidate", &distCache1, &distCache2},
 		{"JWKS", &jwks1, &jwks2},
 		{"ServerLifecycle", &srv1, &srv2},
 	} {
@@ -630,11 +669,12 @@ func (s *spyKeysObserver) MemoryRotateStarted(ctx context.Context) (context.Cont
 }
 
 type spyTrustObserver struct {
-	called         *atomic.Int32
-	filterCalled   *atomic.Int32
-	jwtCalled      *atomic.Int32
-	luaValCalled   *atomic.Int32
-	valCacheCalled *atomic.Int32
+	called           *atomic.Int32
+	filterCalled     *atomic.Int32
+	jwtCalled        *atomic.Int32
+	luaValCalled     *atomic.Int32
+	inMemCacheCalled *atomic.Int32
+	distCacheCalled  *atomic.Int32
 }
 
 func (s *spyTrustObserver) ValidationStarted(_ context.Context) (context.Context, trust.ValidationProbe) {
@@ -665,11 +705,18 @@ func (s *spyTrustObserver) LuaValidateStarted(_ context.Context, _ string) (cont
 	return trust.NoOpTrustObserver{}.LuaValidateStarted(context.Background(), "")
 }
 
-func (s *spyTrustObserver) ValidatorCacheFetchStarted(_ context.Context, _ string) (context.Context, trust.ValidatorCacheFetchProbe) {
-	if s.valCacheCalled != nil {
-		s.valCacheCalled.Add(1)
+func (s *spyTrustObserver) InMemoryValidateStarted(_ context.Context, _ string) (context.Context, trust.InMemoryValidateProbe) {
+	if s.inMemCacheCalled != nil {
+		s.inMemCacheCalled.Add(1)
 	}
-	return trust.NoOpTrustObserver{}.ValidatorCacheFetchStarted(context.Background(), "")
+	return trust.NoOpTrustObserver{}.InMemoryValidateStarted(context.Background(), "")
+}
+
+func (s *spyTrustObserver) DistributedValidateStarted(_ context.Context, _ string) (context.Context, trust.DistributedValidateProbe) {
+	if s.distCacheCalled != nil {
+		s.distCacheCalled.Add(1)
+	}
+	return trust.NoOpTrustObserver{}.DistributedValidateStarted(context.Background(), "")
 }
 
 type spyJWKSObserver struct {

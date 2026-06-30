@@ -617,7 +617,7 @@ func TestDistributedCachingValidator(t *testing.T) {
 	source := &countingCacheableValidator{
 		expiresAt: time.Now().Add(time.Hour),
 	}
-	cached := NewDistributedCachingValidator("test-distributed", source, DistributedValidatorCachingConfig{
+	cached := NewDistributedCachingValidator("test-distributed", source, NoOpTrustObserver{}, DistributedValidatorCachingConfig{
 		GroupName:      "test-validator-distributed-cache",
 		CacheSizeBytes: 1 << 20,
 		CacheTTL:       time.Hour,
