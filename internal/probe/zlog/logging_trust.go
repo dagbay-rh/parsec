@@ -15,10 +15,12 @@ var (
 )
 
 // LoggingTrustObserver logs trust validation, FilteredStore.ForActor, and
-// JWTValidator.Validate via zerolog. It satisfies trust.TrustObserver by
+// individual validator steps via zerolog. It satisfies trust.TrustObserver by
 // embedding trust.NoOpStoreObserver (store + filtered-store defaults) and
-// trust.NoOpValidatorObserver (JWT defaults), then overriding only the three
-// *Started factories that emit logs.
+// trust.NoOpValidatorObserver (validator defaults), then overriding the six
+// *Started factories that emit logs: ValidationStarted, ForActorStarted,
+// JWTValidateStarted, LuaValidateStarted, InMemoryValidateStarted, and
+// DistributedValidateStarted.
 type LoggingTrustObserver struct {
 	trust.NoOpStoreObserver
 	trust.NoOpValidatorObserver

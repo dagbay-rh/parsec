@@ -113,7 +113,7 @@ type NamedValidatorConfig struct {
 // ValidatorConfig configures a credential validator
 type ValidatorConfig struct {
 	// Type selects the validator implementation
-	// Options: "jwt_validator", "json_validator", "stub_validator"
+	// Options: "jwt_validator", "json_validator", "lua_validator", "stub_validator"
 	Type string `koanf:"type"`
 
 	// JWT Validator fields
