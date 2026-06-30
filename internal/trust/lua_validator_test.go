@@ -254,6 +254,35 @@ end
 	}
 }
 
+func TestCacheableLuaValidator_CacheKey_UnsupportedCredentialType(t *testing.T) {
+	const script = `
+function validate(input)
+  return {subject = "user", expires_at = 4102444800}
+end
+
+function validate_cache_key(input)
+  return {
+    credential = {
+      type = input.credential.type,
+      token = input.credential.token
+    }
+  }
+end
+`
+	validator, err := NewCacheableLuaValidator("test", script, []CredentialType{CredentialTypeJWT})
+	if err != nil {
+		t.Fatalf("NewCacheableLuaValidator: %v", err)
+	}
+
+	_, err = validator.CacheKey(&BearerCredential{Token: "tok"})
+	if err == nil {
+		t.Fatal("expected error for unsupported credential type")
+	}
+	if !strings.Contains(err.Error(), "not supported") {
+		t.Fatalf("err=%q, want containing 'not supported'", err)
+	}
+}
+
 func TestLuaValidator_Validate_NilCredential(t *testing.T) {
 	const script = `
 function validate(input)

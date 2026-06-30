@@ -254,6 +254,9 @@ func (v *CacheableLuaValidator) CacheKey(credential Credential) (ValidatorInput,
 	if credential == nil {
 		return ValidatorInput{}, fmt.Errorf("credential cannot be nil")
 	}
+	if !slices.Contains(v.credentialTypes, credential.Type()) {
+		return ValidatorInput{}, fmt.Errorf("credential type %s not supported", credential.Type())
+	}
 
 	input := ValidatorInput{Credential: credential}
 

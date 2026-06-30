@@ -680,3 +680,65 @@ end
 		t.Errorf("masked request_attributes should be nil")
 	}
 }
+
+func TestCacheableLuaDataSource_CacheKey_NilInput(t *testing.T) {
+	script := `
+function fetch(input)
+	return {data = '{}', content_type = 'application/json'}
+end
+
+function fetch_cache_key(input)
+	return {subject = {subject = input.subject.subject}}
+end
+`
+
+	ds, err := NewCacheableLuaDataSource(CacheableLuaDataSourceConfig{
+		Name:   "test",
+		Script: script,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	result := ds.CacheKey(nil)
+
+	// Nil input should return a zero-value DataSourceInput, not panic
+	if result.Subject != nil {
+		t.Errorf("expected nil subject, got %+v", result.Subject)
+	}
+	if result.Actor != nil {
+		t.Errorf("expected nil actor, got %+v", result.Actor)
+	}
+	if result.RequestAttributes != nil {
+		t.Errorf("expected nil request_attributes, got %+v", result.RequestAttributes)
+	}
+}
+
+func TestLuaDataSource_Fetch_NilInput(t *testing.T) {
+	script := `
+function fetch(input)
+	return {data = '{}', content_type = 'application/json'}
+end
+`
+
+	ds, err := NewLuaDataSource(LuaDataSourceConfig{
+		Name:   "test",
+		Script: script,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	result, err := ds.Fetch(context.Background(), nil)
+
+	// Nil input should return an error, not panic
+	if err == nil {
+		t.Fatal("expected error for nil input, got nil")
+	}
+	if result != nil {
+		t.Errorf("expected nil result, got %+v", result)
+	}
+	if !strings.Contains(err.Error(), "nil input") {
+		t.Errorf("error should mention nil input, got: %v", err)
+	}
+}

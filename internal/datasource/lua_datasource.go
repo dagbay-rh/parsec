@@ -107,6 +107,10 @@ func (ds *LuaDataSource) Fetch(ctx context.Context, input *service.DataSourceInp
 	ctx, p := ds.observer.LuaFetchStarted(ctx, ds.name)
 	defer p.End()
 
+	if input == nil {
+		return nil, fmt.Errorf("nil input")
+	}
+
 	L := lua.NewState()
 	defer L.Close()
 
@@ -161,6 +165,10 @@ func (ds *LuaDataSource) Fetch(ctx context.Context, input *service.DataSourceInp
 // inputToLuaTable converts a DataSourceInput to a Lua table
 func (ds *LuaDataSource) inputToLuaTable(L *lua.LState, input *service.DataSourceInput) *lua.LTable {
 	tbl := L.NewTable()
+
+	if input == nil {
+		return tbl
+	}
 
 	if input.Subject != nil {
 		L.SetField(tbl, "subject", ds.trustResultToLuaTable(L, input.Subject))
@@ -375,6 +383,10 @@ func NewCacheableLuaDataSource(config CacheableLuaDataSourceConfig) (*CacheableL
 
 // CacheKey implements the Cacheable interface
 func (ds *CacheableLuaDataSource) CacheKey(input *service.DataSourceInput) service.DataSourceInput {
+	if input == nil {
+		return service.DataSourceInput{}
+	}
+
 	L := lua.NewState()
 	defer L.Close()
 
