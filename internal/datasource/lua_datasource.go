@@ -359,13 +359,7 @@ type CacheableLuaDataSourceConfig struct {
 
 // NewCacheableLuaDataSource creates a new cacheable Lua data source.
 func NewCacheableLuaDataSource(config CacheableLuaDataSourceConfig) (*CacheableLuaDataSource, error) {
-	baseDS, err := NewLuaDataSource(LuaDataSourceConfig{
-		Name:         config.Name,
-		Script:       config.Script,
-		ConfigSource: config.ConfigSource,
-		HTTPOptions:  config.HTTPOptions,
-		Observer:     config.Observer,
-	})
+	baseDS, err := NewLuaDataSource(LuaDataSourceConfig(config))
 	if err != nil {
 		return nil, err
 	}
