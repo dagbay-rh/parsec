@@ -67,19 +67,35 @@ type LuaValidateProbe interface {
 	End()
 }
 
-// ValidatorCacheObserver is called at key points during validator cache operations.
-// Implementations should embed NoOpValidatorCacheObserver for forward compatibility.
-type ValidatorCacheObserver interface {
-	ValidatorCacheFetchStarted(ctx context.Context, validatorName string) (context.Context, ValidatorCacheFetchProbe)
+// InMemoryCachingValidatorObserver is called at key points during InMemoryCachingValidator.Validate.
+// Implementations should embed NoOpInMemoryCachingValidatorObserver for forward compatibility.
+type InMemoryCachingValidatorObserver interface {
+	InMemoryValidateStarted(ctx context.Context, validatorName string) (context.Context, InMemoryValidateProbe)
 }
 
-// ValidatorCacheFetchProbe tracks a single validator cache fetch invocation.
-// Implementations should embed NoOpValidatorCacheFetchProbe for forward compatibility.
-type ValidatorCacheFetchProbe interface {
+// InMemoryValidateProbe tracks a single InMemoryCachingValidator.Validate invocation.
+// Implementations should embed NoOpInMemoryValidateProbe for forward compatibility.
+type InMemoryValidateProbe interface {
+	CacheKeyFailed(err error)
 	CacheHit()
-	CacheMiss()
 	CacheExpired()
-	FetchFailed(err error)
+	CacheMiss()
+	SourceFailed(err error)
+	End()
+}
+
+// DistributedCachingValidatorObserver is called at key points during DistributedCachingValidator.Validate.
+// Implementations should embed NoOpDistributedCachingValidatorObserver for forward compatibility.
+type DistributedCachingValidatorObserver interface {
+	DistributedValidateStarted(ctx context.Context, validatorName string) (context.Context, DistributedValidateProbe)
+}
+
+// DistributedValidateProbe tracks a single DistributedCachingValidator.Validate invocation.
+// Implementations should embed NoOpDistributedValidateProbe for forward compatibility.
+type DistributedValidateProbe interface {
+	CacheKeyFailed(err error)
+	GetFailed(err error)
+	ResultExpired()
 	End()
 }
 
@@ -89,7 +105,8 @@ type ValidatorCacheFetchProbe interface {
 type ValidatorObserver interface {
 	JWTValidatorObserver
 	LuaValidatorObserver
-	ValidatorCacheObserver
+	InMemoryCachingValidatorObserver
+	DistributedCachingValidatorObserver
 }
 
 // TrustObserver is the per-package aggregate for all trust observer interfaces.
@@ -131,13 +148,21 @@ func (NoOpLuaValidateProbe) ResultConversionFailed(error) {}
 func (NoOpLuaValidateProbe) ValidationCompleted()         {}
 func (NoOpLuaValidateProbe) End()                         {}
 
-type NoOpValidatorCacheFetchProbe struct{}
+type NoOpInMemoryValidateProbe struct{}
 
-func (NoOpValidatorCacheFetchProbe) CacheHit()         {}
-func (NoOpValidatorCacheFetchProbe) CacheMiss()        {}
-func (NoOpValidatorCacheFetchProbe) CacheExpired()     {}
-func (NoOpValidatorCacheFetchProbe) FetchFailed(error) {}
-func (NoOpValidatorCacheFetchProbe) End()              {}
+func (NoOpInMemoryValidateProbe) CacheKeyFailed(error) {}
+func (NoOpInMemoryValidateProbe) CacheHit()            {}
+func (NoOpInMemoryValidateProbe) CacheExpired()        {}
+func (NoOpInMemoryValidateProbe) CacheMiss()           {}
+func (NoOpInMemoryValidateProbe) SourceFailed(error)   {}
+func (NoOpInMemoryValidateProbe) End()                 {}
+
+type NoOpDistributedValidateProbe struct{}
+
+func (NoOpDistributedValidateProbe) CacheKeyFailed(error) {}
+func (NoOpDistributedValidateProbe) GetFailed(error)      {}
+func (NoOpDistributedValidateProbe) ResultExpired()       {}
+func (NoOpDistributedValidateProbe) End()                 {}
 
 type NoOpStoreObserver struct {
 	NoOpFilteredStoreObserver
@@ -165,16 +190,23 @@ func (NoOpLuaValidatorObserver) LuaValidateStarted(ctx context.Context, _ string
 	return ctx, NoOpLuaValidateProbe{}
 }
 
-type NoOpValidatorCacheObserver struct{}
+type NoOpInMemoryCachingValidatorObserver struct{}
 
-func (NoOpValidatorCacheObserver) ValidatorCacheFetchStarted(ctx context.Context, _ string) (context.Context, ValidatorCacheFetchProbe) {
-	return ctx, NoOpValidatorCacheFetchProbe{}
+func (NoOpInMemoryCachingValidatorObserver) InMemoryValidateStarted(ctx context.Context, _ string) (context.Context, InMemoryValidateProbe) {
+	return ctx, NoOpInMemoryValidateProbe{}
+}
+
+type NoOpDistributedCachingValidatorObserver struct{}
+
+func (NoOpDistributedCachingValidatorObserver) DistributedValidateStarted(ctx context.Context, _ string) (context.Context, DistributedValidateProbe) {
+	return ctx, NoOpDistributedValidateProbe{}
 }
 
 type NoOpValidatorObserver struct {
 	NoOpJWTValidatorObserver
 	NoOpLuaValidatorObserver
-	NoOpValidatorCacheObserver
+	NoOpInMemoryCachingValidatorObserver
+	NoOpDistributedCachingValidatorObserver
 }
 
 // NoOpTrustObserver satisfies TrustObserver with empty probes.

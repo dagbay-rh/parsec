@@ -207,7 +207,7 @@ func BenchmarkJWTValidator(b *testing.B) {
 func BenchmarkLuaValidator_WithHTTPCall(b *testing.B) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"active":true,"sub":"http-user","email":"http@example.com"}`)
+		_, _ = fmt.Fprint(w, `{"active":true,"sub":"http-user","email":"http@example.com"}`)
 	}))
 	b.Cleanup(server.Close)
 

@@ -4,13 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
-	"slices"
 	"sync"
 	"time"
 
 	"github.com/project-kessel/parsec/internal/cache"
-	"github.com/project-kessel/parsec/internal/claims"
 	"github.com/project-kessel/parsec/internal/clock"
 )
 
@@ -19,8 +16,9 @@ type InMemoryCachingValidator struct {
 	name      string
 	source    Validator
 	cacheable CacheableValidator
+	cacheTTL  time.Duration
 	clock     clock.Clock
-	observer  ValidatorCacheObserver
+	observer  InMemoryCachingValidatorObserver
 	mu        sync.RWMutex
 	entries   map[string]*validatorCacheEntry
 }
@@ -40,9 +38,17 @@ func WithValidatorCacheClock(clk clock.Clock) InMemoryCachingValidatorOption {
 	}
 }
 
+// WithValidatorCacheTTL sets the time-to-live for cached entries.
+// Return 0 to let result expiration be the only expiry bound.
+func WithValidatorCacheTTL(ttl time.Duration) InMemoryCachingValidatorOption {
+	return func(v *InMemoryCachingValidator) {
+		v.cacheTTL = ttl
+	}
+}
+
 // NewInMemoryCachingValidator wraps a validator with in-memory caching if it
 // implements CacheableValidator. It returns the original validator otherwise.
-func NewInMemoryCachingValidator(name string, source Validator, obs ValidatorCacheObserver, opts ...InMemoryCachingValidatorOption) Validator {
+func NewInMemoryCachingValidator(name string, source Validator, obs InMemoryCachingValidatorObserver, opts ...InMemoryCachingValidatorOption) Validator {
 	cacheable, ok := source.(CacheableValidator)
 	if !ok {
 		return source
@@ -75,16 +81,18 @@ func (v *InMemoryCachingValidator) CredentialTypes() []CredentialType {
 
 // Validate checks the cache first, then validates on a miss.
 func (v *InMemoryCachingValidator) Validate(ctx context.Context, credential Credential) (*Result, error) {
-	ctx, p := v.observer.ValidatorCacheFetchStarted(ctx, v.name)
+	ctx, p := v.observer.InMemoryValidateStarted(ctx, v.name)
 	defer p.End()
 
 	cacheInput, err := v.cacheable.CacheKey(credential)
 	if err != nil {
+		p.CacheKeyFailed(err)
 		return v.source.Validate(ctx, credential)
 	}
 
 	cacheKey, err := serializeValidatorInput(cacheInput)
 	if err != nil {
+		p.CacheKeyFailed(err)
 		return v.source.Validate(ctx, credential)
 	}
 
@@ -95,26 +103,26 @@ func (v *InMemoryCachingValidator) Validate(ctx context.Context, credential Cred
 	if found {
 		if entry.expiresAt.IsZero() || v.clock.Now().Before(entry.expiresAt) {
 			p.CacheHit()
-			return cloneResult(entry.result), nil
+			return entry.result, nil
 		}
 		p.CacheExpired()
 		v.mu.Lock()
 		delete(v.entries, cacheKey)
 		v.mu.Unlock()
+	} else {
+		p.CacheMiss()
 	}
-
-	p.CacheMiss()
 
 	result, err := v.source.Validate(ctx, credential)
 	if err != nil {
-		p.FetchFailed(err)
+		p.SourceFailed(err)
 		return nil, err
 	}
 
-	if expiresAt, ok := validatorCacheExpiry(v.clock.Now(), v.cacheable.CacheTTL(), result); ok {
+	if expiresAt, ok := validatorCacheExpiry(v.clock.Now(), v.cacheTTL, result); ok {
 		v.mu.Lock()
 		v.entries[cacheKey] = &validatorCacheEntry{
-			result:    cloneResult(result),
+			result:    result,
 			expiresAt: expiresAt,
 		}
 		v.mu.Unlock()
@@ -150,6 +158,7 @@ type DistributedCachingValidator struct {
 	cacheable CacheableValidator
 	adapter   *cache.GroupcacheAdapter[ValidatorInput, *Result]
 	clock     clock.Clock
+	observer  DistributedCachingValidatorObserver
 }
 
 // DistributedValidatorCachingConfig configures DistributedCachingValidator.
@@ -157,11 +166,15 @@ type DistributedValidatorCachingConfig struct {
 	GroupName      string
 	CacheSizeBytes int64
 	Clock          clock.Clock
+
+	// CacheTTL is the time-to-live for cached entries.
+	// 0 means no TTL cap; result expiration is the only expiry bound.
+	CacheTTL time.Duration
 }
 
 // NewDistributedCachingValidator wraps a validator with groupcache if it
 // implements CacheableValidator. It returns the original validator otherwise.
-func NewDistributedCachingValidator(name string, source Validator, config DistributedValidatorCachingConfig) Validator {
+func NewDistributedCachingValidator(name string, source Validator, obs DistributedCachingValidatorObserver, config DistributedValidatorCachingConfig) Validator {
 	cacheable, ok := source.(CacheableValidator)
 	if !ok {
 		return source
@@ -172,6 +185,9 @@ func NewDistributedCachingValidator(name string, source Validator, config Distri
 	if config.GroupName == "" {
 		config.GroupName = "validator:" + name
 	}
+	if obs == nil {
+		obs = NoOpTrustObserver{}
+	}
 	if config.CacheSizeBytes == 0 {
 		config.CacheSizeBytes = 64 << 20
 	}
@@ -180,23 +196,24 @@ func NewDistributedCachingValidator(name string, source Validator, config Distri
 		clk = clock.NewSystemClock()
 	}
 
+	cacheTTL := config.CacheTTL
 	adapter, err := cache.NewGroupcacheAdapter(
 		config.GroupName,
 		func(input ValidatorInput) (string, error) {
-			return SerializeValidatorInputToJSON(input)
+			return serializeValidatorInput(input)
 		},
 		func(key string) (ValidatorInput, error) {
-			return DeserializeValidatorInputFromJSON(key)
+			return deserializeValidatorInput(key)
 		},
 		func(ctx context.Context, input ValidatorInput) (*Result, error) {
 			result, err := source.Validate(ctx, input.Credential)
 			if err != nil {
 				return nil, fmt.Errorf("validator failed: %w", err)
 			}
-			if _, ok := validatorCacheExpiry(clk.Now(), cacheable.CacheTTL(), result); !ok {
+			if _, ok := validatorCacheExpiry(clk.Now(), cacheTTL, result); !ok {
 				return nil, fmt.Errorf("validator result is already expired")
 			}
-			return cloneResult(result), nil
+			return result, nil
 		},
 		func(result *Result) ([]byte, error) {
 			return json.Marshal(result)
@@ -210,7 +227,7 @@ func NewDistributedCachingValidator(name string, source Validator, config Distri
 		},
 		cache.WithClock(clk),
 		cache.WithCacheSizeBytes(config.CacheSizeBytes),
-		cache.WithTTL(func() cache.TTL { return cacheable.CacheTTL() }),
+		cache.WithTTL(func() cache.TTL { return cacheTTL }),
 	)
 	if err != nil {
 		return source
@@ -222,6 +239,7 @@ func NewDistributedCachingValidator(name string, source Validator, config Distri
 		cacheable: cacheable,
 		adapter:   adapter,
 		clock:     clk,
+		observer:  obs,
 	}
 }
 
@@ -232,25 +250,30 @@ func (v *DistributedCachingValidator) CredentialTypes() []CredentialType {
 
 // Validate implements Validator.
 func (v *DistributedCachingValidator) Validate(ctx context.Context, credential Credential) (*Result, error) {
+	ctx, p := v.observer.DistributedValidateStarted(ctx, v.name)
+	defer p.End()
+
 	cacheInput, err := v.cacheable.CacheKey(credential)
 	if err != nil {
+		p.CacheKeyFailed(err)
 		return v.source.Validate(ctx, credential)
 	}
 
 	result, err := v.adapter.Get(ctx, cacheInput)
 	if err != nil {
-		return nil, fmt.Errorf("groupcache validator fetch failed: %w", err)
+		p.GetFailed(err)
+		return nil, fmt.Errorf("groupcache validator get failed: %w", err)
 	}
 
 	if !result.ExpiresAt.IsZero() && !v.clock.Now().Before(result.ExpiresAt) {
+		p.ResultExpired()
 		return nil, ErrExpiredToken
 	}
 
-	return cloneResult(result), nil
+	return result, nil
 }
 
-// SerializeValidatorInputToJSON serializes a validator input into a reversible cache key.
-func SerializeValidatorInputToJSON(input ValidatorInput) (string, error) {
+func serializeValidatorInput(input ValidatorInput) (string, error) {
 	jsonBytes, err := json.Marshal(input)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal validator input: %w", err)
@@ -258,21 +281,12 @@ func SerializeValidatorInputToJSON(input ValidatorInput) (string, error) {
 	return string(jsonBytes), nil
 }
 
-// DeserializeValidatorInputFromJSON deserializes a validator cache key.
-func DeserializeValidatorInputFromJSON(key string) (ValidatorInput, error) {
+func deserializeValidatorInput(key string) (ValidatorInput, error) {
 	var input ValidatorInput
 	if err := json.Unmarshal([]byte(key), &input); err != nil {
 		return ValidatorInput{}, fmt.Errorf("failed to unmarshal validator input: %w", err)
 	}
 	return input, nil
-}
-
-func serializeValidatorInput(input ValidatorInput) (string, error) {
-	keyBytes, err := json.Marshal(input)
-	if err != nil {
-		return "", fmt.Errorf("failed to serialize validator input: %w", err)
-	}
-	return string(keyBytes), nil
 }
 
 func validatorCacheExpiry(now time.Time, ttl time.Duration, result *Result) (time.Time, bool) {
@@ -291,16 +305,4 @@ func validatorCacheExpiry(now time.Time, ttl time.Duration, result *Result) (tim
 		return time.Time{}, false
 	}
 	return expiresAt, true
-}
-
-func cloneResult(result *Result) *Result {
-	if result == nil {
-		return nil
-	}
-	cloned := *result
-	if result.Claims != nil {
-		cloned.Claims = claims.Claims(maps.Clone(result.Claims))
-	}
-	cloned.Audience = slices.Clone(result.Audience)
-	return &cloned
 }

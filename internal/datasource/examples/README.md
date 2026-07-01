@@ -99,14 +99,16 @@ func main() {
             req.Header.Set("Authorization", "Bearer "+apiKey.(string))
             return nil
         },
-        CacheTTL: 5 * time.Minute,
     })
     if err != nil {
         panic(err)
     }
-    
-    // Use the data source
-    // ...
+
+    // Wrap with caching (TTL is configured on the wrapper, not the data source)
+    cachedDS := datasource.NewInMemoryCachingDataSource(ds, obs,
+        datasource.WithCacheTTL(5 * time.Minute),
+    )
+    _ = cachedDS
 }
 ```
 

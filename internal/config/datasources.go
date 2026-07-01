@@ -12,6 +12,8 @@ import (
 	"github.com/project-kessel/parsec/internal/service"
 )
 
+const defaultCacheTTL = 5 * time.Minute
+
 // NewDataSourceRegistry creates a data source registry from configuration.
 // The observer provides cache lifecycle events for data sources that use caching.
 func NewDataSourceRegistry(cfg []DataSourceConfig, httpRegistry *httpclient.Registry, obs observer.Observer) (*service.DataSourceRegistry, error) {
@@ -74,18 +76,12 @@ func newLuaDataSource(cfg DataSourceConfig, httpRegistry *httpclient.Registry, o
 	var baseDS service.DataSource
 
 	if cachingEnabled(cfg.Caching) {
-		cacheTTL, err := parseCacheTTL(cfg.Caching)
-		if err != nil {
-			return nil, err
-		}
-
 		cacheable, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
 			Name:         cfg.Name,
 			Script:       script,
 			ConfigSource: configSource,
 			HTTPClient:   client,
 			Observer:     obs,
-			CacheTTL:     cacheTTL,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create cacheable lua data source: %w", err)
@@ -139,7 +135,7 @@ func cachingEnabled(cfg *CachingConfig) bool {
 
 func parseCacheTTL(cfg *CachingConfig) (time.Duration, error) {
 	if cfg == nil || cfg.TTL == "" {
-		return 0, nil
+		return defaultCacheTTL, nil
 	}
 	duration, err := time.ParseDuration(cfg.TTL)
 	if err != nil {
@@ -152,9 +148,16 @@ func parseCacheTTL(cfg *CachingConfig) (time.Duration, error) {
 // This is the coupling point where the central observer is narrowed to
 // the cache-specific CacheObserver sub-interface.
 func wrapWithCaching(ds service.DataSource, cfg CachingConfig, obs observer.Observer) (service.DataSource, error) {
+	cacheTTL, err := parseCacheTTL(&cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	switch cfg.Type {
 	case "in_memory":
-		return datasource.NewInMemoryCachingDataSource(ds, obs), nil
+		return datasource.NewInMemoryCachingDataSource(ds, obs,
+			datasource.WithCacheTTL(cacheTTL),
+		), nil
 
 	case "distributed":
 		groupName := cfg.GroupName
@@ -170,6 +173,7 @@ func wrapWithCaching(ds service.DataSource, cfg CachingConfig, obs observer.Obse
 		cachingCfg := datasource.DistributedCachingConfig{
 			GroupName:      groupName,
 			CacheSizeBytes: cacheSize,
+			CacheTTL:       cacheTTL,
 		}
 
 		return datasource.NewDistributedCachingDataSource(ds, cachingCfg), nil

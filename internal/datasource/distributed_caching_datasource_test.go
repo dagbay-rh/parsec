@@ -16,12 +16,12 @@ func TestDistributedCachingDataSource(t *testing.T) {
 	t.Run("caches results using groupcache", func(t *testing.T) {
 		source := &mockCacheableDataSource{
 			name: "test-distributed",
-			ttl:  1 * time.Hour,
 		}
 
 		config := DistributedCachingConfig{
 			GroupName:      "test-group-1",
 			CacheSizeBytes: 1 << 20,
+			CacheTTL:       1 * time.Hour,
 		}
 
 		cached := NewDistributedCachingDataSource(source, config)
@@ -60,12 +60,12 @@ func TestDistributedCachingDataSource(t *testing.T) {
 	t.Run("different cache keys result in different cache entries", func(t *testing.T) {
 		source := &mockCacheableDataSource{
 			name: "test-distributed",
-			ttl:  1 * time.Hour,
 		}
 
 		config := DistributedCachingConfig{
 			GroupName:      "test-group-2",
 			CacheSizeBytes: 1 << 20,
+			CacheTTL:       1 * time.Hour,
 		}
 
 		cached := NewDistributedCachingDataSource(source, config)
@@ -120,10 +120,11 @@ func TestDistributedCachingDataSource(t *testing.T) {
 	t.Run("uses default values for empty config", func(t *testing.T) {
 		source := &mockCacheableDataSource{
 			name: "test-defaults",
-			ttl:  1 * time.Hour,
 		}
 
-		config := DistributedCachingConfig{}
+		config := DistributedCachingConfig{
+			CacheTTL: 1 * time.Hour,
+		}
 
 		cached := NewDistributedCachingDataSource(source, config)
 
@@ -144,13 +145,13 @@ func TestDistributedCachingDataSource(t *testing.T) {
 
 		source := &mockCacheableDataSource{
 			name: "test-ttl",
-			ttl:  5 * time.Minute,
 		}
 
 		config := DistributedCachingConfig{
 			GroupName:      "test-group-ttl",
 			CacheSizeBytes: 1 << 20,
 			Clock:          clk,
+			CacheTTL:       5 * time.Minute,
 		}
 
 		cached := NewDistributedCachingDataSource(source, config)
@@ -193,7 +194,6 @@ func TestDistributedCachingDataSource(t *testing.T) {
 
 		source := &mockCacheableDataSource{
 			name: "test-no-ttl",
-			ttl:  0,
 		}
 
 		config := DistributedCachingConfig{

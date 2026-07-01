@@ -55,7 +55,23 @@ type ServerConfig struct {
 
 // AuthzServerConfig configures the ext_authz authorization server
 type AuthzServerConfig struct {
-	// TokenTypes specifies which token types to issue and how to deliver them
+	// Policy configures the authz check policy that decides, for each
+	// ext_authz request, whether to issue tokens, allow without issue, or deny.
+	Policy AuthzCheckPolicyConfig `koanf:"policy"`
+
+	// TokenTypes specifies which token types to issue and how to deliver them.
+	// Deprecated: use Policy.TokenTypes instead.
+	TokenTypes []TokenTypeConfig `koanf:"token_types"`
+}
+
+// AuthzCheckPolicyConfig configures the authz check policy.
+type AuthzCheckPolicyConfig struct {
+	// Type selects the policy implementation.
+	// Options: "static_authenticated" (default)
+	Type string `koanf:"type"`
+
+	// TokenTypes specifies which token types to issue and their headers.
+	// Used by the "static_authenticated" policy type.
 	TokenTypes []TokenTypeConfig `koanf:"token_types"`
 }
 
@@ -116,7 +132,7 @@ type NamedValidatorConfig struct {
 // ValidatorConfig configures a credential validator
 type ValidatorConfig struct {
 	// Type selects the validator implementation
-	// Options: "jwt_validator", "json_validator", "stub_validator"
+	// Options: "jwt_validator", "json_validator", "lua_validator", "stub_validator"
 	Type string `koanf:"type"`
 
 	// JWT Validator fields
@@ -250,8 +266,9 @@ type CachingConfig struct {
 	// Options: "in_memory", "distributed", "none"
 	Type string `koanf:"type"`
 
-	// TTL is the cache time-to-live for cacheable script-backed implementations.
-	TTL string `koanf:"ttl"` // Duration string like "5m"
+	// TTL is the cache time-to-live (e.g. "5m"). Omit for the default (5m).
+	// Set to "0s" to cache indefinitely (no expiry).
+	TTL string `koanf:"ttl"`
 
 	// Distributed caching fields
 	GroupName string `koanf:"group_name"` // For groupcache

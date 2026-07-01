@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/project-kessel/parsec/internal/datasource"
 	"github.com/project-kessel/parsec/internal/httpclient"
@@ -74,6 +75,62 @@ end
 	}
 	if _, ok := ds.(*datasource.InMemoryCachingDataSource); !ok {
 		t.Fatalf("got %T, want *datasource.InMemoryCachingDataSource", ds)
+	}
+}
+
+func TestParseCacheTTL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		cfg     *CachingConfig
+		want    time.Duration
+		wantErr bool
+	}{
+		{
+			name: "nil config defaults",
+			cfg:  nil,
+			want: defaultCacheTTL,
+		},
+		{
+			name: "empty TTL defaults",
+			cfg:  &CachingConfig{Type: "in_memory"},
+			want: defaultCacheTTL,
+		},
+		{
+			name: "explicit zero means no expiry",
+			cfg:  &CachingConfig{Type: "in_memory", TTL: "0s"},
+			want: 0,
+		},
+		{
+			name: "explicit value",
+			cfg:  &CachingConfig{Type: "in_memory", TTL: "10m"},
+			want: 10 * time.Minute,
+		},
+		{
+			name:    "invalid duration",
+			cfg:     &CachingConfig{Type: "in_memory", TTL: "bogus"},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := parseCacheTTL(tt.cfg)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

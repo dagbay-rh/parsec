@@ -152,10 +152,28 @@ func TestAuthzCheckMetrics(t *testing.T) {
 		wantStatus string
 	}{
 		{
-			name:       "success",
-			action:     func(service.AuthzCheckProbe) {},
-			wantResult: `result="success"`,
+			name:       "policy decision issue",
+			action:     func(p service.AuthzCheckProbe) { p.PolicyDecisionIssue(2, "openid", "allowed by rule") },
+			wantResult: `result="policy_issue"`,
 			wantStatus: `status="success"`,
+		},
+		{
+			name:       "policy decision allow without issue",
+			action:     func(p service.AuthzCheckProbe) { p.PolicyDecisionAllowWithoutIssue("passthrough") },
+			wantResult: `result="policy_allow_without_issue"`,
+			wantStatus: `status="success"`,
+		},
+		{
+			name:       "policy decision deny",
+			action:     func(p service.AuthzCheckProbe) { p.PolicyDecisionDeny("unauthorized") },
+			wantResult: `result="policy_denied"`,
+			wantStatus: `status="error"`,
+		},
+		{
+			name:       "policy evaluation failed",
+			action:     func(p service.AuthzCheckProbe) { p.PolicyEvaluationFailed(errors.New("rego panic")) },
+			wantResult: `result="policy_evaluation_failed"`,
+			wantStatus: `status="error"`,
 		},
 		{
 			name:       "actor validation failed",
@@ -568,8 +586,8 @@ func TestJWTValidateMetrics(t *testing.T) {
 
 func TestLuaValidateMetrics(t *testing.T) {
 	tests := []struct {
-		name       string
-		action     func(probe interface {
+		name   string
+		action func(probe interface {
 			End()
 			ScriptLoadFailed(error)
 			ScriptExecutionFailed(error)

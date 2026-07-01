@@ -444,7 +444,6 @@ end
 				Strict:   true,
 			}),
 		},
-		CacheTTL: 10 * time.Minute,
 	})
 	if err != nil {
 		t.Fatalf("failed to create data source: %v", err)
