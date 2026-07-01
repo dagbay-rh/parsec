@@ -43,12 +43,9 @@ func newCredentialSource(cfg CredentialSourceConfig) (server.CredentialSource, e
 	}
 	switch cfg.Type {
 	case server.CredentialSourceTypeBearer:
-		return server.NewBearerCredentialSource(cfg.Name), nil
+		return server.NewBearerCredentialSource(cfg.Name)
 	case server.CredentialSourceTypeCookie:
-		if cfg.CookieName == "" {
-			return nil, fmt.Errorf("cookie_name is required for type %q", cfg.Type)
-		}
-		return server.NewCookieCredentialSource(cfg.Name, cfg.CookieName), nil
+		return server.NewCookieCredentialSource(cfg.Name, cfg.CookieName)
 	case server.CredentialSourceTypeBasicAuth:
 		return server.NewBasicAuthCredentialSource(cfg.Name), nil
 	default:

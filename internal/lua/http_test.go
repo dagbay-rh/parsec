@@ -359,19 +359,153 @@ func TestHTTPService_CancelledContextReturnsError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	methods := []struct {
+		name   string
+		script string
+	}{
+		{"get", `
+			local resp, err = http.get("` + server.URL + `")
+			if resp == nil and err ~= nil then return "error" end
+			return "no-error"
+		`},
+		{"post", `
+			local resp, err = http.post("` + server.URL + `", "body")
+			if resp == nil and err ~= nil then return "error" end
+			return "no-error"
+		`},
+		{"request", `
+			local resp, err = http.request("DELETE", "` + server.URL + `")
+			if resp == nil and err ~= nil then return "error" end
+			return "no-error"
+		`},
+	}
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	svc := NewHTTPService(ctx, client)
+	for _, tt := range methods {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+
+			client := &http.Client{Timeout: 5 * time.Second}
+			svc := NewHTTPService(ctx, client)
+			L := lua.NewState()
+			defer L.Close()
+			svc.Register(L)
+
+			if err := L.DoString(tt.script); err != nil {
+				t.Fatalf("script execution failed: %v", err)
+			}
+
+			result := lua.LVAsString(L.Get(-1))
+			L.Pop(1)
+			if result != "error" {
+				t.Errorf("expected error from cancelled context, got %q", result)
+			}
+		})
+	}
+}
+
+func TestHTTPService_RequestOptionsError_AllMethods(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	methods := []struct {
+		name   string
+		script string
+	}{
+		{"post", `
+			local resp, err = http.post("` + server.URL + `", "body")
+			if resp == nil and err ~= nil then return "error" end
+			return "no-error"
+		`},
+		{"request", `
+			local resp, err = http.request("PUT", "` + server.URL + `", "body")
+			if resp == nil and err ~= nil then return "error" end
+			return "no-error"
+		`},
+	}
+
+	for _, tt := range methods {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &http.Client{Timeout: 5 * time.Second}
+			svc := NewHTTPService(context.Background(), client,
+				WithRequestOptions(func(req *http.Request) error {
+					return http.ErrServerClosed
+				}),
+			)
+			L := lua.NewState()
+			defer L.Close()
+			svc.Register(L)
+
+			if err := L.DoString(tt.script); err != nil {
+				t.Fatalf("script execution failed: %v", err)
+			}
+
+			result := lua.LVAsString(L.Get(-1))
+			L.Pop(1)
+			if result != "error" {
+				t.Errorf("expected error from request options, got %q", result)
+			}
+		})
+	}
+}
+
+func TestHTTPService_Request_NoBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "DELETE" {
+			t.Errorf("expected DELETE, got %s", r.Method)
+		}
+		if r.ContentLength > 0 {
+			t.Error("expected no body for DELETE without body")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
 	L := lua.NewState()
 	defer L.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	svc := NewHTTPService(context.Background(), client)
 	svc.Register(L)
 
 	script := `
-		local resp, err = http.get("` + server.URL + `")
-		if resp == nil and err ~= nil then return "error" end
-		return "no-error"
+		local response = http.request("DELETE", "` + server.URL + `")
+		return response.status
+	`
+	if err := L.DoString(script); err != nil {
+		t.Fatalf("script execution failed: %v", err)
+	}
+
+	status := int(lua.LVAsNumber(L.Get(-1)))
+	L.Pop(1)
+	if status != http.StatusNoContent {
+		t.Errorf("status=%d, want %d", status, http.StatusNoContent)
+	}
+}
+
+func TestHTTPService_Request_WithHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Custom") != "value" {
+			t.Errorf("X-Custom=%q, want 'value'", r.Header.Get("X-Custom"))
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer server.Close()
+
+	L := lua.NewState()
+	defer L.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	svc := NewHTTPService(context.Background(), client)
+	svc.Register(L)
+
+	script := `
+		local headers = {["X-Custom"] = "value"}
+		local response = http.request("PATCH", "` + server.URL + `", "data", headers)
+		return response.body
 	`
 	if err := L.DoString(script); err != nil {
 		t.Fatalf("script execution failed: %v", err)
@@ -379,7 +513,7 @@ func TestHTTPService_CancelledContextReturnsError(t *testing.T) {
 
 	result := lua.LVAsString(L.Get(-1))
 	L.Pop(1)
-	if result != "error" {
-		t.Errorf("expected error from cancelled context, got %q", result)
+	if result != "ok" {
+		t.Errorf("body=%q, want 'ok'", result)
 	}
 }

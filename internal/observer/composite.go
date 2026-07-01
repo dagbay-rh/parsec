@@ -159,12 +159,20 @@ func (c *compositeAll) LuaValidateStarted(ctx context.Context, validatorName str
 	return ctx, &compositeLuaValidateProbe{probes}
 }
 
-func (c *compositeAll) ValidatorCacheFetchStarted(ctx context.Context, validatorName string) (context.Context, trust.ValidatorCacheFetchProbe) {
-	probes := make([]trust.ValidatorCacheFetchProbe, len(c.children))
+func (c *compositeAll) InMemoryValidateStarted(ctx context.Context, validatorName string) (context.Context, trust.InMemoryValidateProbe) {
+	probes := make([]trust.InMemoryValidateProbe, len(c.children))
 	for i, ch := range c.children {
-		ctx, probes[i] = ch.ValidatorCacheFetchStarted(ctx, validatorName)
+		ctx, probes[i] = ch.InMemoryValidateStarted(ctx, validatorName)
 	}
-	return ctx, &compositeValidatorCacheFetchProbe{probes}
+	return ctx, &compositeInMemoryValidateProbe{probes}
+}
+
+func (c *compositeAll) DistributedValidateStarted(ctx context.Context, validatorName string) (context.Context, trust.DistributedValidateProbe) {
+	probes := make([]trust.DistributedValidateProbe, len(c.children))
+	for i, ch := range c.children {
+		ctx, probes[i] = ch.DistributedValidateStarted(ctx, validatorName)
+	}
+	return ctx, &compositeDistributedValidateProbe{probes}
 }
 
 func (c *compositeAll) InitPopulationStarted(ctx context.Context) (context.Context, server.InitPopulationProbe) {
@@ -518,31 +526,61 @@ func (m *compositeLuaValidateProbe) End() {
 	}
 }
 
-type compositeValidatorCacheFetchProbe struct {
-	probes []trust.ValidatorCacheFetchProbe
+type compositeInMemoryValidateProbe struct {
+	probes []trust.InMemoryValidateProbe
 }
 
-func (m *compositeValidatorCacheFetchProbe) CacheHit() {
+func (m *compositeInMemoryValidateProbe) CacheKeyFailed(err error) {
+	for _, p := range m.probes {
+		p.CacheKeyFailed(err)
+	}
+}
+func (m *compositeInMemoryValidateProbe) CacheHit() {
 	for _, p := range m.probes {
 		p.CacheHit()
 	}
 }
-func (m *compositeValidatorCacheFetchProbe) CacheMiss() {
-	for _, p := range m.probes {
-		p.CacheMiss()
-	}
-}
-func (m *compositeValidatorCacheFetchProbe) CacheExpired() {
+func (m *compositeInMemoryValidateProbe) CacheExpired() {
 	for _, p := range m.probes {
 		p.CacheExpired()
 	}
 }
-func (m *compositeValidatorCacheFetchProbe) FetchFailed(err error) {
+func (m *compositeInMemoryValidateProbe) CacheMiss() {
 	for _, p := range m.probes {
-		p.FetchFailed(err)
+		p.CacheMiss()
 	}
 }
-func (m *compositeValidatorCacheFetchProbe) End() {
+func (m *compositeInMemoryValidateProbe) SourceFailed(err error) {
+	for _, p := range m.probes {
+		p.SourceFailed(err)
+	}
+}
+func (m *compositeInMemoryValidateProbe) End() {
+	for _, p := range m.probes {
+		p.End()
+	}
+}
+
+type compositeDistributedValidateProbe struct {
+	probes []trust.DistributedValidateProbe
+}
+
+func (m *compositeDistributedValidateProbe) CacheKeyFailed(err error) {
+	for _, p := range m.probes {
+		p.CacheKeyFailed(err)
+	}
+}
+func (m *compositeDistributedValidateProbe) GetFailed(err error) {
+	for _, p := range m.probes {
+		p.GetFailed(err)
+	}
+}
+func (m *compositeDistributedValidateProbe) ResultExpired() {
+	for _, p := range m.probes {
+		p.ResultExpired()
+	}
+}
+func (m *compositeDistributedValidateProbe) End() {
 	for _, p := range m.probes {
 		p.End()
 	}
@@ -734,6 +772,36 @@ func (m *compositeAuthzCheckProbe) SubjectValidationSucceeded(subject *trust.Res
 func (m *compositeAuthzCheckProbe) SubjectValidationFailed(err error) {
 	for _, p := range m.probes {
 		p.SubjectValidationFailed(err)
+	}
+}
+
+func (m *compositeAuthzCheckProbe) SubjectAnonymous() {
+	for _, p := range m.probes {
+		p.SubjectAnonymous()
+	}
+}
+
+func (m *compositeAuthzCheckProbe) PolicyDecisionIssue(tokenTypeCount int, scope string, reason string) {
+	for _, p := range m.probes {
+		p.PolicyDecisionIssue(tokenTypeCount, scope, reason)
+	}
+}
+
+func (m *compositeAuthzCheckProbe) PolicyDecisionAllowWithoutIssue(reason string) {
+	for _, p := range m.probes {
+		p.PolicyDecisionAllowWithoutIssue(reason)
+	}
+}
+
+func (m *compositeAuthzCheckProbe) PolicyDecisionDeny(reason string) {
+	for _, p := range m.probes {
+		p.PolicyDecisionDeny(reason)
+	}
+}
+
+func (m *compositeAuthzCheckProbe) PolicyEvaluationFailed(err error) {
+	for _, p := range m.probes {
+		p.PolicyEvaluationFailed(err)
 	}
 }
 

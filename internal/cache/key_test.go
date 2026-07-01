@@ -44,6 +44,16 @@ func TestStripTTLSuffix(t *testing.T) {
 			input:    `{"issuer":"https://example.com"}:ttl:1728468000`,
 			expected: `{"issuer":"https://example.com"}`,
 		},
+		{
+			name:     "inner :ttl: in key body preserved",
+			input:    `{"claim":":ttl:value"}:ttl:1728468000`,
+			expected: `{"claim":":ttl:value"}`,
+		},
+		{
+			name:     "multiple inner :ttl: substrings preserved",
+			input:    `a:ttl:b:ttl:c:ttl:1728468000`,
+			expected: `a:ttl:b:ttl:c`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -99,6 +109,18 @@ func TestRoundTimestampToInterval(t *testing.T) {
 			interval: 30 * time.Second,
 			expected: time.Date(2025, 10, 9, 10, 0, 30, 0, time.UTC),
 		},
+		{
+			name:     "zero interval returns original time",
+			time:     time.Date(2025, 10, 9, 10, 2, 30, 0, time.UTC),
+			interval: 0,
+			expected: time.Date(2025, 10, 9, 10, 2, 30, 0, time.UTC),
+		},
+		{
+			name:     "negative interval returns original time",
+			time:     time.Date(2025, 10, 9, 10, 2, 30, 0, time.UTC),
+			interval: -5 * time.Minute,
+			expected: time.Date(2025, 10, 9, 10, 2, 30, 0, time.UTC),
+		},
 	}
 
 	for _, tt := range tests {
@@ -147,5 +169,13 @@ func TestAppendTTLSuffix(t *testing.T) {
 			t.Errorf("round-trip: got %q, want %q", stripped, baseKey)
 		}
 	})
-}
 
+	t.Run("round-trips key containing inner ttl marker", func(t *testing.T) {
+		key := `{"claim":":ttl:value"}`
+		withSuffix := cache.AppendTTLSuffix(key, now, 5*time.Minute)
+		stripped := cache.StripTTLSuffix(withSuffix)
+		if stripped != key {
+			t.Errorf("round-trip with inner marker: got %q, want %q", stripped, key)
+		}
+	})
+}

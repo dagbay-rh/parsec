@@ -28,21 +28,22 @@ type Validator interface {
 }
 
 // CacheableValidator is an optional interface for validators whose successful
-// validation results can be cached.
+// validation results can be cached. The cache TTL is configured on the
+// caching wrapper, not on the validator itself.
 type CacheableValidator interface {
 	// CacheKey returns a masked validator input containing only the fields that
 	// affect the validation result. For distributed caches, the returned input
 	// must be sufficient to reconstruct a Credential and call Validate on a
 	// cache miss.
 	CacheKey(credential Credential) (ValidatorInput, error)
-
-	// CacheTTL returns the time-to-live for cached entries. Return 0 to let
-	// result expiration be the only expiry bound.
-	CacheTTL() time.Duration
 }
 
-// Result contains the validated information about the subject
-// All fields are exported and JSON-serializable
+// Result contains the validated information about the subject.
+// All fields are exported and JSON-serializable.
+//
+// Callers must treat Result and its reference-type fields (Claims, Audience)
+// as read-only. Results may be shared across goroutines and cached; mutating
+// a returned Result corrupts shared state.
 type Result struct {
 	// Subject is the unique identifier of the authenticated subject
 	Subject string `json:"subject"`
@@ -180,7 +181,6 @@ func (c *JSONCredential) UnmarshalJSON(data []byte) error {
 	c.RawJSON = []byte(raw.RawJSON)
 	return nil
 }
-
 
 // BasicAuthCredential represents HTTP Basic Authentication credentials.
 type BasicAuthCredential struct {

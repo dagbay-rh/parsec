@@ -223,8 +223,290 @@ end
 	if bearer.Token != "abc" {
 		t.Fatalf("Token=%q, want abc", bearer.Token)
 	}
-	if validator.CacheTTL() != defaultLuaValidatorTTL {
-		t.Fatalf("CacheTTL=%v, want %v", validator.CacheTTL(), defaultLuaValidatorTTL)
+}
+
+func TestCacheableLuaValidator_CacheKey_NilCredential(t *testing.T) {
+	const script = `
+function validate(input)
+  return {subject = "user", expires_at = 4102444800}
+end
+
+function validate_cache_key(input)
+  return {
+    credential = {
+      type = input.credential.type,
+      token = input.credential.token
+    }
+  }
+end
+`
+	validator, err := NewCacheableLuaValidator("test", script, []CredentialType{CredentialTypeBearer})
+	if err != nil {
+		t.Fatalf("NewCacheableLuaValidator: %v", err)
+	}
+
+	_, err = validator.CacheKey(nil)
+	if err == nil {
+		t.Fatal("expected error for nil credential")
+	}
+	if !strings.Contains(err.Error(), "credential cannot be nil") {
+		t.Fatalf("err=%v, want containing 'credential cannot be nil'", err)
+	}
+}
+
+func TestCacheableLuaValidator_CacheKey_UnsupportedCredentialType(t *testing.T) {
+	const script = `
+function validate(input)
+  return {subject = "user", expires_at = 4102444800}
+end
+
+function validate_cache_key(input)
+  return {
+    credential = {
+      type = input.credential.type,
+      token = input.credential.token
+    }
+  }
+end
+`
+	validator, err := NewCacheableLuaValidator("test", script, []CredentialType{CredentialTypeJWT})
+	if err != nil {
+		t.Fatalf("NewCacheableLuaValidator: %v", err)
+	}
+
+	_, err = validator.CacheKey(&BearerCredential{Token: "tok"})
+	if err == nil {
+		t.Fatal("expected error for unsupported credential type")
+	}
+	if !strings.Contains(err.Error(), "not supported") {
+		t.Fatalf("err=%q, want containing 'not supported'", err)
+	}
+}
+
+func TestLuaValidator_Validate_NilCredential(t *testing.T) {
+	const script = `
+function validate(input)
+  return {subject = "user", expires_at = 4102444800}
+end
+`
+	validator, err := NewLuaValidator("test", script, []CredentialType{CredentialTypeBearer})
+	if err != nil {
+		t.Fatalf("NewLuaValidator: %v", err)
+	}
+
+	_, err = validator.Validate(context.Background(), nil)
+	if err == nil {
+		t.Fatal("expected error for nil credential")
+	}
+	if !strings.Contains(err.Error(), "credential cannot be nil") {
+		t.Fatalf("err=%v, want containing 'credential cannot be nil'", err)
+	}
+}
+
+func TestNewLuaValidator_CompileError(t *testing.T) {
+	_, err := NewLuaValidator("test", `function validate(`, []CredentialType{CredentialTypeBearer})
+	if err == nil {
+		t.Fatal("expected error for invalid syntax")
+	}
+	if !strings.Contains(err.Error(), "failed to parse script") {
+		t.Fatalf("err=%q, want containing 'failed to parse script'", err)
+	}
+}
+
+func TestLuaValidator_Validate_UnsupportedCredentialType(t *testing.T) {
+	const script = `
+function validate(input)
+  return {subject = "user"}
+end
+`
+	validator, err := NewLuaValidator("test", script, []CredentialType{CredentialTypeJWT})
+	if err != nil {
+		t.Fatalf("NewLuaValidator: %v", err)
+	}
+
+	_, err = validator.Validate(context.Background(), &BearerCredential{Token: "tok"})
+	if err == nil {
+		t.Fatal("expected error for unsupported credential type")
+	}
+	if !strings.Contains(err.Error(), "credential type bearer not supported") {
+		t.Fatalf("err=%q, want containing 'not supported'", err)
+	}
+}
+
+func TestLuaValidator_Validate_InvalidReturnType(t *testing.T) {
+	const script = `
+function validate(input)
+  return "not a table"
+end
+`
+	validator, err := NewLuaValidator("test", script, []CredentialType{CredentialTypeBearer})
+	if err != nil {
+		t.Fatalf("NewLuaValidator: %v", err)
+	}
+
+	_, err = validator.Validate(context.Background(), &BearerCredential{Token: "tok"})
+	if err == nil {
+		t.Fatal("expected error for non-table return")
+	}
+	if !strings.Contains(err.Error(), "validate function must return a table or nil") {
+		t.Fatalf("err=%q, want containing 'must return a table or nil'", err)
+	}
+}
+
+func TestLuaValidator_Validate_ScriptExecutionError(t *testing.T) {
+	const script = `
+function validate(input)
+  error("something went wrong")
+end
+`
+	validator, err := NewLuaValidator("test", script, []CredentialType{CredentialTypeBearer})
+	if err != nil {
+		t.Fatalf("NewLuaValidator: %v", err)
+	}
+
+	_, err = validator.Validate(context.Background(), &BearerCredential{Token: "tok"})
+	if err == nil {
+		t.Fatal("expected error from script execution")
+	}
+	if !strings.Contains(err.Error(), "script execution failed") {
+		t.Fatalf("err=%q, want containing 'script execution failed'", err)
+	}
+}
+
+func TestLuaValidator_Validate_MissingSubject(t *testing.T) {
+	const script = `
+function validate(input)
+  return {issuer = "test-issuer"}
+end
+`
+	validator, err := NewLuaValidator("test", script, []CredentialType{CredentialTypeBearer})
+	if err != nil {
+		t.Fatalf("NewLuaValidator: %v", err)
+	}
+
+	_, err = validator.Validate(context.Background(), &BearerCredential{Token: "tok"})
+	if err == nil {
+		t.Fatal("expected error for missing subject")
+	}
+	if !strings.Contains(err.Error(), "subject is required") {
+		t.Fatalf("err=%q, want containing 'subject is required'", err)
+	}
+}
+
+func TestLuaValidator_Validate_ExpiresAtFormats(t *testing.T) {
+	tests := []struct {
+		name      string
+		expiresAt string
+		wantErr   string
+		wantUnix  int64
+	}{
+		{
+			name:      "numeric string",
+			expiresAt: `"1704067200"`,
+			wantUnix:  1704067200,
+		},
+		{
+			name:      "invalid string",
+			expiresAt: `"not-a-time"`,
+			wantErr:   "invalid expires_at",
+		},
+		{
+			name:      "empty string",
+			expiresAt: `""`,
+			wantUnix:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			script := `
+function validate(input)
+  return {subject = "user", expires_at = ` + tt.expiresAt + `}
+end
+`
+			validator, err := NewLuaValidator("test", script, []CredentialType{CredentialTypeBearer})
+			if err != nil {
+				t.Fatalf("NewLuaValidator: %v", err)
+			}
+
+			result, err := validator.Validate(context.Background(), &BearerCredential{Token: "tok"})
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("err=%v, want containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.wantUnix == 0 {
+				if !result.ExpiresAt.IsZero() {
+					t.Fatalf("ExpiresAt=%v, want zero", result.ExpiresAt)
+				}
+			} else if result.ExpiresAt.Unix() != tt.wantUnix {
+				t.Fatalf("ExpiresAt.Unix()=%d, want %d", result.ExpiresAt.Unix(), tt.wantUnix)
+			}
+		})
+	}
+}
+
+func TestLuaValidator_Validate_ExpiresAtUnsupportedType(t *testing.T) {
+	const script = `
+function validate(input)
+  return {subject = "user", expires_at = true}
+end
+`
+	validator, err := NewLuaValidator("test", script, []CredentialType{CredentialTypeBearer})
+	if err != nil {
+		t.Fatalf("NewLuaValidator: %v", err)
+	}
+
+	_, err = validator.Validate(context.Background(), &BearerCredential{Token: "tok"})
+	if err == nil {
+		t.Fatal("expected error for boolean expires_at")
+	}
+	if !strings.Contains(err.Error(), "invalid expires_at") {
+		t.Fatalf("err=%q, want containing 'invalid expires_at'", err)
+	}
+}
+
+func TestLuaValidator_Validate_AudienceNonStringEntry(t *testing.T) {
+	const script = `
+function validate(input)
+  return {subject = "user", audience = {"valid", 42}}
+end
+`
+	validator, err := NewLuaValidator("test", script, []CredentialType{CredentialTypeBearer})
+	if err != nil {
+		t.Fatalf("NewLuaValidator: %v", err)
+	}
+
+	_, err = validator.Validate(context.Background(), &BearerCredential{Token: "tok"})
+	if err == nil {
+		t.Fatal("expected error for non-string audience entry")
+	}
+	if !strings.Contains(err.Error(), "invalid audience") {
+		t.Fatalf("err=%q, want containing 'invalid audience'", err)
+	}
+}
+
+func TestLuaValidator_CredentialTypes(t *testing.T) {
+	types := []CredentialType{CredentialTypeBearer, CredentialTypeJWT}
+	validator, err := NewLuaValidator("test", `function validate(input) return nil end`, types)
+	if err != nil {
+		t.Fatalf("NewLuaValidator: %v", err)
+	}
+
+	got := validator.CredentialTypes()
+	if len(got) != 2 || got[0] != CredentialTypeBearer || got[1] != CredentialTypeJWT {
+		t.Fatalf("CredentialTypes=%v, want [bearer jwt]", got)
+	}
+
+	// Mutating the returned slice should not affect the validator.
+	got[0] = "mutated"
+	fresh := validator.CredentialTypes()
+	if fresh[0] != CredentialTypeBearer {
+		t.Fatal("CredentialTypes returned a non-cloned slice")
 	}
 }
 
@@ -235,9 +517,68 @@ func TestNewCacheableLuaValidator_RequiresValidateCacheKey(t *testing.T) {
 	}
 }
 
+func TestCacheableLuaValidator_CacheKey_ScriptError(t *testing.T) {
+	const script = `
+function validate(input) return {subject = "user"} end
+function validate_cache_key(input)
+  error("cache key failed")
+end
+`
+	validator, err := NewCacheableLuaValidator("test", script, []CredentialType{CredentialTypeBearer})
+	if err != nil {
+		t.Fatalf("NewCacheableLuaValidator: %v", err)
+	}
+
+	_, err = validator.CacheKey(&BearerCredential{Token: "tok"})
+	if err == nil {
+		t.Fatal("expected error from cache key script")
+	}
+	if !strings.Contains(err.Error(), "script execution failed") {
+		t.Fatalf("err=%q, want containing 'script execution failed'", err)
+	}
+}
+
+func TestCacheableLuaValidator_CacheKey_NonTableReturn(t *testing.T) {
+	const script = `
+function validate(input) return {subject = "user"} end
+function validate_cache_key(input)
+  return "not a table"
+end
+`
+	validator, err := NewCacheableLuaValidator("test", script, []CredentialType{CredentialTypeBearer})
+	if err != nil {
+		t.Fatalf("NewCacheableLuaValidator: %v", err)
+	}
+
+	_, err = validator.CacheKey(&BearerCredential{Token: "tok"})
+	if err == nil {
+		t.Fatal("expected error for non-table return from cache key")
+	}
+	if !strings.Contains(err.Error(), "must return a table") {
+		t.Fatalf("err=%q, want containing 'must return a table'", err)
+	}
+}
+
+func TestNewLuaValidatorConfig_NilOverrides(t *testing.T) {
+	// Passing nil configSource and observer via options should fall back to defaults.
+	validator, err := NewLuaValidator("test", `function validate(input) return nil end`,
+		[]CredentialType{CredentialTypeBearer},
+		WithLuaConfigSource(nil),
+		WithLuaValidatorObserver(nil),
+	)
+	if err != nil {
+		t.Fatalf("NewLuaValidator: %v", err)
+	}
+	if validator.configSource == nil {
+		t.Fatal("expected non-nil configSource after nil override")
+	}
+	if validator.observer == nil {
+		t.Fatal("expected non-nil observer after nil override")
+	}
+}
+
 type countingCacheableValidator struct {
 	count     int
-	ttl       time.Duration
 	expiresAt time.Time
 }
 
@@ -261,17 +602,39 @@ func (v *countingCacheableValidator) CacheKey(credential Credential) (ValidatorI
 	return ValidatorInput{Credential: credential}, nil
 }
 
-func (v *countingCacheableValidator) CacheTTL() time.Duration {
-	return v.ttl
+// recordingInMemoryValidateProbe captures which cache-outcome method was called.
+type recordingInMemoryValidateProbe struct {
+	NoOpInMemoryValidateProbe
+	hitCalled     bool
+	missCalled    bool
+	expiredCalled bool
+}
+
+func (p *recordingInMemoryValidateProbe) CacheHit()     { p.hitCalled = true }
+func (p *recordingInMemoryValidateProbe) CacheMiss()    { p.missCalled = true }
+func (p *recordingInMemoryValidateProbe) CacheExpired() { p.expiredCalled = true }
+
+// recordingInMemoryValidateObserver collects a probe per Validate call.
+type recordingInMemoryValidateObserver struct {
+	NoOpTrustObserver
+	probes []*recordingInMemoryValidateProbe
+}
+
+func (o *recordingInMemoryValidateObserver) InMemoryValidateStarted(ctx context.Context, _ string) (context.Context, InMemoryValidateProbe) {
+	p := &recordingInMemoryValidateProbe{}
+	o.probes = append(o.probes, p)
+	return ctx, p
 }
 
 func TestInMemoryCachingValidator(t *testing.T) {
 	clk := clock.NewFixtureClock(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC))
 	source := &countingCacheableValidator{
-		ttl:       time.Minute,
 		expiresAt: clk.Now().Add(time.Hour),
 	}
-	cached := NewInMemoryCachingValidator("test", source, NoOpTrustObserver{}, WithValidatorCacheClock(clk))
+	cached := NewInMemoryCachingValidator("test", source, NoOpTrustObserver{},
+		WithValidatorCacheClock(clk),
+		WithValidatorCacheTTL(time.Minute),
+	)
 
 	cred := &BearerCredential{Token: "abc"}
 	result, err := cached.Validate(context.Background(), cred)
@@ -303,14 +666,67 @@ func TestInMemoryCachingValidator(t *testing.T) {
 	}
 }
 
+func TestInMemoryCachingValidator_CacheOutcomesAreMutuallyExclusive(t *testing.T) {
+	clk := clock.NewFixtureClock(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC))
+	source := &countingCacheableValidator{
+		expiresAt: clk.Now().Add(time.Hour),
+	}
+	obs := &recordingInMemoryValidateObserver{}
+	cached := NewInMemoryCachingValidator("test", source, obs,
+		WithValidatorCacheClock(clk),
+		WithValidatorCacheTTL(time.Minute),
+	)
+	cred := &BearerCredential{Token: "abc"}
+
+	// Call 0: cold miss — entry not in cache.
+	if _, err := cached.Validate(context.Background(), cred); err != nil {
+		t.Fatalf("cold miss: %v", err)
+	}
+	p := obs.probes[0]
+	if !p.missCalled {
+		t.Fatal("cold miss: expected CacheMiss")
+	}
+	if p.hitCalled || p.expiredCalled {
+		t.Fatalf("cold miss: unexpected hit=%v expired=%v", p.hitCalled, p.expiredCalled)
+	}
+
+	// Call 1: cache hit.
+	if _, err := cached.Validate(context.Background(), cred); err != nil {
+		t.Fatalf("cache hit: %v", err)
+	}
+	p = obs.probes[1]
+	if !p.hitCalled {
+		t.Fatal("cache hit: expected CacheHit")
+	}
+	if p.missCalled || p.expiredCalled {
+		t.Fatalf("cache hit: unexpected miss=%v expired=%v", p.missCalled, p.expiredCalled)
+	}
+
+	// Call 2: expired — entry found but stale. CacheExpired only, not CacheMiss.
+	clk.Advance(2 * time.Minute)
+	if _, err := cached.Validate(context.Background(), cred); err != nil {
+		t.Fatalf("expired: %v", err)
+	}
+	p = obs.probes[2]
+	if !p.expiredCalled {
+		t.Fatal("expired: expected CacheExpired")
+	}
+	if p.missCalled {
+		t.Fatal("expired: CacheMiss must not be called when CacheExpired was called")
+	}
+	if p.hitCalled {
+		t.Fatalf("expired: unexpected CacheHit")
+	}
+}
+
 func TestDistributedCachingValidator(t *testing.T) {
 	source := &countingCacheableValidator{
-		ttl:       time.Hour,
 		expiresAt: time.Now().Add(time.Hour),
 	}
-	cached := NewDistributedCachingValidator("test-distributed", source, DistributedValidatorCachingConfig{
+	cached := NewDistributedCachingValidator("test-distributed", source, NoOpTrustObserver{}, DistributedValidatorCachingConfig{
 		GroupName:      "test-validator-distributed-cache",
 		CacheSizeBytes: 1 << 20,
+		CacheTTL:       time.Hour,
 	})
 
 	cred := &BearerCredential{Token: "abc"}

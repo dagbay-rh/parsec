@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -161,13 +162,19 @@ func TestGroupcacheAdapter_ZeroTTLCachesIndefinitely(t *testing.T) {
 
 func TestGroupcacheAdapter_FetchErrorPreventsCache(t *testing.T) {
 	clk := clock.NewFixtureClock(time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC))
+	var fetchCount atomic.Int64
+	shouldFail := true
 
 	adapter, err := cache.NewGroupcacheAdapter(
 		fmt.Sprintf("test-%s-%d", t.Name(), time.Now().UnixNano()),
 		func(k string) (string, error) { return k, nil },
 		func(s string) (string, error) { return s, nil },
-		func(_ context.Context, _ string) (*testEntry, error) {
-			return nil, fmt.Errorf("source unavailable")
+		func(_ context.Context, key string) (*testEntry, error) {
+			fetchCount.Add(1)
+			if shouldFail {
+				return nil, fmt.Errorf("source unavailable")
+			}
+			return &testEntry{Value: "fetched:" + key}, nil
 		},
 		func(v *testEntry) ([]byte, error) {
 			return json.Marshal(v)
@@ -184,9 +191,186 @@ func TestGroupcacheAdapter_FetchErrorPreventsCache(t *testing.T) {
 		t.Fatalf("NewGroupcacheAdapter failed: %v", err)
 	}
 
-	_, err = adapter.Get(context.Background(), "key-a")
+	ctx := context.Background()
+
+	// First Get: fetch fails, error returned.
+	_, err = adapter.Get(ctx, "key-a")
 	if err == nil {
 		t.Fatal("expected error from failed fetch")
+	}
+	if fetchCount.Load() != 1 {
+		t.Fatalf("fetch count = %d, want 1", fetchCount.Load())
+	}
+
+	// Second Get (same key, same TTL bucket): fetch must be called again,
+	// proving the error was not cached.
+	shouldFail = false
+	got, err := adapter.Get(ctx, "key-a")
+	if err != nil {
+		t.Fatalf("second Get failed: %v", err)
+	}
+	if fetchCount.Load() != 2 {
+		t.Fatalf("fetch count = %d, want 2 (error must not be cached)", fetchCount.Load())
+	}
+	if got.Value != "fetched:key-a" {
+		t.Errorf("value = %q, want %q", got.Value, "fetched:key-a")
+	}
+}
+
+func TestGroupcacheAdapter_Get_SerializeKeyError(t *testing.T) {
+	adapter, err := cache.NewGroupcacheAdapter(
+		fmt.Sprintf("test-%s-%d", t.Name(), time.Now().UnixNano()),
+		func(k string) (string, error) { return "", fmt.Errorf("key is unsupported") },
+		func(s string) (string, error) { return s, nil },
+		func(_ context.Context, _ string) (*testEntry, error) {
+			return &testEntry{Value: "v"}, nil
+		},
+		func(v *testEntry) ([]byte, error) { return json.Marshal(v) },
+		func(b []byte) (*testEntry, error) {
+			var e testEntry
+			return &e, json.Unmarshal(b, &e)
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewGroupcacheAdapter failed: %v", err)
+	}
+
+	_, err = adapter.Get(context.Background(), "anything")
+	if err == nil {
+		t.Fatal("expected error when serializeKey fails")
+	}
+	if got := err.Error(); !strings.Contains(got, "serialize key") {
+		t.Errorf("error = %q, want it to mention serialize key", got)
+	}
+}
+
+func TestGroupcacheAdapter_Get_NilTTLFunction(t *testing.T) {
+	clk := clock.NewFixtureClock(time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC))
+	var fetchCount atomic.Int64
+
+	// No WithTTL option — a.ttl is nil
+	adapter, err := cache.NewGroupcacheAdapter(
+		fmt.Sprintf("test-%s-%d", t.Name(), time.Now().UnixNano()),
+		func(k string) (string, error) { return k, nil },
+		func(s string) (string, error) { return s, nil },
+		func(_ context.Context, key string) (*testEntry, error) {
+			fetchCount.Add(1)
+			return &testEntry{Value: "fetched:" + key}, nil
+		},
+		func(v *testEntry) ([]byte, error) { return json.Marshal(v) },
+		func(b []byte) (*testEntry, error) {
+			var e testEntry
+			return &e, json.Unmarshal(b, &e)
+		},
+		cache.WithClock(clk),
+		cache.WithCacheSizeBytes(1<<20),
+	)
+	if err != nil {
+		t.Fatalf("NewGroupcacheAdapter failed: %v", err)
+	}
+
+	ctx := context.Background()
+
+	result, err := adapter.Get(ctx, "key-a")
+	if err != nil {
+		t.Fatalf("first Get failed: %v", err)
+	}
+	if result.Value != "fetched:key-a" {
+		t.Errorf("result = %q, want %q", result.Value, "fetched:key-a")
+	}
+
+	// Advance time — should still be cached (no TTL = indefinite)
+	clk.Advance(24 * time.Hour)
+
+	_, err = adapter.Get(ctx, "key-a")
+	if err != nil {
+		t.Fatalf("second Get failed: %v", err)
+	}
+	if fetchCount.Load() != 1 {
+		t.Errorf("fetch count = %d, want 1 (nil TTL = indefinite cache)", fetchCount.Load())
+	}
+}
+
+func TestGroupcacheAdapter_Get_DeserializeValueError(t *testing.T) {
+	adapter, err := cache.NewGroupcacheAdapter(
+		fmt.Sprintf("test-%s-%d", t.Name(), time.Now().UnixNano()),
+		func(k string) (string, error) { return k, nil },
+		func(s string) (string, error) { return s, nil },
+		func(_ context.Context, _ string) (*testEntry, error) {
+			return &testEntry{Value: "v"}, nil
+		},
+		func(v *testEntry) ([]byte, error) { return json.Marshal(v) },
+		func(_ []byte) (*testEntry, error) {
+			return nil, fmt.Errorf("corrupt data")
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewGroupcacheAdapter failed: %v", err)
+	}
+
+	_, err = adapter.Get(context.Background(), "key-a")
+	if err == nil {
+		t.Fatal("expected error when deserializeValue fails")
+	}
+	if got := err.Error(); !strings.Contains(got, "deserialize value") {
+		t.Errorf("error = %q, want it to mention deserialize value", got)
+	}
+}
+
+func TestGroupcacheAdapter_Getter_DeserializeKeyError(t *testing.T) {
+	adapter, err := cache.NewGroupcacheAdapter(
+		fmt.Sprintf("test-%s-%d", t.Name(), time.Now().UnixNano()),
+		func(k string) (string, error) { return k, nil },
+		func(_ string) (string, error) { return "", fmt.Errorf("bad key format") },
+		func(_ context.Context, _ string) (*testEntry, error) {
+			t.Fatal("fetch should not be called when deserializeKey fails")
+			return nil, nil
+		},
+		func(v *testEntry) ([]byte, error) { return json.Marshal(v) },
+		func(b []byte) (*testEntry, error) {
+			var e testEntry
+			return &e, json.Unmarshal(b, &e)
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewGroupcacheAdapter failed: %v", err)
+	}
+
+	_, err = adapter.Get(context.Background(), "key-a")
+	if err == nil {
+		t.Fatal("expected error when deserializeKey fails in getter")
+	}
+	if got := err.Error(); !strings.Contains(got, "deserialize key") {
+		t.Errorf("error = %q, want it to mention deserialize key", got)
+	}
+}
+
+func TestGroupcacheAdapter_Getter_SerializeValueError(t *testing.T) {
+	adapter, err := cache.NewGroupcacheAdapter(
+		fmt.Sprintf("test-%s-%d", t.Name(), time.Now().UnixNano()),
+		func(k string) (string, error) { return k, nil },
+		func(s string) (string, error) { return s, nil },
+		func(_ context.Context, _ string) (*testEntry, error) {
+			return &testEntry{Value: "v"}, nil
+		},
+		func(_ *testEntry) ([]byte, error) {
+			return nil, fmt.Errorf("encoding failed")
+		},
+		func(b []byte) (*testEntry, error) {
+			var e testEntry
+			return &e, json.Unmarshal(b, &e)
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewGroupcacheAdapter failed: %v", err)
+	}
+
+	_, err = adapter.Get(context.Background(), "key-a")
+	if err == nil {
+		t.Fatal("expected error when serializeValue fails in getter")
+	}
+	if got := err.Error(); !strings.Contains(got, "serialize value") {
+		t.Errorf("error = %q, want it to mention serialize value", got)
 	}
 }
 
@@ -226,4 +410,3 @@ func TestNewGroupcacheAdapter_RejectsInvalidArgs(t *testing.T) {
 		})
 	}
 }
-

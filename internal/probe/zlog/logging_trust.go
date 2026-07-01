@@ -15,10 +15,12 @@ var (
 )
 
 // LoggingTrustObserver logs trust validation, FilteredStore.ForActor, and
-// JWTValidator.Validate via zerolog. It satisfies trust.TrustObserver by
+// individual validator steps via zerolog. It satisfies trust.TrustObserver by
 // embedding trust.NoOpStoreObserver (store + filtered-store defaults) and
-// trust.NoOpValidatorObserver (JWT defaults), then overriding only the three
-// *Started factories that emit logs.
+// trust.NoOpValidatorObserver (validator defaults), then overriding the six
+// *Started factories that emit logs: ValidationStarted, ForActorStarted,
+// JWTValidateStarted, LuaValidateStarted, InMemoryValidateStarted, and
+// DistributedValidateStarted.
 type LoggingTrustObserver struct {
 	trust.NoOpStoreObserver
 	trust.NoOpValidatorObserver
@@ -57,8 +59,15 @@ func (o *LoggingTrustObserver) LuaValidateStarted(ctx context.Context, validator
 	}
 }
 
-func (o *LoggingTrustObserver) ValidatorCacheFetchStarted(ctx context.Context, validatorName string) (context.Context, trust.ValidatorCacheFetchProbe) {
-	return ctx, &loggingValidatorCacheFetchProbe{
+func (o *LoggingTrustObserver) InMemoryValidateStarted(ctx context.Context, validatorName string) (context.Context, trust.InMemoryValidateProbe) {
+	return ctx, &loggingInMemoryValidateProbe{
+		logger:    o.logger.With().Str("validator", validatorName).Logger(),
+		startTime: time.Now(),
+	}
+}
+
+func (o *LoggingTrustObserver) DistributedValidateStarted(ctx context.Context, validatorName string) (context.Context, trust.DistributedValidateProbe) {
+	return ctx, &loggingDistributedValidateProbe{
 		logger:    o.logger.With().Str("validator", validatorName).Logger(),
 		startTime: time.Now(),
 	}
@@ -201,32 +210,62 @@ func (p *loggingLuaValidateProbe) End() {
 		Msg("lua validation ended")
 }
 
-// --- validator cache probe ---
+// --- InMemoryCachingValidator.Validate probe ---
 
-type loggingValidatorCacheFetchProbe struct {
-	trust.NoOpValidatorCacheFetchProbe
+type loggingInMemoryValidateProbe struct {
+	trust.NoOpInMemoryValidateProbe
 	logger    zerolog.Logger
 	startTime time.Time
 }
 
-func (p *loggingValidatorCacheFetchProbe) CacheHit() {
-	p.logger.Debug().Msg("validator cache hit")
+func (p *loggingInMemoryValidateProbe) CacheKeyFailed(err error) {
+	p.logger.Warn().Err(err).Msg("cache key derivation failed, bypassing cache")
 }
 
-func (p *loggingValidatorCacheFetchProbe) CacheMiss() {
-	p.logger.Debug().Msg("validator cache miss")
+func (p *loggingInMemoryValidateProbe) CacheHit() {
+	p.logger.Debug().Msg("in-memory cache hit")
 }
 
-func (p *loggingValidatorCacheFetchProbe) CacheExpired() {
-	p.logger.Debug().Msg("validator cache entry expired")
+func (p *loggingInMemoryValidateProbe) CacheExpired() {
+	p.logger.Debug().Msg("in-memory cache entry expired")
 }
 
-func (p *loggingValidatorCacheFetchProbe) FetchFailed(err error) {
-	p.logger.Warn().Err(err).Msg("validator cache fetch failed")
+func (p *loggingInMemoryValidateProbe) CacheMiss() {
+	p.logger.Debug().Msg("in-memory cache miss")
 }
 
-func (p *loggingValidatorCacheFetchProbe) End() {
+func (p *loggingInMemoryValidateProbe) SourceFailed(err error) {
+	p.logger.Warn().Err(err).Msg("source validation failed on cache miss")
+}
+
+func (p *loggingInMemoryValidateProbe) End() {
 	p.logger.Debug().
 		Dur("duration", time.Since(p.startTime)).
-		Msg("validator cache fetch completed")
+		Msg("in-memory caching validate completed")
+}
+
+// --- DistributedCachingValidator.Validate probe ---
+
+type loggingDistributedValidateProbe struct {
+	trust.NoOpDistributedValidateProbe
+	logger    zerolog.Logger
+	startTime time.Time
+}
+
+func (p *loggingDistributedValidateProbe) CacheKeyFailed(err error) {
+	p.logger.Warn().Err(err).Msg("cache key derivation failed, bypassing cache")
+}
+
+func (p *loggingDistributedValidateProbe) GetFailed(err error) {
+	p.logger.Warn().Err(err).Msg("distributed cache get failed")
+}
+
+func (p *loggingDistributedValidateProbe) ResultExpired() {
+	p.logger.Debug().Msg("distributed cache result expired")
+}
+
+func (p *loggingDistributedValidateProbe) End() {
+	p.logger.Debug().
+		Dur("duration", time.Since(p.startTime)).
+		Msg("distributed caching validate completed")
 }

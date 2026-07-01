@@ -22,7 +22,6 @@ type ScriptName = string
 const (
 	validateFuncName         = "validate"
 	validateCacheKeyFuncName = "validate_cache_key"
-	defaultLuaValidatorTTL   = 5 * time.Minute
 )
 
 // ValidatorInput is the Lua validator ABI input. It wraps a [Credential] in a
@@ -78,7 +77,6 @@ type luaValidatorConfig struct {
 	httpClient     *http.Client
 	requestOptions luaservices.RequestOptions
 	observer       LuaValidatorObserver
-	cacheTTL       time.Duration
 }
 
 // LuaValidatorOption configures optional settings for Lua validators.
@@ -111,13 +109,6 @@ func WithLuaRequestOptions(ro luaservices.RequestOptions) LuaValidatorOption {
 func WithLuaValidatorObserver(observer LuaValidatorObserver) LuaValidatorOption {
 	return func(cfg *luaValidatorConfig) {
 		cfg.observer = observer
-	}
-}
-
-// WithLuaValidatorCacheTTL sets the TTL used by CacheableLuaValidator.
-func WithLuaValidatorCacheTTL(ttl time.Duration) LuaValidatorOption {
-	return func(cfg *luaValidatorConfig) {
-		cfg.cacheTTL = ttl
 	}
 }
 
@@ -177,7 +168,6 @@ func newLuaValidatorConfig(opts ...LuaValidatorOption) luaValidatorConfig {
 	return cfg
 }
 
-
 // CredentialTypes implements the Validator interface.
 func (v *LuaValidator) CredentialTypes() []CredentialType {
 	return slices.Clone(v.credentialTypes)
@@ -222,7 +212,11 @@ func (v *LuaValidator) Validate(ctx context.Context, credential Credential) (*Re
 		return nil, fmt.Errorf("failed to load script: %w", err)
 	}
 
-	inputTable := validatorInputToLuaTable(L, input)
+	inputTable, err := validatorInputToLuaTable(L, input)
+	if err != nil {
+		p.ScriptExecutionFailed(err)
+		return nil, err
+	}
 	validateFunc := L.GetGlobal(validateFuncName)
 	if err := L.CallByParam(lua.P{
 		Fn:      validateFunc,
@@ -258,7 +252,6 @@ func (v *LuaValidator) Validate(ctx context.Context, credential Credential) (*Re
 // CacheableLuaValidator is a Lua validator that implements CacheableValidator.
 type CacheableLuaValidator struct {
 	*LuaValidator
-	cacheTTL time.Duration
 }
 
 // NewCacheableLuaValidator creates a Lua validator with validate_cache_key(input).
@@ -271,19 +264,20 @@ func NewCacheableLuaValidator(name ScriptName, script string, credentialTypes []
 		return nil, err
 	}
 
-	cfg := newLuaValidatorConfig(opts...)
-	if cfg.cacheTTL == 0 {
-		cfg.cacheTTL = defaultLuaValidatorTTL
-	}
-
 	return &CacheableLuaValidator{
 		LuaValidator: base,
-		cacheTTL:     cfg.cacheTTL,
 	}, nil
 }
 
 // CacheKey implements CacheableValidator.
 func (v *CacheableLuaValidator) CacheKey(credential Credential) (ValidatorInput, error) {
+	if credential == nil {
+		return ValidatorInput{}, fmt.Errorf("credential cannot be nil")
+	}
+	if !slices.Contains(v.credentialTypes, credential.Type()) {
+		return ValidatorInput{}, fmt.Errorf("credential type %s not supported", credential.Type())
+	}
+
 	input := ValidatorInput{Credential: credential}
 
 	L := lua.NewState()
@@ -299,7 +293,10 @@ func (v *CacheableLuaValidator) CacheKey(credential Credential) (ValidatorInput,
 		return ValidatorInput{}, fmt.Errorf("failed to load script: %w", err)
 	}
 
-	inputTable := validatorInputToLuaTable(L, input)
+	inputTable, err := validatorInputToLuaTable(L, input)
+	if err != nil {
+		return ValidatorInput{}, err
+	}
 	cacheKeyFunc := L.GetGlobal(validateCacheKeyFuncName)
 	if err := L.CallByParam(lua.P{
 		Fn:      cacheKeyFunc,
@@ -319,25 +316,20 @@ func (v *CacheableLuaValidator) CacheKey(credential Credential) (ValidatorInput,
 	return luaTableToValidatorInput(ret.(*lua.LTable))
 }
 
-// CacheTTL implements CacheableValidator.
-func (v *CacheableLuaValidator) CacheTTL() time.Duration {
-	return v.cacheTTL
-}
-
-func validatorInputToLuaTable(L *lua.LState, input ValidatorInput) *lua.LTable {
+func validatorInputToLuaTable(L *lua.LState, input ValidatorInput) (*lua.LTable, error) {
 	credJSON, err := MarshalCredentialJSON(input.Credential)
 	if err != nil {
-		panic(fmt.Sprintf("failed to marshal credential for Lua: %v", err))
+		return nil, fmt.Errorf("failed to marshal credential for Lua: %w", err)
 	}
 	var credMap map[string]any
 	if err := json.Unmarshal(credJSON, &credMap); err != nil {
-		panic(fmt.Sprintf("failed to unmarshal credential JSON: %v", err))
+		return nil, fmt.Errorf("failed to unmarshal credential JSON: %w", err)
 	}
 
 	tbl := L.NewTable()
 	credTbl := luaservices.GoToLua(L, credMap)
 	L.SetField(tbl, "credential", credTbl)
-	return tbl
+	return tbl, nil
 }
 
 func luaTableToValidatorInput(tbl *lua.LTable) (ValidatorInput, error) {

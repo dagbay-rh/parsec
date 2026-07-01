@@ -182,11 +182,6 @@ func newLuaValidator(name string, cfg ValidatorConfig, httpRegistry *httpclient.
 
 	var validator trust.Validator
 	if cachingEnabled(cfg.Caching) {
-		cacheTTL, err := parseCacheTTL(cfg.Caching)
-		if err != nil {
-			return nil, err
-		}
-		opts = append(opts, trust.WithLuaValidatorCacheTTL(cacheTTL))
 		validator, err = trust.NewCacheableLuaValidator(name, script, credTypes, opts...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create cacheable lua validator: %w", err)
@@ -206,9 +201,16 @@ func newLuaValidator(name string, cfg ValidatorConfig, httpRegistry *httpclient.
 }
 
 func wrapValidatorWithCaching(name string, validator trust.Validator, cfg CachingConfig, obs trust.TrustObserver) (trust.Validator, error) {
+	cacheTTL, err := parseCacheTTL(&cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	switch cfg.Type {
 	case "in_memory":
-		return trust.NewInMemoryCachingValidator(name, validator, obs), nil
+		return trust.NewInMemoryCachingValidator(name, validator, obs,
+			trust.WithValidatorCacheTTL(cacheTTL),
+		), nil
 
 	case "distributed":
 		groupName := cfg.GroupName
@@ -221,9 +223,10 @@ func wrapValidatorWithCaching(name string, validator trust.Validator, cfg Cachin
 			cacheSize = 64 << 20
 		}
 
-		return trust.NewDistributedCachingValidator(name, validator, trust.DistributedValidatorCachingConfig{
+		return trust.NewDistributedCachingValidator(name, validator, obs, trust.DistributedValidatorCachingConfig{
 			GroupName:      groupName,
 			CacheSizeBytes: cacheSize,
+			CacheTTL:       cacheTTL,
 		}), nil
 
 	case "none", "":
