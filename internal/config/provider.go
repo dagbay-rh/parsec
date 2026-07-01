@@ -379,7 +379,7 @@ func (p *Provider) AuthzCheckPolicy() (server.AuthzCheckPolicy, error) {
 		// implicitly use the static_authenticated policy.
 
 		// If there is any policy config, though, error. It means type is missing.
-		if len(policyCfg.TokenTypes) > 0 {
+		if len(policyCfg.TokenTypes) > 0 || len(policyCfg.OptionalPathPatterns) > 0 {
 			return nil, fmt.Errorf("authz_server.policy.type is required when policy section is defined")
 		}
 

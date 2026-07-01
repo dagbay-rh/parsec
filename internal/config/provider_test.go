@@ -208,6 +208,15 @@ func TestProvider_AuthzCheckPolicy(t *testing.T) {
 			wantErr: "policy.type is required",
 		},
 		{
+			name: "optional_path_patterns without type is an error",
+			config: &Config{AuthzServer: &AuthzServerConfig{
+				Policy: AuthzCheckPolicyConfig{
+					OptionalPathPatterns: []string{`^/public$`},
+				},
+			}},
+			wantErr: "policy.type is required",
+		},
+		{
 			name: "unknown policy type returns error",
 			config: &Config{AuthzServer: &AuthzServerConfig{
 				Policy: AuthzCheckPolicyConfig{Type: "opa"},
