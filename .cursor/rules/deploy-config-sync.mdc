@@ -1,0 +1,24 @@
+---
+description: Remind about downstream app-interface secret sync when deploy/config files change
+globs: deploy/**,configs/**,internal/config/config.go,internal/config/issuers.go
+alwaysApply: false
+---
+
+# Downstream Deployment Sync Required
+
+When modifying deployment templates or configuration schemas in this repo, the downstream **app-interface** secrets must also be updated.
+
+## Downstream locations
+
+- `app-interface` repo: `resources/insights-stage/parsec-stage/parsec-config.secret.yaml` (and equivalent prod paths)
+
+## What to check
+
+1. If you add/remove/rename a config field, the downstream secret YAML must match.
+2. Issuer `type` is the **implementation kind** (stub, unsigned, transaction_token) — never a token URN.
+3. New CEL scripts mounted via `volumeMounts` need a matching key in the secret's `stringData`.
+
+## Action
+
+After making changes here, remind the user:
+> "These config changes also need to be applied to the downstream app-interface secret(s). Should I update those too?"
