@@ -22,6 +22,18 @@ function validate(input)
     return nil
   end
 
+  local pipe_pos = string.find(username, "|", 1, true)
+  if pipe_pos == nil then
+    return nil
+  end
+
+  local org_id = string.sub(username, 1, pipe_pos - 1)
+  local parsed_username = string.sub(username, pipe_pos + 1)
+
+  if org_id == "" or parsed_username == "" then
+    return nil
+  end
+
   local body = json.encode({
     credentials = {
       username = username,
@@ -43,19 +55,6 @@ function validate(input)
 
   local auth_resp = json.decode(response.body)
   if auth_resp == nil or auth_resp.access == nil or auth_resp.access.pull ~= "granted" then
-    return nil
-  end
-
-  -- Parse "org_id|username" format (split on first "|")
-  local pipe_pos = string.find(username, "|", 1, true)
-  if pipe_pos == nil then
-    return nil
-  end
-
-  local org_id = string.sub(username, 1, pipe_pos - 1)
-  local parsed_username = string.sub(username, pipe_pos + 1)
-
-  if org_id == "" or parsed_username == "" then
     return nil
   end
 
