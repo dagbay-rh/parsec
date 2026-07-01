@@ -12,7 +12,10 @@ func TestBasicAuthCredentialSource_Extract(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	source := NewBasicAuthCredentialSource("test-basic-auth")
+	source, err := NewBasicAuthCredentialSource("test-basic-auth")
+	if err != nil {
+		t.Fatalf("unexpected error creating source: %v", err)
+	}
 
 	t.Run("valid basic auth", func(t *testing.T) {
 		t.Parallel()
@@ -36,8 +39,8 @@ func TestBasicAuthCredentialSource_Extract(t *testing.T) {
 		if ext.SourceName != "test-basic-auth" {
 			t.Fatalf("SourceName=%q", ext.SourceName)
 		}
-		if len(ext.HeadersToRemove) != 1 || ext.HeadersToRemove[0] != "authorization" {
-			t.Fatalf("HeadersToRemove=%v", ext.HeadersToRemove)
+		if len(ext.HeadersUsed) != 1 || ext.HeadersUsed[0] != "authorization" {
+			t.Fatalf("HeadersUsed=%v", ext.HeadersUsed)
 		}
 	})
 
@@ -148,18 +151,11 @@ func TestBasicAuthCredentialSource_Extract(t *testing.T) {
 		}
 	})
 
-	t.Run("default source name", func(t *testing.T) {
+	t.Run("empty name returns error", func(t *testing.T) {
 		t.Parallel()
-		defaultSource := NewBasicAuthCredentialSource("")
-		encoded := base64.StdEncoding.EncodeToString([]byte("user:pass"))
-		ext, err := defaultSource.Extract(ctx, CredentialContext{
-			Headers: map[string]string{"authorization": "Basic " + encoded},
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if ext.SourceName != CredentialSourceTypeBasicAuth {
-			t.Fatalf("SourceName=%q, want %q", ext.SourceName, CredentialSourceTypeBasicAuth)
+		_, err := NewBasicAuthCredentialSource("")
+		if err == nil {
+			t.Fatal("expected error for empty name")
 		}
 	})
 }

@@ -20,9 +20,13 @@ type BasicAuthCredentialSource struct {
 	SourceName string
 }
 
-// NewBasicAuthCredentialSource returns a BasicAuthCredentialSource with the given name.
-func NewBasicAuthCredentialSource(name string) *BasicAuthCredentialSource {
-	return &BasicAuthCredentialSource{SourceName: name}
+// NewBasicAuthCredentialSource returns a BasicAuthCredentialSource with the
+// given name. The name is required.
+func NewBasicAuthCredentialSource(name string) (*BasicAuthCredentialSource, error) {
+	if name == "" {
+		return nil, fmt.Errorf("basic auth credential source: name is required")
+	}
+	return &BasicAuthCredentialSource{SourceName: name}, nil
 }
 
 func (s *BasicAuthCredentialSource) Extract(_ context.Context, cc CredentialContext) (*CredentialExtraction, error) {
@@ -51,15 +55,8 @@ func (s *BasicAuthCredentialSource) Extract(_ context.Context, cc CredentialCont
 	}
 
 	return &CredentialExtraction{
-		Credential:      &trust.BasicAuthCredential{Username: username, Password: password},
-		HeadersToRemove: []string{"authorization"},
-		SourceName:      s.sourceName(),
+		Credential:  &trust.BasicAuthCredential{Username: username, Password: password},
+		HeadersUsed: []string{"authorization"},
+		SourceName:  s.SourceName,
 	}, nil
-}
-
-func (s *BasicAuthCredentialSource) sourceName() string {
-	if s.SourceName != "" {
-		return s.SourceName
-	}
-	return CredentialSourceTypeBasicAuth
 }

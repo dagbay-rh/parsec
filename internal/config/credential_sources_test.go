@@ -16,7 +16,7 @@ func Test_newCredentialSource(t *testing.T) {
 	}{
 		{name: "bearer", cfg: CredentialSourceConfig{Name: "authorization-bearer", Type: "authorization_bearer_opaque"}, want: mustBearerSource(t, "authorization-bearer")},
 		{name: "cookie", cfg: CredentialSourceConfig{Name: "cs-jwt-cookie", Type: "cookie_bearer_opaque", CookieName: "cs_jwt"}, want: mustCookieSource(t, "cs-jwt-cookie", "cs_jwt")},
-		{name: "basic_auth", cfg: CredentialSourceConfig{Name: "basic-auth", Type: "authorization_basic_auth"}, want: server.NewBasicAuthCredentialSource("basic-auth")},
+		{name: "basic_auth", cfg: CredentialSourceConfig{Name: "basic-auth", Type: "authorization_basic_auth"}, want: mustBasicAuthSource(t, "basic-auth")},
 	}
 
 	for _, tt := range tests {
@@ -93,6 +93,15 @@ func mustCookieSource(t *testing.T, name, cookieName string) *server.CookieCrede
 	src, err := server.NewCookieCredentialSource(name, cookieName)
 	if err != nil {
 		t.Fatalf("NewCookieCredentialSource(%q, %q): %v", name, cookieName, err)
+	}
+	return src
+}
+
+func mustBasicAuthSource(t *testing.T, name string) *server.BasicAuthCredentialSource {
+	t.Helper()
+	src, err := server.NewBasicAuthCredentialSource(name)
+	if err != nil {
+		t.Fatalf("NewBasicAuthCredentialSource(%q): %v", name, err)
 	}
 	return src
 }

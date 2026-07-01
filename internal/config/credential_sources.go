@@ -47,7 +47,7 @@ func newCredentialSource(cfg CredentialSourceConfig) (server.CredentialSource, e
 	case server.CredentialSourceTypeCookie:
 		return server.NewCookieCredentialSource(cfg.Name, cfg.CookieName)
 	case server.CredentialSourceTypeBasicAuth:
-		return server.NewBasicAuthCredentialSource(cfg.Name), nil
+		return server.NewBasicAuthCredentialSource(cfg.Name)
 	default:
 		return nil, fmt.Errorf("unknown type %q (allowed: %s)", cfg.Type, strings.Join(credentialSourceTypes, ", "))
 	}
