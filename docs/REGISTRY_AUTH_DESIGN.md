@@ -33,7 +33,7 @@ Envoy CheckRequest (Authorization: Basic <base64>)
   v
 [CEL Claim Mapper]
   - Detects registry auth via:
-      subject.claims.auth_type == "registry-auth"
+      subject.issuer.contains(<configured registry service url>)
   - Maps claims into x-rh-identity envelope
   |
   v
@@ -127,13 +127,13 @@ The HTTP client is injected into the Lua sandbox's `http` module, so `http.post(
 
 ### CEL Integration
 
-Registry auth is detected in CEL mapper expressions by checking the validator-set claim:
+Registry auth is detected in CEL mapper expressions by checking the issuer set by the Lua validator:
 
 ```cel
-has(subject.claims.auth_type) && subject.claims.auth_type == "registry-auth"
+has(subject.issuer) && subject.issuer.contains(<configured registry service url>)
 ```
 
-The `auth_type` claim is set by the Lua validator on successful validation. Since the trust store routes credentials by type, only `basic_auth` credentials reach the registry auth validator — a bearer token cannot produce this claim.
+The `issuer` is set to the `registry_url` config value by the Lua script on successful validation. The CEL script should use the appropriate URL substring for the target environment.
 
 ## Configuration
 

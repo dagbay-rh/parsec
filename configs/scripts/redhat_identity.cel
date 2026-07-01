@@ -4,7 +4,7 @@
 //   { "identity": { ... }, "entitlements": {} }
 //
 // Supports:
-//   - Registry Auth tokens (auth_type is "registry-auth")
+//   - Registry Auth tokens (issuer is "container-registry-authorizer(.stage).api.redhat.com")
 //   - Service Account tokens (preferred_username starts with "service-account-")
 //   - Console API tokens (scope contains "api.console")
 //
@@ -13,7 +13,7 @@
 //
 // Based on: https://github.com/RedHatInsights/insights-3scale
 
-has(subject.claims.auth_type) && subject.claims.auth_type == "registry-auth" ? {
+has(subject.issuer) && subject.issuer.contains("container-registry-authorizer.stage.api.redhat.com") ? {
   "identity": {
     "auth_type": "registry-auth",
     "org_id": has(subject.claims.org_id) ? subject.claims.org_id : "",
