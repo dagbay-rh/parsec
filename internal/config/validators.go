@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/project-kessel/parsec/internal/claims"
+	luaservices "github.com/project-kessel/parsec/internal/lua"
 	"github.com/project-kessel/parsec/internal/request"
 	"github.com/project-kessel/parsec/internal/trust"
 )
@@ -30,7 +31,7 @@ func newStubStore(cfg TrustStoreConfig, transport http.RoundTripper, trustObs tr
 
 	// Add validators
 	for _, validatorCfg := range cfg.Validators {
-		validator, err := newValidator(validatorCfg.ValidatorConfig, transport, trustObs)
+		validator, err := newValidator(validatorCfg.Name, validatorCfg.ValidatorConfig, transport, trustObs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create validator: %w", err)
 		}
@@ -66,7 +67,7 @@ func newFilteredStore(cfg TrustStoreConfig, transport http.RoundTripper, trustOb
 			return nil, fmt.Errorf("validator name is required for filtered store")
 		}
 
-		validator, err := newValidator(validatorCfg.ValidatorConfig, transport, trustObs)
+		validator, err := newValidator(validatorCfg.Name, validatorCfg.ValidatorConfig, transport, trustObs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create validator %s: %w", validatorCfg.Name, err)
 		}
@@ -78,16 +79,18 @@ func newFilteredStore(cfg TrustStoreConfig, transport http.RoundTripper, trustOb
 }
 
 // newValidator creates a validator from configuration
-func newValidator(cfg ValidatorConfig, transport http.RoundTripper, trustObs trust.TrustObserver) (trust.Validator, error) {
+func newValidator(name string, cfg ValidatorConfig, transport http.RoundTripper, trustObs trust.TrustObserver) (trust.Validator, error) {
 	switch cfg.Type {
 	case "jwt_validator":
 		return newJWTValidator(cfg, transport, trustObs)
 	case "json_validator":
 		return newJSONValidator(cfg)
+	case "lua_validator":
+		return newLuaValidator(name, cfg, transport, trustObs)
 	case "stub_validator":
 		return newStubValidator(cfg)
 	default:
-		return nil, fmt.Errorf("unknown validator type: %s (supported: jwt_validator, json_validator, stub_validator)", cfg.Type)
+		return nil, fmt.Errorf("unknown validator type: %s (supported: jwt_validator, json_validator, lua_validator, stub_validator)", cfg.Type)
 	}
 }
 
@@ -139,16 +142,112 @@ func newJSONValidator(cfg ValidatorConfig) (trust.Validator, error) {
 	), nil
 }
 
+func newLuaValidator(name string, cfg ValidatorConfig, transport http.RoundTripper, trustObs trust.TrustObserver) (trust.Validator, error) {
+	if name == "" {
+		return nil, fmt.Errorf("lua_validator requires name")
+	}
+
+	script, err := readScript(cfg.Script, cfg.ScriptFile)
+	if err != nil {
+		return nil, err
+	}
+	if script == "" {
+		return nil, fmt.Errorf("lua_validator requires either script or script_file")
+	}
+
+	credTypes, err := parseCredentialTypes(cfg.CredentialTypes)
+	if err != nil {
+		return nil, err
+	}
+	if len(credTypes) == 0 {
+		return nil, fmt.Errorf("lua_validator requires credential_types")
+	}
+
+	var configSource luaservices.ConfigSource
+	if cfg.Config != nil {
+		configSource = luaservices.NewMapConfigSource(cfg.Config)
+	}
+
+	var httpOptions []luaservices.HTTPServiceOption
+	if cfg.HTTPConfig != nil {
+		opts, err := buildHTTPOptions(cfg.HTTPConfig, transport)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build HTTP options: %w", err)
+		}
+		httpOptions = opts
+	} else if transport != nil {
+		httpOptions = []luaservices.HTTPServiceOption{luaservices.WithTransport(transport)}
+	}
+
+	opts := []trust.LuaValidatorOption{
+		trust.WithLuaConfigSource(configSource),
+		trust.WithLuaHTTPOptions(httpOptions...),
+		trust.WithLuaValidatorObserver(trustObs),
+	}
+
+	var validator trust.Validator
+	if cachingEnabled(cfg.Caching) {
+		validator, err = trust.NewCacheableLuaValidator(name, script, credTypes, opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create cacheable lua validator: %w", err)
+		}
+	} else {
+		validator, err = trust.NewLuaValidator(name, script, credTypes, opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create lua validator: %w", err)
+		}
+	}
+
+	if cfg.Caching != nil {
+		return wrapValidatorWithCaching(name, validator, *cfg.Caching, trustObs)
+	}
+
+	return validator, nil
+}
+
+func wrapValidatorWithCaching(name string, validator trust.Validator, cfg CachingConfig, obs trust.TrustObserver) (trust.Validator, error) {
+	cacheTTL, err := parseCacheTTL(&cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	switch cfg.Type {
+	case "in_memory":
+		return trust.NewInMemoryCachingValidator(name, validator, obs,
+			trust.WithValidatorCacheTTL(cacheTTL),
+		), nil
+
+	case "distributed":
+		groupName := cfg.GroupName
+		if groupName == "" {
+			groupName = "validator:" + name
+		}
+
+		cacheSize := cfg.CacheSize
+		if cacheSize == 0 {
+			cacheSize = 64 << 20
+		}
+
+		return trust.NewDistributedCachingValidator(name, validator, obs, trust.DistributedValidatorCachingConfig{
+			GroupName:      groupName,
+			CacheSizeBytes: cacheSize,
+			CacheTTL:       cacheTTL,
+		}), nil
+
+	case "none", "":
+		return validator, nil
+
+	default:
+		return nil, fmt.Errorf("unknown validator caching type: %s (supported: in_memory, distributed, none)", cfg.Type)
+	}
+}
+
 // newStubValidator creates a stub validator
 func newStubValidator(cfg ValidatorConfig) (trust.Validator, error) {
 	// Convert credential type strings to CredentialType
-	var credTypes []trust.CredentialType
-	for _, typeStr := range cfg.CredentialTypes {
-		credType, err := parseCredentialType(typeStr)
-		if err != nil {
-			return nil, err
-		}
-		credTypes = append(credTypes, credType)
+	credTypes, err := parseCredentialTypes(cfg.CredentialTypes)
+	if err != nil {
+		return nil, err
 	}
 
 	// If no types specified, default to bearer
@@ -181,6 +280,18 @@ func newStubValidator(cfg ValidatorConfig) (trust.Validator, error) {
 	}
 
 	return validator.WithResult(result), nil
+}
+
+func parseCredentialTypes(typeStrings []string) ([]trust.CredentialType, error) {
+	var credTypes []trust.CredentialType
+	for _, typeStr := range typeStrings {
+		credType, err := parseCredentialType(typeStr)
+		if err != nil {
+			return nil, err
+		}
+		credTypes = append(credTypes, credType)
+	}
+	return credTypes, nil
 }
 
 // newValidatorFilter creates a validator filter from configuration
@@ -234,7 +345,9 @@ func parseCredentialType(s string) (trust.CredentialType, error) {
 		return trust.CredentialTypeJSON, nil
 	case "mtls":
 		return trust.CredentialTypeMTLS, nil
+	case "oidc":
+		return trust.CredentialTypeOIDC, nil
 	default:
-		return "", fmt.Errorf("unknown credential type: %s (supported: bearer, jwt, json, mtls)", s)
+		return "", fmt.Errorf("unknown credential type: %s (supported: bearer, jwt, json, mtls, oidc)", s)
 	}
 }

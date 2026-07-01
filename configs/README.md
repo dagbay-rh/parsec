@@ -181,7 +181,7 @@ trust_store:
   type: stub_store  # or "filtered_store"
   validators:
     - name: my-validator  # Required for filtered_store
-      type: jwt_validator  # jwt_validator, json_validator, stub_validator
+      type: jwt_validator  # jwt_validator, json_validator, lua_validator, stub_validator
       issuer: "https://idp.example.com"
       jwks_url: "https://idp.example.com/.well-known/jwks.json"
       trust_domain: "example.com"
@@ -192,7 +192,65 @@ trust_store:
 
 - `jwt_validator` - Validates JWT tokens with JWKS
 - `json_validator` - Validates unsigned JSON credentials
+- `lua_validator` - Validates credentials with a Lua `validate(input)` script
 - `stub_validator` - Testing validator (accepts any non-empty token)
+
+**Lua Validator Example:**
+
+```yaml
+trust_store:
+  type: filtered_store
+  validators:
+    - name: introspection-validator
+      type: lua_validator
+      credential_types: ["bearer"]
+      script: |
+        function validate(input)
+          local resp = http.post(
+            config.get("introspection_url"),
+            json.encode({token = input.credential.token}),
+            {["Content-Type"] = "application/json"}
+          )
+          if resp.status ~= 200 then
+            return nil
+          end
+          local body = json.decode(resp.body)
+          if not body.active then
+            return nil
+          end
+          return {
+            subject = body.sub,
+            issuer = config.get("issuer"),
+            trust_domain = config.get("trust_domain"),
+            claims = body,
+            expires_at = body.exp,
+            audience = body.aud,
+            scope = body.scope
+          }
+        end
+
+        function validate_cache_key(input)
+          return {
+            credential = {
+              type = input.credential.type,
+              token = input.credential.token
+            }
+          }
+        end
+      config:
+        introspection_url: "https://idp.example.com/introspect"
+        issuer: "https://idp.example.com"
+        trust_domain: "example.com"
+      http:
+        timeout: 5s
+      caching:
+        type: in_memory
+        ttl: 5m
+```
+
+Lua validators with caching must define `validate_cache_key(input)`. For
+distributed caching, the returned table must include enough credential material
+to rerun `validate(input)` on a peer cache miss.
 
 **Filtered Store** (optional):
 
@@ -273,6 +331,10 @@ data_sources:
 - `in_memory` - Local cache (single instance)
 - `distributed` - Groupcache-based distributed cache
 - `none` - No caching
+
+Lua data sources with caching must define `fetch_cache_key(input)`. The returned
+table is used as cache key material and must contain enough input to rerun
+`fetch(input)` on a distributed cache miss.
 
 ### Claim Mappers
 
@@ -516,4 +578,3 @@ Error: failed to parse config: ...
 - [Lua Data Sources](../internal/datasource/LUA_DATASOURCE.md)
 - [CEL Mappers](../internal/cel/README.md)
 - [Validator Filtering](../internal/trust/VALIDATOR_FILTERING.md)
-

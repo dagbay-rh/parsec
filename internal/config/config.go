@@ -129,7 +129,7 @@ type NamedValidatorConfig struct {
 // ValidatorConfig configures a credential validator
 type ValidatorConfig struct {
 	// Type selects the validator implementation
-	// Options: "jwt_validator", "json_validator", "stub_validator"
+	// Options: "jwt_validator", "json_validator", "lua_validator", "stub_validator"
 	Type string `koanf:"type"`
 
 	// JWT Validator fields
@@ -143,6 +143,13 @@ type ValidatorConfig struct {
 
 	// JSON Validator fields
 	// (TrustDomain is shared)
+
+	// Lua Validator fields
+	ScriptFile string         `koanf:"script_file"` // Path to Lua script
+	Script     string         `koanf:"script"`      // Inline Lua script (alternative to ScriptFile)
+	Config     map[string]any `koanf:"config"`      // Lua: values available to script via config.get()
+	HTTPConfig *HTTPConfig    `koanf:"http"`
+	Caching    *CachingConfig `koanf:"caching"`
 
 	// Stub Validator fields
 	CredentialTypes []string       `koanf:"credential_types"` // e.g., ["bearer", "jwt"]
@@ -182,15 +189,6 @@ type DataSourceConfig struct {
 	// HTTP configuration
 	HTTPConfig *HTTPConfig `koanf:"http"`
 
-	// CacheKeyFunc names the Lua global that implements cache key masking. When non-empty,
-	// the data source is built as datasource.CacheableLuaDataSource (script must define
-	// fetch and this function). Observer wiring matches a plain Lua data source.
-	CacheKeyFunc string `koanf:"cache_key_func"`
-
-	// LuaCacheTTL is a duration string (e.g. "5m") for CacheableLuaDataSource.CacheTTL.
-	// Empty uses the datasource package default when creating a cacheable Lua source.
-	LuaCacheTTL string `koanf:"lua_cache_ttl"`
-
 	// Caching configuration
 	Caching *CachingConfig `koanf:"caching"`
 }
@@ -207,8 +205,9 @@ type CachingConfig struct {
 	// Options: "in_memory", "distributed", "none"
 	Type string `koanf:"type"`
 
-	// TTL is the cache time-to-live
-	TTL string `koanf:"ttl"` // Duration string like "5m"
+	// TTL is the cache time-to-live (e.g. "5m"). Omit for the default (5m).
+	// Set to "0s" to cache indefinitely (no expiry).
+	TTL string `koanf:"ttl"`
 
 	// Distributed caching fields
 	GroupName string `koanf:"group_name"` // For groupcache
