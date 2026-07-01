@@ -31,7 +31,7 @@ fixtures:
   - type: http_rule
     request:
       method: POST
-      url: "https://registry-auth.example.com/registry-authorizer/v1/authorization"
+      url: "https://example.container-registry-authorizer.stage.api.redhat.com/v1/authorization"
       url_type: exact
     response:
       status: 200
@@ -54,7 +54,7 @@ trust_store:
       script_file: ./configs/scripts/registry_auth.lua
       credential_types: ["basic_auth"]
       config:
-        registry_url: "https://registry-auth.example.com/registry-authorizer/v1/authorization"
+        registry_url: "https://example.container-registry-authorizer.stage.api.redhat.com/v1/authorization"
         trust_domain: "registry.example.com"
         username_pattern: "^%d+|.+"
       caching:
