@@ -9,6 +9,7 @@ GOARCH?=$(shell $(GO) env GOARCH)
 GOBIN?=$(shell $(GO) env GOBIN)
 
 GOENV=GOOS=${GOOS} GOARCH=${GOARCH} GOEXPERIMENT=jsonv2
+GOTESTENV=GOEXPERIMENT=jsonv2
 GOBUILDFLAGS=-gcflags="all=-trimpath=${GOPATH}" -asmflags="all=-trimpath=${GOPATH}"
 
 IMAGE ?="quay.io/cloudservices/kessel-parsec"
@@ -61,7 +62,7 @@ clean:
 test:
 	@echo ""
 	@echo "Running tests."
-	@${GOENV} $(GO) test ./... -count=1 -race -short -covermode=atomic -coverprofile=coverage.txt
+	@${GOTESTENV} $(GO) test ./... -count=1 -race -short -covermode=atomic -coverprofile=coverage.txt
 	@echo "Overall test coverage:"
 	@$(GO) tool cover -func=coverage.txt | grep total: | awk '{print $$3}'
 
