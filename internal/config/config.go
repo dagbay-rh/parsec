@@ -151,8 +151,10 @@ type ValidatorConfig struct {
 	ScriptFile string         `koanf:"script_file"` // Path to Lua script
 	Script     string         `koanf:"script"`      // Inline Lua script (alternative to ScriptFile)
 	Config     map[string]any `koanf:"config"`      // Lua: values available to script via config.get()
-	HTTPConfig *HTTPConfig    `koanf:"http"`
 	Caching    *CachingConfig `koanf:"caching"`
+
+	// HTTP configuration (deprecated: use http_client or http_client_spec instead)
+	HTTPConfig *HTTPConfig `koanf:"http"`
 
 	// HTTPClient references a named HTTP client from the registry.
 	// Defaults to "default" when neither field is set.

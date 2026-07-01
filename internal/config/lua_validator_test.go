@@ -70,6 +70,42 @@ end
 	}
 }
 
+func TestNewTrustStore_LuaValidator_LegacyHTTPConfigMutuallyExclusiveWithHTTPClient(t *testing.T) {
+	t.Parallel()
+
+	const luaScript = `
+function validate(input)
+  return {
+    subject = "user",
+    issuer = "https://issuer.example.com",
+    trust_domain = "example.com",
+  }
+end
+`
+	_, err := NewTrustStore(TrustStoreConfig{
+		Type: "stub_store",
+		Validators: []NamedValidatorConfig{
+			{
+				Name: "lua-validator",
+				ValidatorConfig: ValidatorConfig{
+					Type:            "lua_validator",
+					Script:          luaScript,
+					CredentialTypes: []string{"bearer"},
+					HTTPClient:      "default",
+					HTTPConfig:      &HTTPConfig{Timeout: "5s"},
+				},
+			},
+		},
+	}, testHTTPRegistry(t), observer.NoOp())
+
+	if err == nil {
+		t.Fatal("expected error when both deprecated http and http_client are configured, got nil")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("expected 'mutually exclusive' error, got: %v", err)
+	}
+}
+
 func TestNewTrustStore_LuaValidator_InvalidCachingType(t *testing.T) {
 	t.Parallel()
 
