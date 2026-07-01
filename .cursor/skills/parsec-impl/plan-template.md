@@ -127,7 +127,7 @@ Per `docs/observer-pattern.md`.
 
 ### Observer Hierarchy
 
-```
+```text
 <PackageName>Observer              (package aggregate)
 ├── <Interface>Observer            (intermediate — if needed)
 │   └── <Implementation>Observer   (leaf)

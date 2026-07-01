@@ -1,16 +1,12 @@
 ---
 description: Remind about downstream app-interface secret sync when deploy/config files change
-globs: deploy/**,configs/**,internal/config/config.go,internal/config/issuers.go
+globs: deploy/**,configs/**,internal/config/**
 alwaysApply: false
 ---
 
 # Downstream Deployment Sync Required
 
-When modifying deployment templates or configuration schemas in this repo, the downstream **app-interface** secrets must also be updated.
-
-## Downstream locations
-
-- `app-interface` repo: `resources/insights-stage/parsec-stage/parsec-config.secret.yaml` (and equivalent prod paths)
+When modifying deployment templates or configuration schemas in this repo, the downstream **app-interface** artifacts must also be updated.
 
 ## What to check
 
