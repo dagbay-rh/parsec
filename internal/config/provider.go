@@ -368,6 +368,10 @@ func (p *Provider) AuthzCheckPolicy() (server.AuthzCheckPolicy, error) {
 
 	policyCfg := p.config.AuthzServer.Policy
 
+	if policyCfg.Type != "" && len(p.config.AuthzServer.TokenTypes) > 0 {
+		return nil, fmt.Errorf("authz_server.token_types and authz_server.policy are mutually exclusive; use policy.token_types instead")
+	}
+
 	switch policyCfg.Type {
 	case "":
 		// Legacy case predating the policy config.
@@ -385,15 +389,20 @@ func (p *Provider) AuthzCheckPolicy() (server.AuthzCheckPolicy, error) {
 		}
 		return server.NewStaticAuthenticatedPolicy(tokenTypes), nil
 	case "static_authenticated":
-		// Prevent ambiguity with legacy fallback path.
-		if len(p.config.AuthzServer.TokenTypes) > 0 {
-			return nil, fmt.Errorf("authz_server.token_types and authz_server.policy are mutually exclusive; use policy.token_types instead")
-		}
 		tokenTypes, err := buildTokenTypeSpecs(policyCfg.TokenTypes)
 		if err != nil {
 			return nil, err
 		}
 		return server.NewStaticAuthenticatedPolicy(tokenTypes), nil
+	case "optional_path":
+		tokenTypes, err := buildTokenTypeSpecs(policyCfg.TokenTypes)
+		if err != nil {
+			return nil, err
+		}
+		if len(policyCfg.OptionalPathPatterns) == 0 {
+			return nil, fmt.Errorf("optional_path authz check policy requires optional_path_patterns")
+		}
+		return server.NewOptionalPathAuthzPolicy(policyCfg.OptionalPathPatterns, tokenTypes)
 	default:
 		return nil, fmt.Errorf("unknown authz check policy type: %q", policyCfg.Type)
 	}

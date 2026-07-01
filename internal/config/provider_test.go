@@ -170,6 +170,19 @@ func TestProvider_AuthzCheckPolicy(t *testing.T) {
 			wantErr: "mutually exclusive",
 		},
 		{
+			name: "legacy token_types and optional_path policy config are mutually exclusive",
+			config: &Config{AuthzServer: &AuthzServerConfig{
+				Policy: AuthzCheckPolicyConfig{
+					Type:                 "optional_path",
+					OptionalPathPatterns: []string{`^/public$`},
+				},
+				TokenTypes: []TokenTypeConfig{
+					{Type: string(service.TokenTypeAccessToken), HeaderName: "Authorization"},
+				},
+			}},
+			wantErr: "mutually exclusive",
+		},
+		{
 			name: "policy section without type is an error",
 			config: &Config{AuthzServer: &AuthzServerConfig{
 				Policy: AuthzCheckPolicyConfig{
@@ -200,6 +213,41 @@ func TestProvider_AuthzCheckPolicy(t *testing.T) {
 				Policy: AuthzCheckPolicyConfig{Type: "opa"},
 			}},
 			wantErr: `unknown authz check policy type: "opa"`,
+		},
+		{
+			name: "optional_path policy with patterns uses optional path policy",
+			config: &Config{AuthzServer: &AuthzServerConfig{
+				Policy: AuthzCheckPolicyConfig{
+					Type: "optional_path",
+					OptionalPathPatterns: []string{
+						`^/api/[^/]+/v[0-9]+(\.[0-9]+)?/openapi.json$`,
+					},
+					TokenTypes: []TokenTypeConfig{
+						{Type: string(service.TokenTypeRHIdentity), HeaderName: "x-rh-identity"},
+					},
+				},
+			}},
+			wantTypes: []server.TokenTypeSpec{
+				{Type: service.TokenTypeRHIdentity, HeaderName: "x-rh-identity"},
+			},
+			wantAction: server.AuthzCheckIssue,
+		},
+		{
+			name: "optional_path policy without patterns is an error",
+			config: &Config{AuthzServer: &AuthzServerConfig{
+				Policy: AuthzCheckPolicyConfig{Type: "optional_path"},
+			}},
+			wantErr: "requires optional_path_patterns",
+		},
+		{
+			name: "optional_path policy with invalid pattern fails at startup",
+			config: &Config{AuthzServer: &AuthzServerConfig{
+				Policy: AuthzCheckPolicyConfig{
+					Type:                 "optional_path",
+					OptionalPathPatterns: []string{`[invalid`},
+				},
+			}},
+			wantErr: "optional_path_patterns[0]",
 		},
 		{
 			name: "token type validation: missing type",

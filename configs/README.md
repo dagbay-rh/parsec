@@ -160,6 +160,41 @@ authz_server:
 If not specified, defaults to `static_authenticated` issuing a transaction
 token in the `Transaction-Token` header.
 
+**Policy types:**
+
+- `static_authenticated` — denies anonymous subjects; issues configured token types for authenticated subjects
+- `optional_path` — allows anonymous access on configured URL path patterns; issues tokens for authenticated subjects
+
+#### Optional authentication (`optional_path` policy)
+
+Use `type: optional_path` with `optional_path_patterns` to allow unauthenticated access
+on specific URL paths (e.g. OpenAPI specs, public static assets). On matching
+paths, anonymous requests are allowed without issuing tokens; authenticated
+requests still receive configured token headers (e.g. `x-rh-identity`). All other
+paths require authentication.
+
+Requests with invalid or malformed credentials are rejected before the policy
+runs. Optional-auth applies only when no subject credential is present.
+
+Patterns use [RE2](https://github.com/google/re2/wiki/Syntax) regex syntax. In
+YAML, escape backslashes for literal dots (`\\.`). Query strings are stripped
+from the request path before matching.
+
+```yaml
+authz_server:
+  policy:
+    type: optional_path
+    optional_path_patterns:
+      - "^/api/[^/]+/v[0-9]+(\\.[0-9]+)?/openapi.json$"
+      - "^/api/pulp/api/v3/status/$"
+      # See configs/examples/parsec-optional-auth.yaml for the full 3scale list
+    token_types:
+      - type: "urn:redhat:params:oauth:token-type:rh-identity"
+        header_name: "x-rh-identity"
+```
+
+`optional_path_patterns` is required for `type: optional_path`.
+
 ### Exchange Server
 
 Configure the token exchange server behavior:

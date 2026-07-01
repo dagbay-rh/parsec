@@ -1,0 +1,36 @@
+# Minimal config to verify CEL optional-auth policy locally (stub trust store)
+
+server:
+  grpc_port: 19090
+  http_port: 18080
+
+observability:
+  type: noop
+
+trust_domain: "parsec.verify.test"
+
+exchange_server:
+  claims_filter:
+    type: stub
+
+trust_store:
+  type: stub_store
+  validators:
+    - name: stub-bearer
+      type: stub_validator
+
+issuers:
+  - token_type: "urn:redhat:params:oauth:token-type:rh-identity"
+    type: unsigned
+    claim_mappers:
+      - type: passthrough
+
+authz_server:
+  policy:
+    type: optional_path
+    optional_path_patterns:
+      - "^/api/[^/]+/v[0-9]+(\\.[0-9]+)?/openapi.json$"
+      - "^/api/distributors/docs$"
+    token_types:
+      - type: "urn:redhat:params:oauth:token-type:rh-identity"
+        header_name: "x-rh-identity"

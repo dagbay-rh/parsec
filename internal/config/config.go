@@ -64,12 +64,16 @@ type AuthzServerConfig struct {
 // AuthzCheckPolicyConfig configures the authz check policy.
 type AuthzCheckPolicyConfig struct {
 	// Type selects the policy implementation.
-	// Options: "static_authenticated" (default)
+	// Options: "static_authenticated" (default), "optional_path"
 	Type string `koanf:"type"`
 
 	// TokenTypes specifies which token types to issue and their headers.
-	// Used by the "static_authenticated" policy type.
+	// Used when the policy issues tokens (static_authenticated or optional_path returning "issue").
 	TokenTypes []TokenTypeConfig `koanf:"token_types"`
+
+	// OptionalPathPatterns is a list of RE2 regexes for optional-auth path matching.
+	// Used by the "optional_path" policy type.
+	OptionalPathPatterns []string `koanf:"optional_path_patterns"`
 }
 
 // CredentialSourceConfig configures a credential extraction source

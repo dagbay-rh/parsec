@@ -61,7 +61,9 @@ validation and token issuance. The policy receives `Principal` values for both
 subject and actor (which may be anonymous), plus the request attributes, and
 returns a decision: `issue`, `allow_without_issue`, or `deny`. The default
 `static_authenticated` policy denies anonymous subjects and issues statically
-configured token types for authenticated subjects.
+configured token types for authenticated subjects. With `type: optional_path` and
+`optional_path_patterns`, a native optional-path policy matches request paths
+against RE2 regexes to allow anonymous access on configured endpoints.
 
 ### 2. Token Exchange Service
 
@@ -107,6 +109,7 @@ parsec/
 │   │   ├── server.go               # gRPC + HTTP server setup
 │   │   ├── authz.go                # ext_authz implementation
 │   │   ├── authz_check_policy.go   # Authz check policy types & StaticAuthenticatedPolicy
+│   │   ├── authz_check_policy_optional_path.go  # Optional-path authz policy (RE2 patterns)
 │   │   ├── exchange.go             # Token exchange implementation
 │   │   └── form_marshaler.go       # RFC 8693 form encoding support
 │   │

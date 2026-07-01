@@ -1,0 +1,38 @@
+# Optional-auth path patterns for CAPS / gateway deployments
+#
+# Migrated from 3scale optional-auth configuration. Paths matching any pattern
+# allow anonymous access; authenticated requests still receive x-rh-identity.
+# All other paths require authentication.
+
+authz_server:
+  policy:
+    type: optional_path
+    optional_path_patterns:
+      - "^/r/insights/platform/[^/]+/v[0-9]+(\\.[0-9]+)?/openapi.json$"
+      - "^/api/[^/]+/v[0-9]+(\\.[0-9]+)?/openapi.json$"
+      - "^/api/approval/v[0-9]+(\\.[0-9]+)?/stageaction/[^/]+$"
+      - "^/api/insights/v[0-9]+(\\.[0-9]+)?/kcs/.*$"
+      - "^/api/approval/static/.*$"
+      - "^/api/commit-tracker/github$"
+      - "^/api/cloudigrade/v2/azure-offer-template/?$"
+      - "^/api/vmaas/.*$"
+      - "^/api/tower-analytics/v[0-9]+(\\.[0-9]+)?/generate_pdf/.*$"
+      - "^/api/insights-results-aggregator/v[0-9]+(\\.[0-9]+)?/info/?$"
+      - "^/api/provisioning/v[0-9]+(\\.[0-9]+)?/azure_offering_template$"
+      - "^/api/chrome-service/v[0-9]+(\\.[0-9]+)?/static/.*$"
+      - "^/api/cost-management/v[0-9]+(\\.[0-9]+)?/recommendations/openshift/openapi.json$"
+      - "^/api/content-sources/v[0-9]+(\\.[0-9]+)?/repository_gpg_key/[A-Za-z0-9]{8}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{12}$"
+      - "^/api/pulp/api/v3/status/$"
+      - "^/api/pulp/api/v3/docs/api.json$"
+      - "^/api/pulp-content/public-.*$"
+      - "^/api/pulp/public-.*$"
+      - "^/api/migration-assessment/.*$"
+      - "^/api/migration-advisor-dev/.*$"
+      - "^/api/pypi/public-.*$"
+      - "^/api/distributors/.*/v[0-9]/openapi.json$"
+      - "^/api/distributors/.*/v[0-9]/docs$"
+      - "^/api/distributors/openapi.json$"
+      - "^/api/distributors/docs$"
+    token_types:
+      - type: "urn:redhat:params:oauth:token-type:rh-identity"
+        header_name: "x-rh-identity"
