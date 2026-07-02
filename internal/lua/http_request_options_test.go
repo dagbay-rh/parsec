@@ -37,12 +37,15 @@ func TestHTTPService_WithRequestOptions(t *testing.T) {
 	defer L.Close()
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	service := NewHTTPService(context.Background(), client,
+	service, err := NewHTTPService(context.Background(), client,
 		WithRequestOptions(func(req *http.Request) error {
 			req.Header.Set("Authorization", "Bearer auto-added-token")
 			return nil
 		}),
 	)
+	if err != nil {
+		t.Fatalf("failed to create http service: %v", err)
+	}
 	service.Register(L)
 
 	// Lua script adds its own custom header
@@ -76,11 +79,14 @@ func TestHTTPService_RequestOptionsError(t *testing.T) {
 	defer L.Close()
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	service := NewHTTPService(context.Background(), client,
+	service, err := NewHTTPService(context.Background(), client,
 		WithRequestOptions(func(req *http.Request) error {
 			return http.ErrServerClosed
 		}),
 	)
+	if err != nil {
+		t.Fatalf("failed to create http service: %v", err)
+	}
 	service.Register(L)
 
 	script := `
@@ -122,7 +128,7 @@ func TestHTTPService_RequestOptionsModifyURL(t *testing.T) {
 	defer L.Close()
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	service := NewHTTPService(context.Background(), client,
+	service, err := NewHTTPService(context.Background(), client,
 		WithRequestOptions(func(req *http.Request) error {
 			q := req.URL.Query()
 			q.Add("api_key", "secret123")
@@ -130,6 +136,9 @@ func TestHTTPService_RequestOptionsModifyURL(t *testing.T) {
 			return nil
 		}),
 	)
+	if err != nil {
+		t.Fatalf("failed to create http service: %v", err)
+	}
 	service.Register(L)
 
 	script := `
@@ -171,12 +180,15 @@ func TestHTTPService_RequestOptionsAllMethods(t *testing.T) {
 	defer L.Close()
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	service := NewHTTPService(context.Background(), client,
+	service, err := NewHTTPService(context.Background(), client,
 		WithRequestOptions(func(req *http.Request) error {
 			req.Header.Set("Authorization", "Bearer token")
 			return nil
 		}),
 	)
+	if err != nil {
+		t.Fatalf("failed to create http service: %v", err)
+	}
 	service.Register(L)
 
 	// Test GET
