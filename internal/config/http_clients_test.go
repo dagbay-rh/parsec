@@ -1,7 +1,16 @@
 package config
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -187,19 +196,15 @@ func TestResolveHTTPClient_DefaultFallback(t *testing.T) {
 	}
 }
 
-func TestResolveHTTPClient_InlinePrioritizedOverName(t *testing.T) {
+func TestResolveHTTPClient_NameAndSpecMutuallyExclusive(t *testing.T) {
 	registry, _ := NewHTTPClientRegistry([]HTTPClientConfig{
 		{Name: "named", HTTPClientSpec: HTTPClientSpec{Timeout: "99s"}},
 	}, nil)
 
 	spec := &HTTPClientSpec{Timeout: "1s"}
-	client, err := resolveHTTPClient("named", spec, nil, registry)
-	if err != nil {
-		t.Fatalf("resolveHTTPClient error: %v", err)
-	}
-	// Inline spec takes priority
-	if client.Timeout != 1*time.Second {
-		t.Errorf("timeout = %v, want 1s (inline spec should win)", client.Timeout)
+	_, err := resolveHTTPClient("named", spec, nil, registry)
+	if err == nil {
+		t.Fatal("expected error when both http_client and http_client_spec are set")
 	}
 }
 
@@ -299,4 +304,100 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+func TestBuildCertSource_File_MissingCertPathErrors(t *testing.T) {
+	dir := t.TempDir()
+	_, keyPath := generateSelfSignedCert(t, dir)
+
+	_, err := buildCertSource(CertSourceConfig{
+		Type: "file",
+		Cert: filepath.Join(dir, "does-not-exist.pem"),
+		Key:  keyPath,
+	})
+	if err == nil {
+		t.Fatal("expected error for missing cert file")
+	}
+}
+
+func TestBuildCertSource_File_MissingKeyPathErrors(t *testing.T) {
+	dir := t.TempDir()
+	certPath, _ := generateSelfSignedCert(t, dir)
+
+	_, err := buildCertSource(CertSourceConfig{
+		Type: "file",
+		Cert: certPath,
+		Key:  filepath.Join(dir, "does-not-exist.pem"),
+	})
+	if err == nil {
+		t.Fatal("expected error for missing key file")
+	}
+}
+
+func TestBuildCertSource_File_MismatchedPairErrors(t *testing.T) {
+	dir1 := t.TempDir()
+	dir2 := t.TempDir()
+	certPath, _ := generateSelfSignedCert(t, dir1)
+	_, keyPath := generateSelfSignedCert(t, dir2)
+
+	_, err := buildCertSource(CertSourceConfig{
+		Type: "file",
+		Cert: certPath,
+		Key:  keyPath,
+	})
+	if err == nil {
+		t.Fatal("expected error for mismatched cert/key pair")
+	}
+}
+
+func TestBuildCertSource_File_ValidPairSucceeds(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := generateSelfSignedCert(t, dir)
+
+	cs, err := buildCertSource(CertSourceConfig{
+		Type: "file",
+		Cert: certPath,
+		Key:  keyPath,
+	})
+	if err != nil {
+		t.Fatalf("buildCertSource() error: %v", err)
+	}
+	if cs == nil {
+		t.Fatal("expected non-nil CertSource")
+	}
+}
+
+func generateSelfSignedCert(t *testing.T, dir string) (certPath, keyPath string) {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "test"},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("failed to create certificate: %v", err)
+	}
+
+	certPath = filepath.Join(dir, "cert.pem")
+	keyPath = filepath.Join(dir, "key.pem")
+
+	certFile, _ := os.Create(certPath)
+	_ = pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	_ = certFile.Close()
+
+	keyBytes, _ := x509.MarshalECPrivateKey(key)
+	keyFile, _ := os.Create(keyPath)
+	_ = pem.Encode(keyFile, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
+	_ = keyFile.Close()
+
+	return certPath, keyPath
 }

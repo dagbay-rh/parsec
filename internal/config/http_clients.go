@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"time"
@@ -55,9 +56,10 @@ func NewHTTPClientRegistry(cfgs []HTTPClientConfig, fixtureTransport http.RoundT
 //     discarding the setting.
 //  4. Otherwise, resolve "default" from the registry.
 //
-// legacyHTTP is mutually exclusive with httpClientName/httpClientSpec: since
-// it's ambiguous which the caller intended, that's rejected as a config error
-// rather than silently picking one.
+// httpClientName and httpClientSpec are mutually exclusive with each other,
+// and legacyHTTP is mutually exclusive with both: since it's ambiguous which
+// the caller intended, that's rejected as a config error rather than silently
+// picking one.
 func resolveHTTPClient(httpClientName string, httpClientSpec *HTTPClientSpec, legacyHTTP *HTTPConfig, registry *httpclient.Registry) (*http.Client, error) {
 	if registry == nil {
 		return nil, fmt.Errorf("http client registry is required but was not configured")
@@ -65,6 +67,10 @@ func resolveHTTPClient(httpClientName string, httpClientSpec *HTTPClientSpec, le
 
 	if legacyHTTP != nil && (httpClientName != "" || httpClientSpec != nil) {
 		return nil, fmt.Errorf("http (deprecated) is mutually exclusive with http_client/http_client_spec; use http_client_spec instead")
+	}
+
+	if httpClientName != "" && httpClientSpec != nil {
+		return nil, fmt.Errorf("http_client and http_client_spec are mutually exclusive; use http_client_spec for an inline client")
 	}
 
 	if httpClientSpec != nil {
@@ -136,6 +142,11 @@ func buildCertSource(cfg CertSourceConfig) (httpclient.CertSource, error) {
 		}
 		if cfg.Key == "" {
 			return nil, fmt.Errorf("client_cert_source[file]: key path is required")
+		}
+		// Load eagerly to fail startup on a missing/mismatched cert-key pair
+		// rather than surfacing an opaque failure on the first TLS handshake.
+		if _, err := tls.LoadX509KeyPair(cfg.Cert, cfg.Key); err != nil {
+			return nil, fmt.Errorf("client_cert_source[file]: failed to load cert/key pair (cert=%q, key=%q): %w", cfg.Cert, cfg.Key, err)
 		}
 		return httpclient.NewFileCertSource(cfg.Cert, cfg.Key), nil
 	default:
