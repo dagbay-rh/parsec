@@ -11,6 +11,16 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
+func TestNewHTTPService_NilClientRejected(t *testing.T) {
+	service, err := NewHTTPService(context.Background(), nil)
+	if err == nil {
+		t.Fatal("expected error for nil client, got nil")
+	}
+	if service != nil {
+		t.Errorf("expected nil service on error, got %+v", service)
+	}
+}
+
 func TestHTTPService_Get(t *testing.T) {
 	// Create a test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -30,7 +40,10 @@ func TestHTTPService_Get(t *testing.T) {
 	defer L.Close()
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	service := NewHTTPService(context.Background(), client)
+	service, err := NewHTTPService(context.Background(), client)
+	if err != nil {
+		t.Fatalf("failed to create http service: %v", err)
+	}
 	service.Register(L)
 
 	script := `
@@ -68,7 +81,10 @@ func TestHTTPService_GetWithHeaders(t *testing.T) {
 	defer L.Close()
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	service := NewHTTPService(context.Background(), client)
+	service, err := NewHTTPService(context.Background(), client)
+	if err != nil {
+		t.Fatalf("failed to create http service: %v", err)
+	}
 	service.Register(L)
 
 	script := `
@@ -121,7 +137,10 @@ func TestHTTPService_Post(t *testing.T) {
 	defer L.Close()
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	service := NewHTTPService(context.Background(), client)
+	service, err := NewHTTPService(context.Background(), client)
+	if err != nil {
+		t.Fatalf("failed to create http service: %v", err)
+	}
 	service.Register(L)
 
 	// Also register JSON service for encoding
@@ -164,7 +183,10 @@ func TestHTTPService_Request(t *testing.T) {
 	defer L.Close()
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	service := NewHTTPService(context.Background(), client)
+	service, err := NewHTTPService(context.Background(), client)
+	if err != nil {
+		t.Fatalf("failed to create http service: %v", err)
+	}
 	service.Register(L)
 
 	script := `
@@ -189,7 +211,10 @@ func TestHTTPService_GetError(t *testing.T) {
 	defer L.Close()
 
 	client := &http.Client{Timeout: 1 * time.Second}
-	service := NewHTTPService(context.Background(), client)
+	service, err := NewHTTPService(context.Background(), client)
+	if err != nil {
+		t.Fatalf("failed to create http service: %v", err)
+	}
 	service.Register(L)
 
 	// Use an invalid URL
@@ -239,7 +264,10 @@ func TestHTTPService_StatusCodes(t *testing.T) {
 			defer L.Close()
 
 			client := &http.Client{Timeout: 5 * time.Second}
-			service := NewHTTPService(context.Background(), client)
+			service, err := NewHTTPService(context.Background(), client)
+			if err != nil {
+				t.Fatalf("failed to create http service: %v", err)
+			}
 			service.Register(L)
 
 			script := `
@@ -279,7 +307,10 @@ func TestHTTPService_ResponseHeaders(t *testing.T) {
 	defer L.Close()
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	service := NewHTTPService(context.Background(), client)
+	service, err := NewHTTPService(context.Background(), client)
+	if err != nil {
+		t.Fatalf("failed to create http service: %v", err)
+	}
 	service.Register(L)
 
 	script := `
@@ -333,7 +364,10 @@ func TestHTTPService_PropagatesContext(t *testing.T) {
 			ctx := context.WithValue(context.Background(), ctxKey{}, "trace-123")
 
 			client := &http.Client{Timeout: 5 * time.Second, Transport: ct}
-			svc := NewHTTPService(ctx, client)
+			svc, err := NewHTTPService(ctx, client)
+			if err != nil {
+				t.Fatalf("failed to create http service: %v", err)
+			}
 			L := lua.NewState()
 			defer L.Close()
 			svc.Register(L)
@@ -386,7 +420,10 @@ func TestHTTPService_CancelledContextReturnsError(t *testing.T) {
 			cancel()
 
 			client := &http.Client{Timeout: 5 * time.Second}
-			svc := NewHTTPService(ctx, client)
+			svc, err := NewHTTPService(ctx, client)
+			if err != nil {
+				t.Fatalf("failed to create http service: %v", err)
+			}
 			L := lua.NewState()
 			defer L.Close()
 			svc.Register(L)
@@ -429,11 +466,14 @@ func TestHTTPService_RequestOptionsError_AllMethods(t *testing.T) {
 	for _, tt := range methods {
 		t.Run(tt.name, func(t *testing.T) {
 			client := &http.Client{Timeout: 5 * time.Second}
-			svc := NewHTTPService(context.Background(), client,
+			svc, err := NewHTTPService(context.Background(), client,
 				WithRequestOptions(func(req *http.Request) error {
 					return http.ErrServerClosed
 				}),
 			)
+			if err != nil {
+				t.Fatalf("failed to create http service: %v", err)
+			}
 			L := lua.NewState()
 			defer L.Close()
 			svc.Register(L)
@@ -467,7 +507,10 @@ func TestHTTPService_Request_NoBody(t *testing.T) {
 	defer L.Close()
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	svc := NewHTTPService(context.Background(), client)
+	svc, err := NewHTTPService(context.Background(), client)
+	if err != nil {
+		t.Fatalf("failed to create http service: %v", err)
+	}
 	svc.Register(L)
 
 	script := `
@@ -499,7 +542,10 @@ func TestHTTPService_Request_WithHeaders(t *testing.T) {
 	defer L.Close()
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	svc := NewHTTPService(context.Background(), client)
+	svc, err := NewHTTPService(context.Background(), client)
+	if err != nil {
+		t.Fatalf("failed to create http service: %v", err)
+	}
 	svc.Register(L)
 
 	script := `

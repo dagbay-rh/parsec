@@ -37,8 +37,13 @@ type HTTPService struct {
 // NewHTTPService creates a new HTTP service. ctx is required and propagated
 // to every outgoing request, enabling cancellation, tracing, and request-ID
 // propagation. client is the fully-configured HTTP client (auth, timeout,
-// transport already set). Optional settings are provided via HTTPServiceOption.
-func NewHTTPService(ctx context.Context, client *http.Client, opts ...HTTPServiceOption) *HTTPService {
+// transport already set) and must not be nil. Optional settings are provided
+// via HTTPServiceOption.
+func NewHTTPService(ctx context.Context, client *http.Client, opts ...HTTPServiceOption) (*HTTPService, error) {
+	if client == nil {
+		return nil, fmt.Errorf("client is required")
+	}
+
 	var cfg httpServiceConfig
 	for _, opt := range opts {
 		opt(&cfg)
@@ -48,7 +53,7 @@ func NewHTTPService(ctx context.Context, client *http.Client, opts ...HTTPServic
 		ctx:            ctx,
 		client:         client,
 		requestOptions: cfg.requestOptions,
-	}
+	}, nil
 }
 
 // Register adds the HTTP service to the Lua state

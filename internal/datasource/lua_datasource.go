@@ -130,7 +130,11 @@ func (ds *LuaDataSource) Fetch(ctx context.Context, input *service.DataSourceInp
 	if ds.requestOptions != nil {
 		httpOpts = append(httpOpts, luaservices.WithRequestOptions(ds.requestOptions))
 	}
-	httpService := luaservices.NewHTTPService(ctx, ds.httpClient, httpOpts...)
+	httpService, err := luaservices.NewHTTPService(ctx, ds.httpClient, httpOpts...)
+	if err != nil {
+		p.ScriptExecutionFailed(err)
+		return nil, fmt.Errorf("failed to create http service: %w", err)
+	}
 	httpService.Register(L)
 
 	configService := luaservices.NewConfigService(ds.configSource)

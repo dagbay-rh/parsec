@@ -198,7 +198,11 @@ func (v *LuaValidator) Validate(ctx context.Context, credential Credential) (*Re
 	if v.requestOptions != nil {
 		httpOpts = append(httpOpts, luaservices.WithRequestOptions(v.requestOptions))
 	}
-	httpService := luaservices.NewHTTPService(ctx, v.httpClient, httpOpts...)
+	httpService, err := luaservices.NewHTTPService(ctx, v.httpClient, httpOpts...)
+	if err != nil {
+		p.ScriptExecutionFailed(err)
+		return nil, fmt.Errorf("failed to create http service: %w", err)
+	}
 	httpService.Register(L)
 
 	configService := luaservices.NewConfigService(v.configSource)

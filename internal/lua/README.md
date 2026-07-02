@@ -139,12 +139,12 @@ Each service instance can be registered to multiple Lua states. However, Lua sta
 ### HTTP Service
 
 ```go
-// Simple usage with a pre-configured HTTP client
+// Simple usage with a pre-configured HTTP client (must not be nil)
 client := &http.Client{Timeout: 30 * time.Second}
-httpService := lua.NewHTTPService(ctx, client)
+httpService, err := lua.NewHTTPService(ctx, client)
 
 // With request options (per-request hooks applied before sending)
-httpService := lua.NewHTTPService(ctx, client,
+httpService, err := lua.NewHTTPService(ctx, client,
     lua.WithRequestOptions(func(req *http.Request) error {
         req.Header.Set("X-Tenant-ID", tenantFromContext(ctx))
         return nil

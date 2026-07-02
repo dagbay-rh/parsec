@@ -334,7 +334,7 @@ http_clients:
   - `key` - Path to client private key PEM (file type)
 
 **Consumer reference:** Data sources and validators can reference a client by name
-(`http_client: "user-api"`) or define one inline (`http_client_spec: {timeout: "5s"}`).
+(`http_client: "user-api"`) or define one inline (`http: {timeout: "5s"}`).
 When neither is set, the `"default"` client is used.
 
 ### Data Sources
@@ -361,7 +361,7 @@ data_sources:
   - name: partner_data
     type: lua
     script_file: ./scripts/partner.lua
-    http_client_spec:  # Inline client definition (same schema, no name)
+    http:  # Inline client definition (same schema, no name)
       timeout: "5s"
       http_auth:
         type: "bearer"
@@ -371,7 +371,7 @@ data_sources:
 **HTTP Client Configuration:**
 
 - `http_client` - Name of a client from the `http_clients` registry
-- `http_client_spec` - Inline client definition (mutually exclusive with `http_client`)
+- `http` - Inline client definition (mutually exclusive with `http_client`)
 - When neither is set, the `"default"` client is used
 
 **Caching Types:**

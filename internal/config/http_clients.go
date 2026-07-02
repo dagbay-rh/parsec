@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"time"
@@ -51,11 +52,23 @@ func NewHTTPClientRegistry(cfgs []HTTPClientConfig, fixtureTransport http.RoundT
 //  1. If httpClientSpec is set, build an inline (anonymous) client via the registry.
 //  2. If httpClientName is set, look it up by name.
 //  3. Otherwise, resolve "default" from the registry.
+//
+// httpClientName and httpClientSpec are mutually exclusive: since it's
+// ambiguous which the caller intended, that's rejected as a config error
+// rather than silently picking one.
 func resolveHTTPClient(httpClientName string, httpClientSpec *HTTPClientSpec, registry *httpclient.Registry) (*http.Client, error) {
+	if registry == nil {
+		return nil, fmt.Errorf("http client registry is required but was not configured")
+	}
+
+	if httpClientName != "" && httpClientSpec != nil {
+		return nil, fmt.Errorf("http_client and http are mutually exclusive; use http for an inline client")
+	}
+
 	if httpClientSpec != nil {
 		spec, err := resolveClientSpec(*httpClientSpec)
 		if err != nil {
-			return nil, fmt.Errorf("inline http_client_spec: %w", err)
+			return nil, fmt.Errorf("inline http client spec: %w", err)
 		}
 		return registry.Build(spec)
 	}
@@ -113,6 +126,11 @@ func buildCertSource(cfg CertSourceConfig) (httpclient.CertSource, error) {
 		}
 		if cfg.Key == "" {
 			return nil, fmt.Errorf("client_cert_source[file]: key path is required")
+		}
+		// Load eagerly to fail startup on a missing/mismatched cert-key pair
+		// rather than surfacing an opaque failure on the first TLS handshake.
+		if _, err := tls.LoadX509KeyPair(cfg.Cert, cfg.Key); err != nil {
+			return nil, fmt.Errorf("client_cert_source[file]: failed to load cert/key pair (cert=%q, key=%q): %w", cfg.Cert, cfg.Key, err)
 		}
 		return httpclient.NewFileCertSource(cfg.Cert, cfg.Key), nil
 	default:
