@@ -88,18 +88,20 @@ func (r *Registry) build(spec ClientSpec) (*http.Client, error) {
 		// Hermetic mode: fixture transport overrides everything
 		base = r.fixtureTransport
 	} else if spec.CertSource != nil {
-		// mTLS: dedicated transport with GetClientCertificate
-		base = &http.Transport{
-			TLSClientConfig: &tls.Config{
-				GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
-					cert, err := spec.CertSource.Certificate()
-					if err != nil {
-						return nil, err
-					}
-					return &cert, nil
-				},
+		// mTLS: clone the default transport so we keep standard behavior
+		// (proxy handling, HTTP/2, idle connection reuse, timeouts) and
+		// only add the client-certificate callback.
+		mtlsTransport := http.DefaultTransport.(*http.Transport).Clone()
+		mtlsTransport.TLSClientConfig = &tls.Config{
+			GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+				cert, err := spec.CertSource.Certificate()
+				if err != nil {
+					return nil, err
+				}
+				return &cert, nil
 			},
 		}
+		base = mtlsTransport
 	} else {
 		base = http.DefaultTransport
 	}

@@ -216,6 +216,43 @@ func TestRegistry_CertSourceGetsOwnTransport(t *testing.T) {
 	}
 }
 
+func TestRegistry_CertSourcePreservesDefaultTransportSettings(t *testing.T) {
+	certDir := t.TempDir()
+	certPath, keyPath := generateSelfSignedCert(t, certDir)
+
+	cs := NewFileCertSource(certPath, keyPath)
+	r := NewRegistry(nil)
+
+	spec := ClientSpec{
+		Timeout:    5 * time.Second,
+		CertSource: cs,
+	}
+
+	client, err := r.Build(spec)
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("Transport type = %T, want *http.Transport", client.Transport)
+	}
+
+	defaultTransport := http.DefaultTransport.(*http.Transport)
+	if transport.Proxy == nil {
+		t.Error("expected Proxy to be inherited from http.DefaultTransport, got nil")
+	}
+	if transport.MaxIdleConns != defaultTransport.MaxIdleConns {
+		t.Errorf("MaxIdleConns = %d, want %d (inherited from http.DefaultTransport)", transport.MaxIdleConns, defaultTransport.MaxIdleConns)
+	}
+	if transport.IdleConnTimeout != defaultTransport.IdleConnTimeout {
+		t.Errorf("IdleConnTimeout = %v, want %v (inherited from http.DefaultTransport)", transport.IdleConnTimeout, defaultTransport.IdleConnTimeout)
+	}
+	if transport.TLSClientConfig == nil || transport.TLSClientConfig.GetClientCertificate == nil {
+		t.Fatal("expected TLSClientConfig.GetClientCertificate to be set")
+	}
+}
+
 func TestFileCertSource_LoadsCertificate(t *testing.T) {
 	certDir := t.TempDir()
 	certPath, keyPath := generateSelfSignedCert(t, certDir)
