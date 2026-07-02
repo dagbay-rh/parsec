@@ -82,10 +82,10 @@ func AnonymousResult() *Result {
 type CredentialType string
 
 const (
-	CredentialTypeBearer CredentialType = "bearer"
-	CredentialTypeJWT    CredentialType = "jwt"
-	CredentialTypeOIDC   CredentialType = "oidc"
-	CredentialTypeMTLS   CredentialType = "mtls"
+	CredentialTypeBearer    CredentialType = "bearer"
+	CredentialTypeJWT       CredentialType = "jwt"
+	CredentialTypeOIDC      CredentialType = "oidc"
+	CredentialTypeMTLS      CredentialType = "mtls"
 	CredentialTypeOAuth2    CredentialType = "oauth2"
 	CredentialTypeJSON      CredentialType = "json"
 	CredentialTypeBasicAuth CredentialType = "basic_auth"
