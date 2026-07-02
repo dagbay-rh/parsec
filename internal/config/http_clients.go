@@ -51,40 +51,24 @@ func NewHTTPClientRegistry(cfgs []HTTPClientConfig, fixtureTransport http.RoundT
 // Resolution order:
 //  1. If httpClientSpec is set, build an inline (anonymous) client via the registry.
 //  2. If httpClientName is set, look it up by name.
-//  3. If the deprecated legacyHTTP config is set, build an inline client from
-//     it (timeout only), preserving legacy behavior instead of silently
-//     discarding the setting.
-//  4. Otherwise, resolve "default" from the registry.
+//  3. Otherwise, resolve "default" from the registry.
 //
-// httpClientName and httpClientSpec are mutually exclusive with each other,
-// and legacyHTTP is mutually exclusive with both: since it's ambiguous which
-// the caller intended, that's rejected as a config error rather than silently
-// picking one.
-func resolveHTTPClient(httpClientName string, httpClientSpec *HTTPClientSpec, legacyHTTP *HTTPConfig, registry *httpclient.Registry) (*http.Client, error) {
+// httpClientName and httpClientSpec are mutually exclusive: since it's
+// ambiguous which the caller intended, that's rejected as a config error
+// rather than silently picking one.
+func resolveHTTPClient(httpClientName string, httpClientSpec *HTTPClientSpec, registry *httpclient.Registry) (*http.Client, error) {
 	if registry == nil {
 		return nil, fmt.Errorf("http client registry is required but was not configured")
 	}
 
-	if legacyHTTP != nil && (httpClientName != "" || httpClientSpec != nil) {
-		return nil, fmt.Errorf("http (deprecated) is mutually exclusive with http_client/http_client_spec; use http_client_spec instead")
-	}
-
 	if httpClientName != "" && httpClientSpec != nil {
-		return nil, fmt.Errorf("http_client and http_client_spec are mutually exclusive; use http_client_spec for an inline client")
+		return nil, fmt.Errorf("http_client and http are mutually exclusive; use http for an inline client")
 	}
 
 	if httpClientSpec != nil {
 		spec, err := resolveClientSpec(*httpClientSpec)
 		if err != nil {
-			return nil, fmt.Errorf("inline http_client_spec: %w", err)
-		}
-		return registry.Build(spec)
-	}
-
-	if httpClientName == "" && legacyHTTP != nil {
-		spec, err := resolveClientSpec(HTTPClientSpec{Timeout: legacyHTTP.Timeout})
-		if err != nil {
-			return nil, fmt.Errorf("http (deprecated): %w", err)
+			return nil, fmt.Errorf("inline http client spec: %w", err)
 		}
 		return registry.Build(spec)
 	}

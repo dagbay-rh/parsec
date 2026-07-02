@@ -120,7 +120,7 @@ func newJWTValidator(cfg ValidatorConfig, httpRegistry *httpclient.Registry, tru
 	}
 
 	// Resolve HTTP client from registry (same mechanism as Lua consumers)
-	client, err := resolveHTTPClient(cfg.HTTPClient, cfg.HTTPClientSpec, cfg.HTTPConfig, httpRegistry)
+	client, err := resolveHTTPClient(cfg.HTTPClient, cfg.HTTPClientSpec, httpRegistry)
 	if err != nil {
 		return nil, fmt.Errorf("jwt_validator: failed to resolve HTTP client: %w", err)
 	}
@@ -169,7 +169,7 @@ func newLuaValidator(name string, cfg ValidatorConfig, httpRegistry *httpclient.
 	}
 
 	// Resolve HTTP client from registry
-	client, err := resolveHTTPClient(cfg.HTTPClient, cfg.HTTPClientSpec, cfg.HTTPConfig, httpRegistry)
+	client, err := resolveHTTPClient(cfg.HTTPClient, cfg.HTTPClientSpec, httpRegistry)
 	if err != nil {
 		return nil, fmt.Errorf("lua_validator: failed to resolve HTTP client: %w", err)
 	}

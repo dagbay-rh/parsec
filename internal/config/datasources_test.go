@@ -134,32 +134,6 @@ func TestParseCacheTTL(t *testing.T) {
 	}
 }
 
-func TestNewDataSourceRegistry_LegacyHTTPConfigMutuallyExclusiveWithHTTPClient(t *testing.T) {
-	t.Parallel()
-
-	const luaScript = `
-function fetch(input)
-  return {data = "{}", content_type = "application/json"}
-end
-`
-	_, err := NewDataSourceRegistry([]DataSourceConfig{
-		{
-			Name:       "ds",
-			Type:       "lua",
-			Script:     luaScript,
-			HTTPClient: "default",
-			HTTPConfig: &HTTPConfig{Timeout: "5s"},
-		},
-	}, testHTTPRegistry(t), observer.NoOp())
-
-	if err == nil {
-		t.Fatal("expected error when both deprecated http and http_client are configured, got nil")
-	}
-	if !strings.Contains(err.Error(), "mutually exclusive") {
-		t.Fatalf("expected 'mutually exclusive' error, got: %v", err)
-	}
-}
-
 func TestNewDataSourceRegistry_InvalidCachingType(t *testing.T) {
 	t.Parallel()
 

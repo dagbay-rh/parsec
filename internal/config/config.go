@@ -153,15 +153,14 @@ type ValidatorConfig struct {
 	Config     map[string]any `koanf:"config"`      // Lua: values available to script via config.get()
 	Caching    *CachingConfig `koanf:"caching"`
 
-	// HTTP configuration (deprecated: use http_client or http_client_spec instead)
-	HTTPConfig *HTTPConfig `koanf:"http"`
-
 	// HTTPClient references a named HTTP client from the registry.
 	// Defaults to "default" when neither field is set.
 	HTTPClient string `koanf:"http_client"`
 
 	// HTTPClientSpec defines an inline HTTP client (mutually exclusive with HTTPClient).
-	HTTPClientSpec *HTTPClientSpec `koanf:"http_client_spec"`
+	// Keyed as "http" for readability, and to match the shape of the fields
+	// covered by the removed legacy http config.
+	HTTPClientSpec *HTTPClientSpec `koanf:"http"`
 
 	// Stub Validator fields
 	CredentialTypes []string       `koanf:"credential_types"` // e.g., ["bearer", "jwt"]
@@ -203,10 +202,9 @@ type DataSourceConfig struct {
 	HTTPClient string `koanf:"http_client"`
 
 	// HTTPClientSpec defines an inline HTTP client (mutually exclusive with HTTPClient).
-	HTTPClientSpec *HTTPClientSpec `koanf:"http_client_spec"`
-
-	// HTTP configuration (deprecated: use http_client or http_client_spec instead)
-	HTTPConfig *HTTPConfig `koanf:"http"`
+	// Keyed as "http" for readability, and to match the shape of the fields
+	// covered by the removed legacy http config.
+	HTTPClientSpec *HTTPClientSpec `koanf:"http"`
 
 	// Caching configuration
 	Caching *CachingConfig `koanf:"caching"`
@@ -252,14 +250,6 @@ type CertSourceConfig struct {
 	// File source fields
 	Cert string `koanf:"cert"` // Path to client certificate PEM
 	Key  string `koanf:"key"`  // Path to client private key PEM
-}
-
-// HTTPConfig configures HTTP client for Lua data sources.
-//
-// Deprecated: Use HTTPClientSpec (via http_client or http_client_spec fields) instead.
-type HTTPConfig struct {
-	// Timeout for HTTP requests (default: 30s)
-	Timeout string `koanf:"timeout"` // Duration string like "30s"
 }
 
 // CachingConfig configures caching for a data source

@@ -162,7 +162,7 @@ func TestResolveHTTPClient_ByName(t *testing.T) {
 		{Name: "named", HTTPClientSpec: HTTPClientSpec{Timeout: "3s"}},
 	}, nil)
 
-	client, err := resolveHTTPClient("named", nil, nil, registry)
+	client, err := resolveHTTPClient("named", nil, registry)
 	if err != nil {
 		t.Fatalf("resolveHTTPClient error: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestResolveHTTPClient_Inline(t *testing.T) {
 	registry, _ := NewHTTPClientRegistry(nil, nil)
 
 	spec := &HTTPClientSpec{Timeout: "7s"}
-	client, err := resolveHTTPClient("", spec, nil, registry)
+	client, err := resolveHTTPClient("", spec, registry)
 	if err != nil {
 		t.Fatalf("resolveHTTPClient error: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestResolveHTTPClient_Inline(t *testing.T) {
 func TestResolveHTTPClient_DefaultFallback(t *testing.T) {
 	registry, _ := NewHTTPClientRegistry(nil, nil)
 
-	client, err := resolveHTTPClient("", nil, nil, registry)
+	client, err := resolveHTTPClient("", nil, registry)
 	if err != nil {
 		t.Fatalf("resolveHTTPClient error: %v", err)
 	}
@@ -202,74 +202,20 @@ func TestResolveHTTPClient_NameAndSpecMutuallyExclusive(t *testing.T) {
 	}, nil)
 
 	spec := &HTTPClientSpec{Timeout: "1s"}
-	_, err := resolveHTTPClient("named", spec, nil, registry)
+	_, err := resolveHTTPClient("named", spec, registry)
 	if err == nil {
-		t.Fatal("expected error when both http_client and http_client_spec are set")
+		t.Fatal("expected error when both http_client and an inline http spec are set")
 	}
 }
 
 func TestResolveHTTPClient_NilRegistryErrors(t *testing.T) {
-	if _, err := resolveHTTPClient("", nil, nil, nil); err == nil {
+	if _, err := resolveHTTPClient("", nil, nil); err == nil {
 		t.Fatal("expected error for nil registry when resolving by name")
 	}
 
 	spec := &HTTPClientSpec{Timeout: "5s"}
-	if _, err := resolveHTTPClient("", spec, nil, nil); err == nil {
+	if _, err := resolveHTTPClient("", spec, nil); err == nil {
 		t.Fatal("expected error for nil registry when resolving inline spec")
-	}
-}
-
-func TestResolveHTTPClient_LegacyHTTPConfigPreservesTimeout(t *testing.T) {
-	registry, _ := NewHTTPClientRegistry(nil, nil)
-
-	client, err := resolveHTTPClient("", nil, &HTTPConfig{Timeout: "12s"}, registry)
-	if err != nil {
-		t.Fatalf("resolveHTTPClient error: %v", err)
-	}
-	if client.Timeout != 12*time.Second {
-		t.Errorf("timeout = %v, want 12s (legacy http config should be honored)", client.Timeout)
-	}
-}
-
-func TestResolveHTTPClient_LegacyHTTPConfigEmptyTimeoutDefaults(t *testing.T) {
-	registry, _ := NewHTTPClientRegistry(nil, nil)
-
-	client, err := resolveHTTPClient("", nil, &HTTPConfig{}, registry)
-	if err != nil {
-		t.Fatalf("resolveHTTPClient error: %v", err)
-	}
-	if client.Timeout != defaultHTTPClientTimeout {
-		t.Errorf("timeout = %v, want %v", client.Timeout, defaultHTTPClientTimeout)
-	}
-}
-
-func TestResolveHTTPClient_LegacyHTTPConfigInvalidTimeoutErrors(t *testing.T) {
-	registry, _ := NewHTTPClientRegistry(nil, nil)
-
-	_, err := resolveHTTPClient("", nil, &HTTPConfig{Timeout: "not-a-duration"}, registry)
-	if err == nil {
-		t.Fatal("expected error for invalid legacy http timeout")
-	}
-}
-
-func TestResolveHTTPClient_LegacyHTTPConfigMutuallyExclusiveWithName(t *testing.T) {
-	registry, _ := NewHTTPClientRegistry([]HTTPClientConfig{
-		{Name: "named", HTTPClientSpec: HTTPClientSpec{Timeout: "3s"}},
-	}, nil)
-
-	_, err := resolveHTTPClient("named", nil, &HTTPConfig{Timeout: "5s"}, registry)
-	if err == nil {
-		t.Fatal("expected error when both legacy http config and http_client are set")
-	}
-}
-
-func TestResolveHTTPClient_LegacyHTTPConfigMutuallyExclusiveWithSpec(t *testing.T) {
-	registry, _ := NewHTTPClientRegistry(nil, nil)
-
-	spec := &HTTPClientSpec{Timeout: "1s"}
-	_, err := resolveHTTPClient("", spec, &HTTPConfig{Timeout: "5s"}, registry)
-	if err == nil {
-		t.Fatal("expected error when both legacy http config and http_client_spec are set")
 	}
 }
 
@@ -283,7 +229,7 @@ func TestResolveHTTPClient_InlineGetsFixtureTransport(t *testing.T) {
 	registry, _ := NewHTTPClientRegistry(nil, fixture)
 
 	spec := &HTTPClientSpec{Timeout: "5s"}
-	client, err := resolveHTTPClient("", spec, nil, registry)
+	client, err := resolveHTTPClient("", spec, registry)
 	if err != nil {
 		t.Fatalf("resolveHTTPClient error: %v", err)
 	}

@@ -68,7 +68,7 @@ func newLuaDataSource(cfg DataSourceConfig, httpRegistry *httpclient.Registry, o
 	}
 
 	// Resolve HTTP client from registry
-	client, err := resolveHTTPClient(cfg.HTTPClient, cfg.HTTPClientSpec, cfg.HTTPConfig, httpRegistry)
+	client, err := resolveHTTPClient(cfg.HTTPClient, cfg.HTTPClientSpec, httpRegistry)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve HTTP client: %w", err)
 	}
