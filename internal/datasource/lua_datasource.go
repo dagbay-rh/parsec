@@ -3,6 +3,7 @@ package datasource
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	lua "github.com/yuin/gopher-lua"
 
@@ -21,11 +22,12 @@ const fetchCacheKeyFuncName = "fetch_cache_key"
 // [LuaDataSource.Fetch] loads the pre-compiled bytecode into a fresh
 // LState, avoiding repeated parsing and compilation.
 type LuaDataSource struct {
-	name         string
-	proto        *lua.FunctionProto
-	configSource luaservices.ConfigSource
-	httpOpts     []luaservices.HTTPServiceOption
-	observer     LuaObserver
+	name           string
+	proto          *lua.FunctionProto
+	configSource   luaservices.ConfigSource
+	httpClient     *http.Client
+	requestOptions luaservices.RequestOptions
+	observer       LuaObserver
 }
 
 // LuaDataSourceConfig configures a Lua data source
@@ -51,9 +53,13 @@ type LuaDataSourceConfig struct {
 	// If nil, an empty MapConfigSource will be used
 	ConfigSource luaservices.ConfigSource
 
-	// HTTPOptions provides HTTP service options including timeout, transport, etc.
-	// If nil, default HTTP settings (30s timeout) will be used.
-	HTTPOptions []luaservices.HTTPServiceOption
+	// HTTPClient is the pre-configured HTTP client for the Lua http service.
+	// If nil, http.DefaultClient will be used.
+	HTTPClient *http.Client
+
+	// RequestOptions is a programmatic hook that augments outgoing HTTP requests
+	// (e.g. injecting headers or query params from Go context). Optional.
+	RequestOptions luaservices.RequestOptions
 
 	// Observer for Lua-specific execution events. If nil, defaults to NoOpObserver.
 	Observer LuaObserver
@@ -88,12 +94,18 @@ func NewLuaDataSource(config LuaDataSourceConfig) (*LuaDataSource, error) {
 		obs = NoOpDataSourceObserver{}
 	}
 
+	httpClient := config.HTTPClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
 	return &LuaDataSource{
-		name:         config.Name,
-		proto:        proto,
-		configSource: config.ConfigSource,
-		httpOpts:     config.HTTPOptions,
-		observer:     obs,
+		name:           config.Name,
+		proto:          proto,
+		configSource:   config.ConfigSource,
+		httpClient:     httpClient,
+		requestOptions: config.RequestOptions,
+		observer:       obs,
 	}, nil
 }
 
@@ -114,7 +126,15 @@ func (ds *LuaDataSource) Fetch(ctx context.Context, input *service.DataSourceInp
 	L := lua.NewState()
 	defer L.Close()
 
-	httpService := luaservices.NewHTTPService(ctx, ds.httpOpts...)
+	var httpOpts []luaservices.HTTPServiceOption
+	if ds.requestOptions != nil {
+		httpOpts = append(httpOpts, luaservices.WithRequestOptions(ds.requestOptions))
+	}
+	httpService, err := luaservices.NewHTTPService(ctx, ds.httpClient, httpOpts...)
+	if err != nil {
+		p.ScriptExecutionFailed(err)
+		return nil, fmt.Errorf("failed to create http service: %w", err)
+	}
 	httpService.Register(L)
 
 	configService := luaservices.NewConfigService(ds.configSource)
@@ -356,9 +376,12 @@ type CacheableLuaDataSourceConfig struct {
 	// If nil, an empty MapConfigSource will be used
 	ConfigSource luaservices.ConfigSource
 
-	// HTTPOptions provides HTTP service options including timeout, transport, etc.
-	// If nil, default HTTP settings (30s timeout) will be used.
-	HTTPOptions []luaservices.HTTPServiceOption
+	// HTTPClient is the pre-configured HTTP client for the Lua http service.
+	// If nil, http.DefaultClient will be used.
+	HTTPClient *http.Client
+
+	// RequestOptions is a programmatic hook that augments outgoing HTTP requests. Optional.
+	RequestOptions luaservices.RequestOptions
 
 	// Observer for Lua-specific execution events on the inner Lua data source.
 	// If nil, NewLuaDataSource substitutes NoOpDataSourceObserver{}.

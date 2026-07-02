@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"slices"
 	"strconv"
 	"time"
@@ -66,14 +67,16 @@ type LuaValidator struct {
 	proto           *lua.FunctionProto
 	credentialTypes []CredentialType
 	configSource    luaservices.ConfigSource
-	httpOpts        []luaservices.HTTPServiceOption
+	httpClient      *http.Client
+	requestOptions  luaservices.RequestOptions
 	observer        LuaValidatorObserver
 }
 
 type luaValidatorConfig struct {
-	configSource luaservices.ConfigSource
-	httpOpts     []luaservices.HTTPServiceOption
-	observer     LuaValidatorObserver
+	configSource   luaservices.ConfigSource
+	httpClient     *http.Client
+	requestOptions luaservices.RequestOptions
+	observer       LuaValidatorObserver
 }
 
 // LuaValidatorOption configures optional settings for Lua validators.
@@ -86,10 +89,19 @@ func WithLuaConfigSource(source luaservices.ConfigSource) LuaValidatorOption {
 	}
 }
 
-// WithLuaHTTPOptions sets the HTTP options exposed to the Lua http service.
-func WithLuaHTTPOptions(opts ...luaservices.HTTPServiceOption) LuaValidatorOption {
+// WithLuaHTTPClient sets the pre-configured HTTP client for the Lua http service.
+func WithLuaHTTPClient(client *http.Client) LuaValidatorOption {
 	return func(cfg *luaValidatorConfig) {
-		cfg.httpOpts = opts
+		cfg.httpClient = client
+	}
+}
+
+// WithLuaRequestOptions sets a function that augments outgoing HTTP requests
+// (e.g. injecting headers from Go context). This is independent of the HTTP
+// client's transport and applies per-request.
+func WithLuaRequestOptions(ro luaservices.RequestOptions) LuaValidatorOption {
+	return func(cfg *luaValidatorConfig) {
+		cfg.requestOptions = ro
 	}
 }
 
@@ -130,7 +142,8 @@ func NewLuaValidator(name ScriptName, script string, credentialTypes []Credentia
 		proto:           proto,
 		credentialTypes: slices.Clone(credentialTypes),
 		configSource:    cfg.configSource,
-		httpOpts:        cfg.httpOpts,
+		httpClient:      cfg.httpClient,
+		requestOptions:  cfg.requestOptions,
 		observer:        cfg.observer,
 	}, nil
 }
@@ -145,6 +158,9 @@ func newLuaValidatorConfig(opts ...LuaValidatorOption) luaValidatorConfig {
 	}
 	if cfg.configSource == nil {
 		cfg.configSource = luaservices.NewMapConfigSource(nil)
+	}
+	if cfg.httpClient == nil {
+		cfg.httpClient = http.DefaultClient
 	}
 	if cfg.observer == nil {
 		cfg.observer = NoOpTrustObserver{}
@@ -178,7 +194,15 @@ func (v *LuaValidator) Validate(ctx context.Context, credential Credential) (*Re
 	L := lua.NewState()
 	defer L.Close()
 
-	httpService := luaservices.NewHTTPService(ctx, v.httpOpts...)
+	var httpOpts []luaservices.HTTPServiceOption
+	if v.requestOptions != nil {
+		httpOpts = append(httpOpts, luaservices.WithRequestOptions(v.requestOptions))
+	}
+	httpService, err := luaservices.NewHTTPService(ctx, v.httpClient, httpOpts...)
+	if err != nil {
+		p.ScriptExecutionFailed(err)
+		return nil, fmt.Errorf("failed to create http service: %w", err)
+	}
 	httpService.Register(L)
 
 	configService := luaservices.NewConfigService(v.configSource)

@@ -4,34 +4,34 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"net/http"
 	"time"
 
 	"github.com/project-kessel/parsec/internal/claims"
+	"github.com/project-kessel/parsec/internal/httpclient"
 	luaservices "github.com/project-kessel/parsec/internal/lua"
 	"github.com/project-kessel/parsec/internal/request"
 	"github.com/project-kessel/parsec/internal/trust"
 )
 
 // NewTrustStore creates a trust store from configuration
-func NewTrustStore(cfg TrustStoreConfig, transport http.RoundTripper, trustObs trust.TrustObserver) (trust.Store, error) {
+func NewTrustStore(cfg TrustStoreConfig, httpRegistry *httpclient.Registry, trustObs trust.TrustObserver) (trust.Store, error) {
 	switch cfg.Type {
 	case "stub_store":
-		return newStubStore(cfg, transport, trustObs)
+		return newStubStore(cfg, httpRegistry, trustObs)
 	case "filtered_store":
-		return newFilteredStore(cfg, transport, trustObs)
+		return newFilteredStore(cfg, httpRegistry, trustObs)
 	default:
 		return nil, fmt.Errorf("unknown trust store type: %s (supported: stub_store, filtered_store)", cfg.Type)
 	}
 }
 
 // newStubStore creates a stub trust store (no filtering)
-func newStubStore(cfg TrustStoreConfig, transport http.RoundTripper, trustObs trust.TrustObserver) (trust.Store, error) {
+func newStubStore(cfg TrustStoreConfig, httpRegistry *httpclient.Registry, trustObs trust.TrustObserver) (trust.Store, error) {
 	store := trust.NewStubStore()
 
 	// Add validators
 	for _, validatorCfg := range cfg.Validators {
-		validator, err := newValidator(validatorCfg.Name, validatorCfg.ValidatorConfig, transport, trustObs)
+		validator, err := newValidator(validatorCfg.Name, validatorCfg.ValidatorConfig, httpRegistry, trustObs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create validator: %w", err)
 		}
@@ -42,7 +42,7 @@ func newStubStore(cfg TrustStoreConfig, transport http.RoundTripper, trustObs tr
 }
 
 // newFilteredStore creates a filtered trust store with validator filtering
-func newFilteredStore(cfg TrustStoreConfig, transport http.RoundTripper, trustObs trust.TrustObserver) (trust.Store, error) {
+func newFilteredStore(cfg TrustStoreConfig, httpRegistry *httpclient.Registry, trustObs trust.TrustObserver) (trust.Store, error) {
 	var opts []trust.FilteredStoreOption
 
 	// Add validator filter if configured
@@ -67,7 +67,7 @@ func newFilteredStore(cfg TrustStoreConfig, transport http.RoundTripper, trustOb
 			return nil, fmt.Errorf("validator name is required for filtered store")
 		}
 
-		validator, err := newValidator(validatorCfg.Name, validatorCfg.ValidatorConfig, transport, trustObs)
+		validator, err := newValidator(validatorCfg.Name, validatorCfg.ValidatorConfig, httpRegistry, trustObs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create validator %s: %w", validatorCfg.Name, err)
 		}
@@ -79,14 +79,14 @@ func newFilteredStore(cfg TrustStoreConfig, transport http.RoundTripper, trustOb
 }
 
 // newValidator creates a validator from configuration
-func newValidator(name string, cfg ValidatorConfig, transport http.RoundTripper, trustObs trust.TrustObserver) (trust.Validator, error) {
+func newValidator(name string, cfg ValidatorConfig, httpRegistry *httpclient.Registry, trustObs trust.TrustObserver) (trust.Validator, error) {
 	switch cfg.Type {
 	case "jwt_validator":
-		return newJWTValidator(cfg, transport, trustObs)
+		return newJWTValidator(cfg, httpRegistry, trustObs)
 	case "json_validator":
 		return newJSONValidator(cfg)
 	case "lua_validator":
-		return newLuaValidator(name, cfg, transport, trustObs)
+		return newLuaValidator(name, cfg, httpRegistry, trustObs)
 	case "stub_validator":
 		return newStubValidator(cfg)
 	default:
@@ -95,7 +95,7 @@ func newValidator(name string, cfg ValidatorConfig, transport http.RoundTripper,
 }
 
 // newJWTValidator creates a JWT validator
-func newJWTValidator(cfg ValidatorConfig, transport http.RoundTripper, trustObs trust.TrustObserver) (trust.Validator, error) {
+func newJWTValidator(cfg ValidatorConfig, httpRegistry *httpclient.Registry, trustObs trust.TrustObserver) (trust.Validator, error) {
 	if cfg.Issuer == "" {
 		return nil, fmt.Errorf("jwt_validator requires issuer")
 	}
@@ -119,12 +119,12 @@ func newJWTValidator(cfg ValidatorConfig, transport http.RoundTripper, trustObs 
 		validatorCfg.RefreshInterval = duration
 	}
 
-	// Use provided transport if available
-	if transport != nil {
-		validatorCfg.HTTPClient = &http.Client{
-			Transport: transport,
-		}
+	// Resolve HTTP client from registry (same mechanism as Lua consumers)
+	client, err := resolveHTTPClient(cfg.HTTPClient, cfg.HTTPClientSpec, httpRegistry)
+	if err != nil {
+		return nil, fmt.Errorf("jwt_validator: failed to resolve HTTP client: %w", err)
 	}
+	validatorCfg.HTTPClient = client
 
 	validatorCfg.Observer = trustObs
 
@@ -142,7 +142,7 @@ func newJSONValidator(cfg ValidatorConfig) (trust.Validator, error) {
 	), nil
 }
 
-func newLuaValidator(name string, cfg ValidatorConfig, transport http.RoundTripper, trustObs trust.TrustObserver) (trust.Validator, error) {
+func newLuaValidator(name string, cfg ValidatorConfig, httpRegistry *httpclient.Registry, trustObs trust.TrustObserver) (trust.Validator, error) {
 	if name == "" {
 		return nil, fmt.Errorf("lua_validator requires name")
 	}
@@ -168,20 +168,15 @@ func newLuaValidator(name string, cfg ValidatorConfig, transport http.RoundTripp
 		configSource = luaservices.NewMapConfigSource(cfg.Config)
 	}
 
-	var httpOptions []luaservices.HTTPServiceOption
-	if cfg.HTTPConfig != nil {
-		opts, err := buildHTTPOptions(cfg.HTTPConfig, transport)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build HTTP options: %w", err)
-		}
-		httpOptions = opts
-	} else if transport != nil {
-		httpOptions = []luaservices.HTTPServiceOption{luaservices.WithTransport(transport)}
+	// Resolve HTTP client from registry
+	client, err := resolveHTTPClient(cfg.HTTPClient, cfg.HTTPClientSpec, httpRegistry)
+	if err != nil {
+		return nil, fmt.Errorf("lua_validator: failed to resolve HTTP client: %w", err)
 	}
 
 	opts := []trust.LuaValidatorOption{
 		trust.WithLuaConfigSource(configSource),
-		trust.WithLuaHTTPOptions(httpOptions...),
+		trust.WithLuaHTTPClient(client),
 		trust.WithLuaValidatorObserver(trustObs),
 	}
 

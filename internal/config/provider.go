@@ -6,6 +6,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/project-kessel/parsec/internal/httpclient"
 	"github.com/project-kessel/parsec/internal/httpfixture"
 	"github.com/project-kessel/parsec/internal/observer"
 	"github.com/project-kessel/parsec/internal/probe/otel"
@@ -29,6 +30,7 @@ type Provider struct {
 	bootstrapFields map[string]string
 
 	// Lazily constructed components (cached after first call)
+	httpClientRegistry   *httpclient.Registry
 	trustStore           trust.Store
 	dataSourceRegistry   *service.DataSourceRegistry
 	issuerRegistry       service.Registry
@@ -185,8 +187,12 @@ func (p *Provider) TrustStore() (trust.Store, error) {
 		return nil, err
 	}
 
-	transport := p.HTTPTransport()
-	store, err := NewTrustStore(p.config.TrustStore, transport, obs)
+	registry, err := p.HTTPClientRegistry()
+	if err != nil {
+		return nil, err
+	}
+
+	store, err := NewTrustStore(p.config.TrustStore, registry, obs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create trust store: %w", err)
 	}
@@ -206,8 +212,12 @@ func (p *Provider) DataSourceRegistry() (*service.DataSourceRegistry, error) {
 		return nil, err
 	}
 
-	transport := p.HTTPTransport()
-	registry, err := NewDataSourceRegistry(p.config.DataSources, transport, obs)
+	httpRegistry, err := p.HTTPClientRegistry()
+	if err != nil {
+		return nil, err
+	}
+
+	registry, err := NewDataSourceRegistry(p.config.DataSources, httpRegistry, obs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create data source registry: %w", err)
 	}
@@ -354,6 +364,23 @@ func (p *Provider) HTTPFixtureProvider() httpfixture.FixtureProvider {
 	p.httpFixtureProvider = provider
 	p.httpFixtureBuilt = true
 	return p.httpFixtureProvider
+}
+
+// HTTPClientRegistry returns the HTTP client registry, lazily built from
+// configuration. All named clients and the implicit "default" are available.
+func (p *Provider) HTTPClientRegistry() (*httpclient.Registry, error) {
+	if p.httpClientRegistry != nil {
+		return p.httpClientRegistry, nil
+	}
+
+	fixtureTransport := p.HTTPTransport()
+	registry, err := NewHTTPClientRegistry(p.config.HTTPClients, fixtureTransport)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP client registry: %w", err)
+	}
+
+	p.httpClientRegistry = registry
+	return registry, nil
 }
 
 // AuthzCheckPolicy returns the configured authz check policy for ext_authz.

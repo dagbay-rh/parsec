@@ -21,6 +21,9 @@ type Config struct {
 	// DataSources for token enrichment
 	DataSources []DataSourceConfig `koanf:"data_sources"`
 
+	// HTTPClients defines named HTTP client instances available to consumers
+	HTTPClients []HTTPClientConfig `koanf:"http_clients"`
+
 	// KeyProviders defines named key provider instances
 	KeyProviders []KeyProviderConfig `koanf:"key_providers"`
 
@@ -148,8 +151,16 @@ type ValidatorConfig struct {
 	ScriptFile string         `koanf:"script_file"` // Path to Lua script
 	Script     string         `koanf:"script"`      // Inline Lua script (alternative to ScriptFile)
 	Config     map[string]any `koanf:"config"`      // Lua: values available to script via config.get()
-	HTTPConfig *HTTPConfig    `koanf:"http"`
 	Caching    *CachingConfig `koanf:"caching"`
+
+	// HTTPClient references a named HTTP client from the registry.
+	// Defaults to "default" when neither field is set.
+	HTTPClient string `koanf:"http_client"`
+
+	// HTTPClientSpec defines an inline HTTP client (mutually exclusive with HTTPClient).
+	// Keyed as "http" for readability, and to match the shape of the fields
+	// covered by the removed legacy http config.
+	HTTPClientSpec *HTTPClientSpec `koanf:"http"`
 
 	// Stub Validator fields
 	CredentialTypes []string       `koanf:"credential_types"` // e.g., ["bearer", "jwt"]
@@ -186,17 +197,59 @@ type DataSourceConfig struct {
 	// Static data source fields
 	Data map[string]any `koanf:"data"` // Fixed JSON returned on every fetch
 
-	// HTTP configuration
-	HTTPConfig *HTTPConfig `koanf:"http"`
+	// HTTPClient references a named HTTP client from the registry.
+	// Defaults to "default" when neither field is set.
+	HTTPClient string `koanf:"http_client"`
+
+	// HTTPClientSpec defines an inline HTTP client (mutually exclusive with HTTPClient).
+	// Keyed as "http" for readability, and to match the shape of the fields
+	// covered by the removed legacy http config.
+	HTTPClientSpec *HTTPClientSpec `koanf:"http"`
 
 	// Caching configuration
 	Caching *CachingConfig `koanf:"caching"`
 }
 
-// HTTPConfig configures HTTP client for Lua data sources
-type HTTPConfig struct {
-	// Timeout for HTTP requests (default: 30s)
-	Timeout string `koanf:"timeout"` // Duration string like "30s"
+// HTTPClientSpec is the client configuration schema (no name).
+// Used inline on consumers and embedded by HTTPClientConfig for the registry.
+type HTTPClientSpec struct {
+	// Timeout is the default request timeout (e.g. "30s")
+	Timeout string `koanf:"timeout"`
+
+	// HTTPAuth configures HTTP-layer authentication (header-based). Optional.
+	HTTPAuth *HTTPAuthConfig `koanf:"http_auth"`
+
+	// ClientCertSource configures the client certificate source for mTLS. Optional.
+	// When set, this client gets its own transport rather than sharing the default.
+	ClientCertSource *CertSourceConfig `koanf:"client_cert_source"`
+}
+
+// HTTPClientConfig is a named HTTP client entry for the top-level registry.
+type HTTPClientConfig struct {
+	// Name uniquely identifies this HTTP client in the registry
+	Name string `koanf:"name"`
+
+	HTTPClientSpec `koanf:",squash"`
+}
+
+// HTTPAuthConfig configures HTTP-layer (header-based) authentication.
+// Distinct from transport-level auth (mTLS), which is configured via client_cert_source.
+type HTTPAuthConfig struct {
+	// Type selects the auth mechanism: "bearer" (future: "oauth2_client_credentials", etc.)
+	Type string `koanf:"type"`
+
+	// Bearer fields
+	Token string `koanf:"token"` // Static bearer token value
+}
+
+// CertSourceConfig configures where client certificates come from for mTLS.
+type CertSourceConfig struct {
+	// Type selects the cert source: "file" (future: "vault", "k8s_secret", etc.)
+	Type string `koanf:"type"`
+
+	// File source fields
+	Cert string `koanf:"cert"` // Path to client certificate PEM
+	Key  string `koanf:"key"`  // Path to client private key PEM
 }
 
 // CachingConfig configures caching for a data source
