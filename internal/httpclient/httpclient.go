@@ -28,7 +28,7 @@ type TransportMiddleware func(base http.RoundTripper) http.RoundTripper
 type ClientSpec struct {
 	Timeout             time.Duration
 	CertSource          CertSource          // nil = share default transport
-	TransportMiddleware TransportMiddleware  // nil = no wrapping
+	TransportMiddleware TransportMiddleware // nil = no wrapping
 }
 
 // Registry builds, stores, and provides named HTTP clients.
