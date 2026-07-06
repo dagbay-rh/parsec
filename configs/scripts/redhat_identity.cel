@@ -24,7 +24,7 @@ has(subject.issuer) && subject.issuer.contains("container-registry-authorizer.st
     "internal": {
       "org_id": has(subject.claims.org_id) ? subject.claims.org_id : "",
       "cross_access": false,
-      "auth_time": has(request.additional.auth_time_ms) ? request.additional.auth_time_ms : 0
+      "auth_time": now_ms()
     }
   },
   "entitlements": {}
