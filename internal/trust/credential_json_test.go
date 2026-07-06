@@ -117,6 +117,25 @@ func TestMarshalCredentialJSON_RoundTrip(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "basic auth credential",
+			credential: &BasicAuthCredential{
+				Username: "123|alice",
+				Password: "secret",
+			},
+			check: func(t *testing.T, got Credential) {
+				ba, ok := got.(*BasicAuthCredential)
+				if !ok {
+					t.Fatalf("expected *BasicAuthCredential, got %T", got)
+				}
+				if ba.Username != "123|alice" {
+					t.Fatalf("Username=%q", ba.Username)
+				}
+				if ba.Password != "secret" {
+					t.Fatalf("Password=%q", ba.Password)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {

@@ -82,12 +82,13 @@ func AnonymousResult() *Result {
 type CredentialType string
 
 const (
-	CredentialTypeBearer CredentialType = "bearer"
-	CredentialTypeJWT    CredentialType = "jwt"
-	CredentialTypeOIDC   CredentialType = "oidc"
-	CredentialTypeMTLS   CredentialType = "mtls"
-	CredentialTypeOAuth2 CredentialType = "oauth2"
-	CredentialTypeJSON   CredentialType = "json"
+	CredentialTypeBearer    CredentialType = "bearer"
+	CredentialTypeJWT       CredentialType = "jwt"
+	CredentialTypeOIDC      CredentialType = "oidc"
+	CredentialTypeMTLS      CredentialType = "mtls"
+	CredentialTypeOAuth2    CredentialType = "oauth2"
+	CredentialTypeJSON      CredentialType = "json"
+	CredentialTypeBasicAuth CredentialType = "basic_auth"
 )
 
 // Credential is the interface for all credential types
@@ -181,6 +182,16 @@ func (c *JSONCredential) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// BasicAuthCredential represents HTTP Basic Authentication credentials.
+type BasicAuthCredential struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func (c *BasicAuthCredential) Type() CredentialType {
+	return CredentialTypeBasicAuth
+}
+
 // MarshalCredentialJSON serializes a [Credential] to JSON with a "type"
 // discriminator field. The concrete credential struct must have json tags.
 func MarshalCredentialJSON(c Credential) ([]byte, error) {
@@ -224,6 +235,9 @@ func UnmarshalCredentialJSON(data []byte) (Credential, error) {
 		return &c, json.Unmarshal(data, &c)
 	case CredentialTypeJSON:
 		var c JSONCredential
+		return &c, json.Unmarshal(data, &c)
+	case CredentialTypeBasicAuth:
+		var c BasicAuthCredential
 		return &c, json.Unmarshal(data, &c)
 	default:
 		return nil, fmt.Errorf("unsupported credential type: %s", envelope.Type)

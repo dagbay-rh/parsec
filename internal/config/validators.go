@@ -342,7 +342,9 @@ func parseCredentialType(s string) (trust.CredentialType, error) {
 		return trust.CredentialTypeMTLS, nil
 	case "oidc":
 		return trust.CredentialTypeOIDC, nil
+	case "basic_auth":
+		return trust.CredentialTypeBasicAuth, nil
 	default:
-		return "", fmt.Errorf("unknown credential type: %s (supported: bearer, jwt, json, mtls, oidc)", s)
+		return "", fmt.Errorf("unknown credential type: %s (supported: bearer, jwt, json, mtls, oidc, basic_auth)", s)
 	}
 }

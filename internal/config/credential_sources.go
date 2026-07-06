@@ -10,6 +10,7 @@ import (
 var credentialSourceTypes = []string{
 	server.CredentialSourceTypeBearer,
 	server.CredentialSourceTypeCookie,
+	server.CredentialSourceTypeBasicAuth,
 }
 
 func newCredentialSources(cfgs []CredentialSourceConfig) (server.CredentialSources, error) {
@@ -45,6 +46,8 @@ func newCredentialSource(cfg CredentialSourceConfig) (server.CredentialSource, e
 		return server.NewBearerCredentialSource(cfg.Name)
 	case server.CredentialSourceTypeCookie:
 		return server.NewCookieCredentialSource(cfg.Name, cfg.CookieName)
+	case server.CredentialSourceTypeBasicAuth:
+		return server.NewBasicAuthCredentialSource(cfg.Name)
 	default:
 		return nil, fmt.Errorf("unknown type %q (allowed: %s)", cfg.Type, strings.Join(credentialSourceTypes, ", "))
 	}
