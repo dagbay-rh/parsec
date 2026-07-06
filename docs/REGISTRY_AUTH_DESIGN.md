@@ -14,7 +14,7 @@ Envoy CheckRequest (Authorization: Basic <base64>)
   v
 [BasicAuthCredentialSource.Extract]
   - Decodes base64 → username:password
-  - Returns BasicAuthCredential + marks "authorization" header for removal
+  - Returns BasicAuthCredential + marks "authorization" in HeadersUsed
   |
   v
 [TrustStore.Validate]
@@ -61,7 +61,7 @@ type BasicAuthCredentialSource struct {
 4. Trim whitespace from value, reject if empty
 5. Base64-decode the value
 6. Split on first colon: `username:password`
-7. Return `CredentialExtraction` with `BasicAuthCredential` and `HeadersToRemove: ["authorization"]`
+7. Return `CredentialExtraction` with `BasicAuthCredential` and `HeadersUsed: ["authorization"]`
 
 Returns `nil, nil` when the header is absent or the scheme is not Basic, allowing coexistence with `BearerCredentialSource` in the same source chain.
 
@@ -73,11 +73,12 @@ Validates `BasicAuthCredential` by calling an external registry authorization se
 1. Read `registry_url`, `trust_domain`, `username_pattern` from `config.get()`
 2. Reject empty username or password (return `nil`)
 3. Match username against Lua pattern if `username_pattern` is configured
-4. POST `{"credentials":{"username":"...","password":"..."}}` to registry URL via `http.post()`
-5. Reject non-200 status codes (return `nil`)
-6. Parse JSON response, verify `access.pull == "granted"`
-7. Parse username as `org_id|username` (split on first `|`)
-8. Return result table with `subject`, `issuer`, `trust_domain`, and claims
+4. Parse username as `org_id|username` (split on first `|`); reject if pipe is missing, org_id is empty, or parsed username is empty (return `nil`)
+5. POST `{"credentials":{"username":"...","password":"..."}}` to registry URL via `http.post()`
+6. Error if response is nil (raises Lua `error()`, propagates as a Go error)
+7. Reject non-200 status codes (return `nil`)
+8. Parse JSON response, verify `access.pull == "granted"` (return `nil` if not granted)
+9. Return result table with `subject`, `issuer`, `trust_domain`, and claims
 
 **`validate_cache_key(input)` steps:**
 1. Return a table containing only `credential.type`, `credential.username`, and `credential.password`
