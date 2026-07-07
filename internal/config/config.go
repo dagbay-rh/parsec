@@ -55,25 +55,21 @@ type AuthzServerConfig struct {
 	// Policy configures the authz check policy that decides, for each
 	// ext_authz request, whether to issue tokens, allow without issue, or deny.
 	Policy AuthzCheckPolicyConfig `koanf:"policy"`
-
-	// TokenTypes specifies which token types to issue and how to deliver them.
-	// Deprecated: use Policy.TokenTypes instead.
-	TokenTypes []TokenTypeConfig `koanf:"token_types"`
 }
 
 // AuthzCheckPolicyConfig configures the authz check policy.
 type AuthzCheckPolicyConfig struct {
 	// Type selects the policy implementation.
-	// Options: "static_authenticated" (default), "optional_path"
+	// Options: "static_authenticated" (default)
 	Type string `koanf:"type"`
 
 	// TokenTypes specifies which token types to issue and their headers.
-	// Used when the policy issues tokens (static_authenticated or optional_path returning "issue").
 	TokenTypes []TokenTypeConfig `koanf:"token_types"`
 
-	// OptionalPathPatterns is a list of RE2 regexes for optional-auth path matching.
-	// Used by the "optional_path" policy type.
-	OptionalPathPatterns []string `koanf:"optional_path_patterns"`
+	// AllowAnonymousWithoutIssuePaths is a list of RE2 regexes. Anonymous
+	// requests on matching URL paths are allowed without issuing tokens;
+	// all other anonymous requests are denied.
+	AllowAnonymousWithoutIssuePaths []string `koanf:"allow_anonymous_without_issue_paths"`
 }
 
 // CredentialSourceConfig configures a credential extraction source

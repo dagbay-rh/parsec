@@ -357,8 +357,6 @@ func (p *Provider) HTTPFixtureProvider() httpfixture.FixtureProvider {
 }
 
 // AuthzCheckPolicy returns the configured authz check policy for ext_authz.
-// When the policy section is present, uses its type and token_types.
-// Falls back to legacy top-level token_types for backward compatibility.
 // Defaults to a StaticAuthenticatedPolicy with the default transaction token
 // spec when nothing is configured.
 func (p *Provider) AuthzCheckPolicy() (server.AuthzCheckPolicy, error) {
@@ -368,41 +366,17 @@ func (p *Provider) AuthzCheckPolicy() (server.AuthzCheckPolicy, error) {
 
 	policyCfg := p.config.AuthzServer.Policy
 
-	if policyCfg.Type != "" && len(p.config.AuthzServer.TokenTypes) > 0 {
-		return nil, fmt.Errorf("authz_server.token_types and authz_server.policy are mutually exclusive; use policy.token_types instead")
-	}
-
 	switch policyCfg.Type {
-	case "":
-		// Legacy case predating the policy config.
-		// In this case, use top level token types and
-		// implicitly use the static_authenticated policy.
-
-		// If there is any policy config, though, error. It means type is missing.
-		if len(policyCfg.TokenTypes) > 0 || len(policyCfg.OptionalPathPatterns) > 0 {
-			return nil, fmt.Errorf("authz_server.policy.type is required when policy section is defined")
-		}
-
-		tokenTypes, err := buildTokenTypeSpecs(p.config.AuthzServer.TokenTypes)
-		if err != nil {
-			return nil, err
-		}
-		return server.NewStaticAuthenticatedPolicy(tokenTypes), nil
-	case "static_authenticated":
+	case "", "static_authenticated":
 		tokenTypes, err := buildTokenTypeSpecs(policyCfg.TokenTypes)
 		if err != nil {
 			return nil, err
 		}
-		return server.NewStaticAuthenticatedPolicy(tokenTypes), nil
-	case "optional_path":
-		tokenTypes, err := buildTokenTypeSpecs(policyCfg.TokenTypes)
+		opts, err := buildStaticAuthenticatedOpts(policyCfg)
 		if err != nil {
 			return nil, err
 		}
-		if len(policyCfg.OptionalPathPatterns) == 0 {
-			return nil, fmt.Errorf("optional_path authz check policy requires optional_path_patterns")
-		}
-		return server.NewOptionalPathAuthzPolicy(policyCfg.OptionalPathPatterns, tokenTypes)
+		return server.NewStaticAuthenticatedPolicy(tokenTypes, opts...), nil
 	default:
 		return nil, fmt.Errorf("unknown authz check policy type: %q", policyCfg.Type)
 	}
@@ -428,6 +402,21 @@ func buildTokenTypeSpecs(cfgs []TokenTypeConfig) ([]server.TokenTypeSpec, error)
 		})
 	}
 	return specs, nil
+}
+
+// buildStaticAuthenticatedOpts converts policy config fields into functional
+// options for NewStaticAuthenticatedPolicy.
+func buildStaticAuthenticatedOpts(cfg AuthzCheckPolicyConfig) ([]server.StaticAuthenticatedOption, error) {
+	if len(cfg.AllowAnonymousWithoutIssuePaths) == 0 {
+		return nil, nil
+	}
+	compiled, err := server.CompilePathPatterns(cfg.AllowAnonymousWithoutIssuePaths)
+	if err != nil {
+		return nil, err
+	}
+	return []server.StaticAuthenticatedOption{
+		server.WithAllowAnonymousWithoutIssuePaths(compiled),
+	}, nil
 }
 
 // CredentialSources returns the global credential extraction sources shared by

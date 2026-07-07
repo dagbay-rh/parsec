@@ -6,8 +6,8 @@
 
 authz_server:
   policy:
-    type: optional_path
-    optional_path_patterns:
+    type: static_authenticated
+    allow_anonymous_without_issue_paths:
       - "^/r/insights/platform/[^/]+/v[0-9]+(\\.[0-9]+)?/openapi.json$"
       - "^/api/[^/]+/v[0-9]+(\\.[0-9]+)?/openapi.json$"
       - "^/api/approval/v[0-9]+(\\.[0-9]+)?/stageaction/[^/]+$"

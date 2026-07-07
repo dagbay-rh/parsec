@@ -10,15 +10,17 @@ import (
 	"github.com/project-kessel/parsec/internal/trust"
 )
 
-func TestAuthzServer_Check_OptionalPathPolicy_AnonymousAllowed(t *testing.T) {
+func TestAuthzServer_Check_AllowAnonymousPaths_AnonymousAllowed(t *testing.T) {
 	t.Parallel()
 
-	policy, err := NewOptionalPathAuthzPolicy([]string{
+	compiled, err := CompilePathPatterns([]string{
 		`^/api/[^/]+/v[0-9]+(\.[0-9]+)?/openapi.json$`,
-	}, nil)
+	})
 	if err != nil {
-		t.Fatalf("NewOptionalPathAuthzPolicy: %v", err)
+		t.Fatalf("CompilePathPatterns: %v", err)
 	}
+
+	policy := NewStaticAuthenticatedPolicy(nil, WithAllowAnonymousWithoutIssuePaths(compiled))
 
 	authzServer := NewAuthzServer(
 		trust.NewStubStore(),

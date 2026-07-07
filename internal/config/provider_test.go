@@ -143,78 +143,30 @@ func TestProvider_AuthzCheckPolicy(t *testing.T) {
 			wantAction: server.AuthzCheckIssue,
 		},
 		{
-			name: "legacy authz_server.token_types fallback",
+			name: "implicit type with policy token_types defaults to static_authenticated",
 			config: &Config{AuthzServer: &AuthzServerConfig{
-				TokenTypes: []TokenTypeConfig{
-					{Type: string(service.TokenTypeAccessToken), HeaderName: "Authorization"},
+				Policy: AuthzCheckPolicyConfig{
+					TokenTypes: []TokenTypeConfig{
+						{Type: string(service.TokenTypeTransactionToken), HeaderName: "Transaction-Token"},
+					},
 				},
 			}},
 			wantTypes: []server.TokenTypeSpec{
-				{Type: service.TokenTypeAccessToken, HeaderName: "Authorization"},
+				{Type: service.TokenTypeTransactionToken, HeaderName: "Transaction-Token"},
 			},
 			wantAction: server.AuthzCheckIssue,
 		},
 		{
-			name: "legacy token_types and policy config are mutually exclusive",
+			name: "implicit type with allow_anonymous_without_issue_paths defaults to static_authenticated",
 			config: &Config{AuthzServer: &AuthzServerConfig{
 				Policy: AuthzCheckPolicyConfig{
-					Type: "static_authenticated",
-					TokenTypes: []TokenTypeConfig{
-						{Type: string(service.TokenTypeTransactionToken), HeaderName: "Transaction-Token"},
-					},
-				},
-				TokenTypes: []TokenTypeConfig{
-					{Type: string(service.TokenTypeAccessToken), HeaderName: "Authorization"},
+					AllowAnonymousWithoutIssuePaths: []string{`^/public$`},
 				},
 			}},
-			wantErr: "mutually exclusive",
-		},
-		{
-			name: "legacy token_types and optional_path policy config are mutually exclusive",
-			config: &Config{AuthzServer: &AuthzServerConfig{
-				Policy: AuthzCheckPolicyConfig{
-					Type:                 "optional_path",
-					OptionalPathPatterns: []string{`^/public$`},
-				},
-				TokenTypes: []TokenTypeConfig{
-					{Type: string(service.TokenTypeAccessToken), HeaderName: "Authorization"},
-				},
-			}},
-			wantErr: "mutually exclusive",
-		},
-		{
-			name: "policy section without type is an error",
-			config: &Config{AuthzServer: &AuthzServerConfig{
-				Policy: AuthzCheckPolicyConfig{
-					TokenTypes: []TokenTypeConfig{
-						{Type: string(service.TokenTypeTransactionToken), HeaderName: "Transaction-Token"},
-					},
-				},
-			}},
-			wantErr: "policy.type is required",
-		},
-		{
-			name: "legacy token_types with policy token_types but no type is an error",
-			config: &Config{AuthzServer: &AuthzServerConfig{
-				Policy: AuthzCheckPolicyConfig{
-					TokenTypes: []TokenTypeConfig{
-						{Type: string(service.TokenTypeTransactionToken), HeaderName: "Transaction-Token"},
-					},
-				},
-				TokenTypes: []TokenTypeConfig{
-					{Type: string(service.TokenTypeAccessToken), HeaderName: "Authorization"},
-				},
-			}},
-			wantErr: "policy.type is required",
-		},
-		{
-			name: "optional_path_patterns without type is an error",
-			config: &Config{AuthzServer: &AuthzServerConfig{
-				Policy: AuthzCheckPolicyConfig{
-					OptionalPathPatterns: []string{`^/public$`},
-				},
-			}},
-			wantErr: "policy.type is required",
+			wantTypes: []server.TokenTypeSpec{
+				{Type: service.TokenTypeTransactionToken, HeaderName: "Transaction-Token"},
+			},
+			wantAction: server.AuthzCheckIssue,
 		},
 		{
 			name: "unknown policy type returns error",
@@ -224,11 +176,11 @@ func TestProvider_AuthzCheckPolicy(t *testing.T) {
 			wantErr: `unknown authz check policy type: "opa"`,
 		},
 		{
-			name: "optional_path policy with patterns uses optional path policy",
+			name: "static_authenticated with allow_anonymous_without_issue_paths",
 			config: &Config{AuthzServer: &AuthzServerConfig{
 				Policy: AuthzCheckPolicyConfig{
-					Type: "optional_path",
-					OptionalPathPatterns: []string{
+					Type: "static_authenticated",
+					AllowAnonymousWithoutIssuePaths: []string{
 						`^/api/[^/]+/v[0-9]+(\.[0-9]+)?/openapi.json$`,
 					},
 					TokenTypes: []TokenTypeConfig{
@@ -242,21 +194,21 @@ func TestProvider_AuthzCheckPolicy(t *testing.T) {
 			wantAction: server.AuthzCheckIssue,
 		},
 		{
-			name: "optional_path policy without patterns is an error",
+			name: "optional_path type is now unknown",
 			config: &Config{AuthzServer: &AuthzServerConfig{
 				Policy: AuthzCheckPolicyConfig{Type: "optional_path"},
 			}},
-			wantErr: "requires optional_path_patterns",
+			wantErr: `unknown authz check policy type: "optional_path"`,
 		},
 		{
-			name: "optional_path policy with invalid pattern fails at startup",
+			name: "static_authenticated with invalid path pattern fails at startup",
 			config: &Config{AuthzServer: &AuthzServerConfig{
 				Policy: AuthzCheckPolicyConfig{
-					Type:                 "optional_path",
-					OptionalPathPatterns: []string{`[invalid`},
+					Type:                            "static_authenticated",
+					AllowAnonymousWithoutIssuePaths: []string{`[invalid`},
 				},
 			}},
-			wantErr: "optional_path_patterns[0]",
+			wantErr: "allow_anonymous_without_issue_paths[0]",
 		},
 		{
 			name: "token type validation: missing type",
@@ -278,24 +230,6 @@ func TestProvider_AuthzCheckPolicy(t *testing.T) {
 					TokenTypes: []TokenTypeConfig{
 						{Type: string(service.TokenTypeTransactionToken)},
 					},
-				},
-			}},
-			wantErr: "header_name is required",
-		},
-		{
-			name: "legacy token type validation: missing type",
-			config: &Config{AuthzServer: &AuthzServerConfig{
-				TokenTypes: []TokenTypeConfig{
-					{HeaderName: "Transaction-Token"},
-				},
-			}},
-			wantErr: "token type is required",
-		},
-		{
-			name: "legacy token type validation: missing header_name",
-			config: &Config{AuthzServer: &AuthzServerConfig{
-				TokenTypes: []TokenTypeConfig{
-					{Type: string(service.TokenTypeTransactionToken)},
 				},
 			}},
 			wantErr: "header_name is required",

@@ -27,8 +27,8 @@ issuers:
 
 authz_server:
   policy:
-    type: optional_path
-    optional_path_patterns:
+    type: static_authenticated
+    allow_anonymous_without_issue_paths:
       - "^/api/[^/]+/v[0-9]+(\\.[0-9]+)?/openapi.json$"
       - "^/api/distributors/docs$"
     token_types:

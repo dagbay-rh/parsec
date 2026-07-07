@@ -2,6 +2,9 @@ package server
 
 import (
 	"context"
+	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/project-kessel/parsec/internal/request"
 	"github.com/project-kessel/parsec/internal/service"
@@ -96,31 +99,108 @@ func anonymousPrincipal() Principal {
 	}
 }
 
+const anonymousSubjectDenyReason = "anonymous subjects not allowed"
+
+// normalizeRequestPath strips the query string from an HTTP path so RE2
+// anchors match the path component only (Envoy :path may include ?query).
+func normalizeRequestPath(path string) string {
+	if i := strings.IndexByte(path, '?'); i >= 0 {
+		return path[:i]
+	}
+	return path
+}
+
+func requestPath(attrs *request.RequestAttributes) string {
+	if attrs == nil {
+		return ""
+	}
+	return normalizeRequestPath(attrs.Path)
+}
+
+func matchesAnyPattern(patterns []*regexp.Regexp, path string) bool {
+	for _, re := range patterns {
+		if re.MatchString(path) {
+			return true
+		}
+	}
+	return false
+}
+
+// CompilePathPatterns compiles a list of RE2 regex strings into anchored
+// regexps suitable for full-path matching. Each pattern is wrapped in
+// ^(?:...)$ to enforce full-match semantics.
+func CompilePathPatterns(patterns []string) ([]*regexp.Regexp, error) {
+	compiled := make([]*regexp.Regexp, 0, len(patterns))
+	for i, pattern := range patterns {
+		re, err := regexp.Compile("^(?:" + pattern + ")$")
+		if err != nil {
+			return nil, fmt.Errorf("allow_anonymous_without_issue_paths[%d]: invalid RE2 regex %q: %w", i, pattern, err)
+		}
+		compiled = append(compiled, re)
+	}
+	return compiled, nil
+}
+
 // StaticAuthenticatedPolicy is an AuthzCheckPolicy that denies anonymous
 // subjects and issues a statically configured set of token types for
-// authenticated subjects. This preserves the behavior that existed before
-// the policy layer was introduced.
+// authenticated subjects. Optionally, configured path patterns allow
+// anonymous access without issuing tokens on matching URL paths.
 type StaticAuthenticatedPolicy struct {
-	tokenTypes []TokenTypeSpec
+	tokenTypes                     []TokenTypeSpec
+	allowAnonymousWithoutIssuePaths []*regexp.Regexp
+}
+
+type staticAuthenticatedConfig struct {
+	allowAnonymousWithoutIssuePaths []*regexp.Regexp
+}
+
+// StaticAuthenticatedOption configures optional behavior for
+// [NewStaticAuthenticatedPolicy].
+type StaticAuthenticatedOption func(*staticAuthenticatedConfig)
+
+// WithAllowAnonymousWithoutIssuePaths configures path patterns that allow
+// anonymous access without issuing tokens. Patterns must be pre-compiled
+// via [CompilePathPatterns].
+func WithAllowAnonymousWithoutIssuePaths(patterns []*regexp.Regexp) StaticAuthenticatedOption {
+	return func(c *staticAuthenticatedConfig) {
+		c.allowAnonymousWithoutIssuePaths = patterns
+	}
 }
 
 // NewStaticAuthenticatedPolicy creates a policy that denies anonymous subjects
 // and issues the given token types for authenticated subjects. If tokenTypes
-// is empty, DefaultTokenTypeSpecs is used.
-func NewStaticAuthenticatedPolicy(tokenTypes []TokenTypeSpec) *StaticAuthenticatedPolicy {
+// is empty, DefaultTokenTypeSpecs is used. Use [WithAllowAnonymousWithoutIssuePaths]
+// to allow anonymous access on specific URL path patterns.
+func NewStaticAuthenticatedPolicy(tokenTypes []TokenTypeSpec, opts ...StaticAuthenticatedOption) *StaticAuthenticatedPolicy {
 	if len(tokenTypes) == 0 {
 		tokenTypes = DefaultTokenTypeSpecs()
 	}
-	return &StaticAuthenticatedPolicy{tokenTypes: tokenTypes}
+
+	var cfg staticAuthenticatedConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	return &StaticAuthenticatedPolicy{
+		tokenTypes:                      tokenTypes,
+		allowAnonymousWithoutIssuePaths: cfg.allowAnonymousWithoutIssuePaths,
+	}
 }
 
 // Decide denies anonymous subjects and issues the configured token types for
-// authenticated subjects.
+// authenticated subjects. When allow-anonymous path patterns are configured,
+// anonymous requests on matching paths are allowed without issuing tokens.
 func (p *StaticAuthenticatedPolicy) Decide(_ context.Context, in AuthzCheckPolicyInput) (AuthzCheckDecision, error) {
 	if in.Subject.Anonymous {
+		if len(p.allowAnonymousWithoutIssuePaths) > 0 {
+			path := requestPath(in.Request)
+			if matchesAnyPattern(p.allowAnonymousWithoutIssuePaths, path) {
+				return AuthzCheckDecision{Action: AuthzCheckAllowWithoutIssue}, nil
+			}
+		}
 		return AuthzCheckDecision{
 			Action: AuthzCheckDeny,
-			Reason: "anonymous subjects not allowed",
+			Reason: anonymousSubjectDenyReason,
 		}, nil
 	}
 

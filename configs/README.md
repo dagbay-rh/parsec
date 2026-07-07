@@ -162,16 +162,15 @@ token in the `Transaction-Token` header.
 
 **Policy types:**
 
-- `static_authenticated` — denies anonymous subjects; issues configured token types for authenticated subjects
-- `optional_path` — allows anonymous access on configured URL path patterns; issues tokens for authenticated subjects
+- `static_authenticated` — denies anonymous subjects; issues configured token types for authenticated subjects. Optionally allows anonymous access on specific URL paths via `allow_anonymous_without_issue_paths`.
 
-#### Optional authentication (`optional_path` policy)
+#### Optional authentication (`allow_anonymous_without_issue_paths`)
 
-Use `type: optional_path` with `optional_path_patterns` to allow unauthenticated access
-on specific URL paths (e.g. OpenAPI specs, public static assets). On matching
-paths, anonymous requests are allowed without issuing tokens; authenticated
-requests still receive configured token headers (e.g. `x-rh-identity`). All other
-paths require authentication.
+Add `allow_anonymous_without_issue_paths` to the `static_authenticated` policy to
+allow unauthenticated access on specific URL paths (e.g. OpenAPI specs, public
+static assets). On matching paths, anonymous requests are allowed without issuing
+tokens; authenticated requests still receive configured token headers (e.g.
+`x-rh-identity`). All other paths require authentication.
 
 Requests with invalid or malformed credentials are rejected before the policy
 runs. Optional-auth applies only when no subject credential is present.
@@ -183,8 +182,8 @@ from the request path before matching.
 ```yaml
 authz_server:
   policy:
-    type: optional_path
-    optional_path_patterns:
+    type: static_authenticated
+    allow_anonymous_without_issue_paths:
       - "^/api/[^/]+/v[0-9]+(\\.[0-9]+)?/openapi.json$"
       - "^/api/pulp/api/v3/status/$"
       # See configs/examples/parsec-optional-auth.yaml for the full 3scale list
@@ -193,7 +192,7 @@ authz_server:
         header_name: "x-rh-identity"
 ```
 
-`optional_path_patterns` is required for `type: optional_path`.
+Without `allow_anonymous_without_issue_paths`, the policy denies all anonymous requests.
 
 ### Exchange Server
 
