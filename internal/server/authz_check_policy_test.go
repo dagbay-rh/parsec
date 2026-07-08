@@ -137,13 +137,13 @@ func TestStaticAuthenticatedPolicy_EmptyScopeByDefault(t *testing.T) {
 // --- allow_anonymous_without_issue_paths tests (ported from optional_path) ---
 
 var testAllowAnonymousPaths = []string{
-	`^/r/insights/platform/[^/]+/v[0-9]+(\.[0-9]+)?/openapi.json$`,
-	`^/api/[^/]+/v[0-9]+(\.[0-9]+)?/openapi.json$`,
-	`^/api/pulp/api/v3/status/$`,
-	`^/api/pulp-content/public-.*$`,
-	`^/api/distributors/.*/v[0-9]/openapi.json$`,
-	`^/api/content-sources/v[0-9]+(\.[0-9]+)?/repository_gpg_key/[A-Za-z0-9]{8}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{12}$`,
-	`^/api/distributors/docs$`,
+	`/r/insights/platform/[^/]+/v[0-9]+(\.[0-9]+)?/openapi.json`,
+	`/api/[^/]+/v[0-9]+(\.[0-9]+)?/openapi.json`,
+	`/api/pulp/api/v3/status/`,
+	`/api/pulp-content/public-.*`,
+	`/api/distributors/.*/v[0-9]/openapi.json`,
+	`/api/content-sources/v[0-9]+(\.[0-9]+)?/repository_gpg_key/[A-Za-z0-9]{8}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{12}`,
+	`/api/distributors/docs`,
 }
 
 func newTestPolicyWithPaths(t *testing.T, tokenTypes []TokenTypeSpec) *StaticAuthenticatedPolicy {
@@ -338,7 +338,7 @@ func TestCompilePathPatterns_InvalidPatternAfterValid(t *testing.T) {
 	t.Parallel()
 
 	_, err := CompilePathPatterns([]string{
-		`^/public$`,
+		`/public`,
 		`[invalid`,
 	})
 	if err == nil {

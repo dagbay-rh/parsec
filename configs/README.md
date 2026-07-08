@@ -175,17 +175,19 @@ tokens; authenticated requests still receive configured token headers (e.g.
 Requests with invalid or malformed credentials are rejected before the policy
 runs. Optional-auth applies only when no subject credential is present.
 
-Patterns use [RE2](https://github.com/google/re2/wiki/Syntax) regex syntax. In
-YAML, escape backslashes for literal dots (`\\.`). Query strings are stripped
-from the request path before matching.
+Patterns use [RE2](https://github.com/google/re2/wiki/Syntax) regex syntax.
+Each pattern is implicitly anchored to a full-path match (wrapped in
+`^(?:...)$`), so you do not need explicit `^` or `$` anchors. In YAML, escape
+backslashes for literal dots (`\\.`). Query strings are stripped from the
+request path before matching.
 
 ```yaml
 authz_server:
   policy:
     type: static_authenticated
     allow_anonymous_without_issue_paths:
-      - "^/api/[^/]+/v[0-9]+(\\.[0-9]+)?/openapi.json$"
-      - "^/api/pulp/api/v3/status/$"
+      - "/api/[^/]+/v[0-9]+(\\.[0-9]+)?/openapi.json"
+      - "/api/pulp/api/v3/status/"
       # See configs/examples/parsec-optional-auth.yaml for the full 3scale list
     token_types:
       - type: "urn:redhat:params:oauth:token-type:rh-identity"

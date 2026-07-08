@@ -146,7 +146,7 @@ func CompilePathPatterns(patterns []string) ([]*regexp.Regexp, error) {
 // authenticated subjects. Optionally, configured path patterns allow
 // anonymous access without issuing tokens on matching URL paths.
 type StaticAuthenticatedPolicy struct {
-	tokenTypes                     []TokenTypeSpec
+	tokenTypes                      []TokenTypeSpec
 	allowAnonymousWithoutIssuePaths []*regexp.Regexp
 }
 
