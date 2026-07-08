@@ -2,6 +2,12 @@
 
 Verify all items before presenting or approving the plan.
 
+- [ ] **Server code vs. configuration gate passed**: no deployment-specific,
+      IdP-specific, or vendor-specific logic in server Go code. If server code
+      is modified, the change is generic — valid for any IdP, vendor, and
+      deployment.
+- [ ] If a new abstraction/policy layer is needed, it is a separate PR from
+      the use case that consumes it.
 - [ ] Every acceptance criterion maps to at least one implementation step
 - [ ] Every new exported type/function has a proposed name following parsec conventions
 - [ ] Every new interface has a NoOp implementation planned

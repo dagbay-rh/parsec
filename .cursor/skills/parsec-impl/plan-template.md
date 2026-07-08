@@ -28,9 +28,28 @@ Use this template when generating implementation plans. Save output to
 
 ## Design
 
+### Server Code vs. Configuration
+
+> **Answer these questions FIRST before proceeding with any design.**
+
+| Question | Answer |
+|----------|--------|
+| Does this modify server Go code or use configuration/policy? | ... |
+| If server code: is the change generic (any IdP/vendor/deployment) or specific? | ... |
+| Does any proposed server code hardcode claim names, issuer URLs, vendor behaviors, or deployment-specific logic? | No / Yes — if yes, redesign. |
+| Which existing parsec policy/config layer fits? | CEL mapper / claim filter / pre-issuance policy / validator filter / trust store config / none |
+| If none: does this need a new abstraction layer? | No / Yes — if yes, split into abstraction PR + use-case PR. |
+
+_Parsec is a generic service. Server code must never contain logic specific to
+a particular IdP, vendor, or deployment. Use configuration/policy layers for
+deployment-specific behavior. If a new abstraction is needed, it gets its own
+dedicated PR — designed generically, tested, and documented — before the
+use-case PR that wires it up._
+
 ### Approach
 
-<Describe the chosen architectural approach and rationale.>
+<Describe the chosen architectural approach and rationale. Explain why the
+chosen layer (server code / config / policy) is the right one.>
 
 ### Alternatives Considered
 

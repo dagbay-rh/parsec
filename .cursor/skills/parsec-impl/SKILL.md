@@ -167,14 +167,65 @@ Document any additional constraints discovered:
 Produce the plan using the template in [plan-template.md](plan-template.md).
 Save the plan to `docs/impl-plans/<JIRA-KEY>.md`.
 
-The plan must address **all** of the following:
+The plan must address **all** of the following.
 
-### 3.1 Design Decisions
+### 3.1 Server Code vs. Configuration Gate
+
+> **This is the FIRST and most important check. Evaluate this before any other
+> design work. If the plan fails this gate, stop and redesign.**
+
+Parsec is a **generic** token exchange / auth service. It is NOT specific to
+any single IdP, deployment, vendor, or organization. Every change must be
+evaluated against this principle:
+
+1. **Does this modify server Go code, or does it use configuration / policy?**
+   Prefer configuration and policy layers over server code changes. Parsec
+   has rich configurability — use it. Current policy/config layers include:
+   CEL claim mappers, claim filters, pre-issuance policy, validator filters,
+   and trust store configuration. Check whether an existing layer fits before
+   proposing server code changes or a new layer.
+
+2. **If it modifies server code, is the change generic or deployment-specific?**
+   Server code changes MUST be generic and valid for any IdP, any vendor,
+   any deployment. If the change references any of the following, it MUST NOT
+   go into server Go code:
+   - Claim names specific to a particular IdP or vendor
+   - Issuer URLs or endpoints for a specific organization
+   - Behaviors or error messages that mirror a specific gateway or proxy
+   - Token formats or fields unique to a particular auth provider
+
+3. **Red flag test**: If any proposed server Go code hardcodes a specific
+   claim name, issuer URL, vendor behavior, or deployment-specific logic,
+   that is an **immediate red flag**. The plan must either:
+   - Move the logic to a configuration/policy layer, OR
+   - Generalize it into a reusable, configurable abstraction (e.g. a
+     "reject if claim X has value Y" mechanism that works for any claim
+     from any IdP), OR
+   - Introduce a new policy layer if no existing layer fits — see
+     "Abstraction-first PR pattern" below.
+
+**Abstraction-first PR pattern**: When the right solution requires a new
+abstraction or policy layer, do NOT combine the abstraction and the use
+case in a single PR. Split into two:
+
+- **PR 1 — The abstraction**: Design the new layer thoroughly and
+  generically. It should be useful beyond just this one use case. This PR
+  gets its own focused review — the abstraction must stand on its own with
+  tests, observer support, and documentation. Do this well.
+- **PR 2 — The use case**: Wire the specific JIRA requirement using the
+  new abstraction via configuration. This PR should be small and mostly
+  config/policy, not new server code.
+
+Present this evaluation prominently at the top of the Design section. If the
+change is purely configuration, state that. If it touches server code, explain
+why it's generic. If a new abstraction is needed, call out the two-PR split.
+
+### 3.2 Design Decisions (after passing the gate above)
 - Architectural approach with rationale
 - Trade-offs considered and why the chosen approach wins
 - Interface changes (if any) and backward compatibility
 
-### 3.2 Implementation Steps & PR Boundaries
+### 3.3 Implementation Steps & PR Boundaries
 - Ordered list of changes grouped by package/concern
 - Each step should be small enough to be a reviewable unit
 - Identify which steps can be parallelized vs. must be sequential
@@ -189,37 +240,37 @@ The plan must address **all** of the following:
   change and its only implementation). Note these as "atomic" and explain
   why. Everything else should be split to keep PRs reviewable.
 
-### 3.3 Naming Conventions
+### 3.4 Naming Conventions
 - Proposed type, function, and variable names
 - Must follow parsec conventions: descriptive, domain-oriented names
 - Observer/Probe names per `docs/observer-pattern.md`
 
-### 3.4 Test Coverage
+### 3.5 Test Coverage
 - Per `docs/testing.md`: hermetic, no I/O, no mocks, prefer fakes
 - List specific test cases for each component
 - Contract tests for new interfaces
 - Benchmark tests if performance-sensitive paths are touched
 - Deterministic concurrency tests if goroutines are involved
 
-### 3.5 Observability
+### 3.6 Observability
 - Per `docs/observer-pattern.md`: Observer/Probe interfaces, NoOp implementations
 - Observer hierarchy placement (leaf, intermediate, aggregate)
 - Injection convention (constructors accept leaf observer)
 - OTel metrics: `WithAttributeSet`, pre-built attribute sets, histogram conventions
 
-### 3.6 Security
+### 3.7 Security
 - Credential handling per `docs/CREDENTIAL_DESIGN.md`
 - Input validation and sanitization
 - Error messages that don't leak internals
 - TLS/mTLS considerations if applicable
 
-### 3.7 Maintainability
+### 3.8 Maintainability
 - Constructor pattern: required params positional, optional via `With…` options
 - Forward compatibility: NoOp embedding for interfaces
 - Config layer concerns vs. domain concerns separation
 - Package boundaries and dependency direction
 
-### 3.8 Configuration Impact
+### 3.9 Configuration Impact
 
 All config changes must follow [config-constraints.md](config-constraints.md)
 (fail-safe, backward compatible).
@@ -249,7 +300,7 @@ that must be applied to stage and prod environments.
 If the change has **no** config impact, state that explicitly so reviewers
 know it was considered and not overlooked.
 
-### 3.9 Documentation
+### 3.10 Documentation
 - **New docs**: If the change introduces a new architectural pattern, design
   decision, or convention, include a step to create or update a doc in `docs/`.
   The doc should follow the style of existing docs (concise, pattern-oriented,
@@ -264,12 +315,12 @@ know it was considered and not overlooked.
 - **Config examples**: If new configuration fields are added, include example
   YAML snippets in the relevant doc or in the plan itself.
 
-### 3.10 Completeness Checklist
+### 3.11 Completeness Checklist
 
 See [completeness-checklist.md](completeness-checklist.md). Verify all items
 before presenting the plan to the user.
 
-### 3.11 Risks & Open Questions
+### 3.12 Risks & Open Questions
 - Anything that needs clarification before implementation
 - Known risks and mitigation strategies
 
