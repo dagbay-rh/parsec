@@ -21,10 +21,10 @@ setup needed beyond MCP configuration.
 The skill is already symlinked at `.claude/skills/parsec-impl` (pointing to
 `.cursor/skills/parsec-impl`). No setup needed beyond MCP configuration.
 
-**Invoke with**: `@parsec-impl` in an interactive session, or:
+**Invoke with**: `/parsec-impl` in an interactive session, or:
 
 ```bash
-claude "@parsec-impl plan for KESSEL-123"
+claude "/parsec-impl plan for KESSEL-123"
 ```
 
 ---
@@ -91,7 +91,7 @@ See [mcp-setup-guide.md](mcp-setup-guide.md) for detailed instructions.
 | Feature | Cursor | Claude CLI |
 |---------|--------|------------|
 | Skill discovery | `.cursor/skills/` | `.claude/skills/` (symlinked) |
-| Invocation | `@parsec-impl` | `@parsec-impl` |
+| Invocation | `@parsec-impl` | `/parsec-impl` |
 | JIRA MCP config | Cursor Settings > MCP | `.mcp.json` or `~/.claude/settings.json` |
 | `AskQuestion` (structured prompts) | Native | Falls back to conversational prompts |
 | `SwitchMode` (Agent/Plan mode) | Native | Not applicable — proceeds without |
@@ -103,11 +103,11 @@ The skill degrades gracefully — when Cursor-specific tools (`AskQuestion`,
 
 ## Quick Reference
 
-| Action | Command |
-|--------|---------|
-| Start a new plan | `@parsec-impl` or `@parsec-impl KESSEL-123` |
-| Iterate on plan | `@parsec-impl iterate` |
-| Update a section | `@parsec-impl update` |
-| Scrap and restart | `@parsec-impl scrap` |
-| Delete the plan | `@parsec-impl delete` |
-| Execute the plan | `@parsec-impl execute` |
+| Action | Cursor | Claude CLI |
+|--------|--------|------------|
+| Start a new plan | `@parsec-impl` or `@parsec-impl KESSEL-123` | `/parsec-impl` or `/parsec-impl KESSEL-123` |
+| Iterate on plan | `@parsec-impl iterate` | `/parsec-impl iterate` |
+| Update a section | `@parsec-impl update` | `/parsec-impl update` |
+| Scrap and restart | `@parsec-impl scrap` | `/parsec-impl scrap` |
+| Delete the plan | `@parsec-impl delete` | `/parsec-impl delete` |
+| Execute the plan | `@parsec-impl execute` | `/parsec-impl execute` |
