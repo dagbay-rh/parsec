@@ -16,15 +16,38 @@ setup needed beyond MCP configuration.
 
 **Invoke with**: `@parsec-impl` in chat.
 
-### Claude CLI
+### Claude CLI (Claude Code)
 
-The skill is already symlinked at `.claude/skills/parsec-impl` (pointing to
-`.cursor/skills/parsec-impl`). No setup needed beyond MCP configuration.
+The skill is symlinked at `.claude/skills/parsec-impl` in the repo (pointing
+to `.cursor/skills/parsec-impl`). If you clone the repo after this is merged,
+it works out of the box — no extra setup needed.
 
 **Invoke with**: `/parsec-impl` in an interactive session, or:
 
 ```bash
 claude "/parsec-impl plan for KESSEL-123"
+```
+
+#### Manual setup (if the symlink is missing or you prefer a copy)
+
+If you don't see `.claude/skills/parsec-impl` after cloning, or if skill
+discovery isn't working, set it up manually:
+
+```bash
+# Option A: Create the symlink yourself (recommended — single source of truth)
+mkdir -p .claude/skills
+ln -s ../../.cursor/skills/parsec-impl .claude/skills/parsec-impl
+
+# Option B: Copy the skill folder (works if symlinks cause issues on your OS)
+mkdir -p .claude/skills
+cp -r .cursor/skills/parsec-impl .claude/skills/parsec-impl
+```
+
+You can also reference the skill directly without `/parsec-impl` by pasting
+the skill file path into your prompt:
+
+```bash
+claude "Read .cursor/skills/parsec-impl/SKILL.md and follow it for KESSEL-123"
 ```
 
 ---
