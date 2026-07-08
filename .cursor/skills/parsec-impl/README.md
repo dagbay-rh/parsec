@@ -18,18 +18,8 @@ setup needed beyond MCP configuration.
 
 ### Claude CLI
 
-Copy or symlink the skill folder into `.claude/skills/`:
-
-```bash
-# Option A: Symlink (recommended — single source of truth)
-mkdir -p .claude/skills
-ln -s ../../.cursor/skills/parsec-impl .claude/skills/parsec-impl
-
-# Option B: Copy
-cp -r .cursor/skills/parsec-impl .claude/skills/parsec-impl
-```
-
-After that, Claude CLI discovers it the same way Cursor does.
+The skill is already symlinked at `.claude/skills/parsec-impl` (pointing to
+`.cursor/skills/parsec-impl`). No setup needed beyond MCP configuration.
 
 **Invoke with**: `@parsec-impl` in an interactive session, or:
 
@@ -100,7 +90,7 @@ See [mcp-setup-guide.md](mcp-setup-guide.md) for detailed instructions.
 
 | Feature | Cursor | Claude CLI |
 |---------|--------|------------|
-| Skill discovery | `.cursor/skills/` | `.claude/skills/` (symlink or copy) |
+| Skill discovery | `.cursor/skills/` | `.claude/skills/` (symlinked) |
 | Invocation | `@parsec-impl` | `@parsec-impl` |
 | JIRA MCP config | Cursor Settings > MCP | `.mcp.json` or `~/.claude/settings.json` |
 | `AskQuestion` (structured prompts) | Native | Falls back to conversational prompts |

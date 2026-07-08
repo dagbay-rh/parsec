@@ -159,9 +159,9 @@ Per `docs/observer-pattern.md`.
 
 ## Configuration Impact
 
-> **Fail-safe rule**: All config changes must be backward compatible. If a new
-> field is absent (app-interface not yet updated), the system behaves exactly as
-> before. New behavior activates only when config is explicitly provided.
+> **Fail-safe rule**: See [config-constraints.md](config-constraints.md) for
+> the full constraint. All config changes must be backward compatible — absent
+> fields must preserve previous behavior.
 
 ### Backward Compatibility
 
@@ -224,21 +224,8 @@ _If no config impact: state "No configuration impact — reviewed and confirmed.
 
 ## Completeness Checklist
 
-- [ ] Every acceptance criterion maps to at least one implementation step
-- [ ] Every new exported type/function has a proposed name
-- [ ] Every new interface has a NoOp implementation planned
-- [ ] Every observable component has observer/probe entries
-- [ ] Test cases cover all new behavior
-- [ ] Security implications addressed (or marked N/A)
-- [ ] Documentation steps included for new/changed patterns
-- [ ] Config impact assessed: local config, deploy templates, and downstream app-interface
-- [ ] All new config fields are fail-safe: absent/zero-value preserves previous behavior
-- [ ] Test exists verifying behavior with new config field absent (backward compat)
-- [ ] If config changes exist, explicit follow-up step for app-interface stage + prod updates
-- [ ] Each step is a reviewable, self-contained unit
-- [ ] Large changes are split into distinct PRs with clear boundaries
-- [ ] Each PR compiles, tests pass, and doesn't break existing behavior independently
-- [ ] Plan can be executed top-to-bottom without ambiguity
+See [completeness-checklist.md](completeness-checklist.md). Verify all items
+before marking the plan Approved.
 
 ## Risks & Open Questions
 

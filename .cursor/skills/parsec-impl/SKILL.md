@@ -18,8 +18,8 @@ tools, analyzing the task against parsec architecture, and producing a
 reviewable implementation plan. The plan is iterative — users review, comment,
 and refine before execution begins.
 
-**Compatibility**: Works in both Cursor and Claude CLI. For Claude CLI, symlink
-or copy this skill folder into `.claude/skills/parsec-impl/`. When
+**Compatibility**: Works in both Cursor and Claude CLI. The skill is symlinked
+at `.claude/skills/parsec-impl` for Claude CLI discovery. When
 `AskQuestion` is unavailable, ask the same questions conversationally. When
 `SwitchMode` is unavailable, proceed without mode switching. See
 [README.md](README.md) for setup instructions.
@@ -112,8 +112,10 @@ architecture and design documents. Discover them dynamically:
 
 1. Read `AGENTS.md` at the repo root (always present, contains pointers to conventions).
 2. Glob for `docs/**/*.md` to find all documentation files.
-3. Exclude files that are clearly review artifacts (e.g. `pr-*-review.md`,
-   `benchmark-results-*.md`) — these are PR-specific, not architectural.
+3. Exclude files that are not architectural references:
+   - `pr-*-review.md`, `benchmark-results-*.md` — PR-specific review artifacts
+   - `impl-plans/*.md` — draft/in-progress implementation plans, not established
+     architecture (these are the output of this skill, not input to it)
 4. Read every remaining doc. These are the architecture, design, and convention
    references that the plan must align with.
 
@@ -145,12 +147,10 @@ Determine whether the change touches configuration at any layer:
    **app-interface** secrets must also be updated. Refer to the rule for
    specific paths and validation checks.
 
-**Fail-safe constraint**: Every config change MUST be backward compatible.
-If the new config field is absent (because downstream app-interface hasn't been
-updated yet), the code must behave exactly as it did before the change — no
-panics, no broken behavior, no degraded functionality. The new behavior only
-activates once the config is explicitly provided. This ensures safe rollouts
-where code deploys before config updates.
+**Fail-safe constraint**: See [config-constraints.md](config-constraints.md).
+Every config change must be backward compatible — absent fields must preserve
+previous behavior. This ensures safe rollouts where code deploys before config
+updates.
 
 Flag any config impact found — it will feed into the plan's Configuration
 Impact section.
@@ -221,23 +221,8 @@ The plan must address **all** of the following:
 
 ### 3.8 Configuration Impact
 
-All config changes MUST be **fail-safe and backward compatible**:
-
-> **Hard rule**: Code deploys before config. If a new config field is missing
-> (because app-interface hasn't been updated yet), the system MUST behave
-> identically to the previous version. New behavior activates only when the
-> config is explicitly provided. No panics, no errors, no degraded behavior
-> from absent config.
-
-How to achieve this:
-- New fields must have **sensible zero-value or explicit defaults** that
-  preserve prior behavior
-- Use `With…` option functions or pointer/optional types where appropriate
-  so that "not set" is distinguishable from "set to zero"
-- Never `panic` or `log.Fatal` on missing new config — fall back gracefully
-- Feature-gate new behavior behind the new config: old config = old behavior
-- Include a **test that verifies behavior with the field absent/zero-valued**
-  matches the previous behavior
+All config changes must follow [config-constraints.md](config-constraints.md)
+(fail-safe, backward compatible).
 
 If the change touches configuration at **any** layer, the plan must include
 explicit steps for each:
@@ -279,27 +264,12 @@ know it was considered and not overlooked.
 - **Config examples**: If new configuration fields are added, include example
   YAML snippets in the relevant doc or in the plan itself.
 
-### 3.9 Completeness Checklist
+### 3.10 Completeness Checklist
 
-Before presenting the plan, verify everything is in order:
+See [completeness-checklist.md](completeness-checklist.md). Verify all items
+before presenting the plan to the user.
 
-- [ ] Every acceptance criterion has at least one implementation step addressing it
-- [ ] Every new exported type/function has a proposed name following parsec conventions
-- [ ] Every new interface has a NoOp implementation planned
-- [ ] Every new component that needs observability has observer/probe entries
-- [ ] Test cases exist for all new behavior (unit, contract, benchmark as appropriate)
-- [ ] Security implications are addressed (or explicitly noted as N/A)
-- [ ] Documentation steps are included for any new or changed patterns
-- [ ] Config impact assessed: local config, deploy templates, and downstream app-interface
-- [ ] All new config fields are fail-safe: absent/zero-value preserves previous behavior
-- [ ] Test exists verifying behavior with new config field absent (backward compat)
-- [ ] If config changes exist, explicit follow-up step for app-interface stage + prod updates
-- [ ] No step is too large — each should be a reviewable, self-contained unit
-- [ ] Large changes are split into distinct PRs with clear boundaries
-- [ ] Each PR compiles, tests pass, and doesn't break existing behavior independently
-- [ ] The plan can be executed top-to-bottom without ambiguity
-
-### 3.10 Risks & Open Questions
+### 3.11 Risks & Open Questions
 - Anything that needs clarification before implementation
 - Known risks and mitigation strategies
 
