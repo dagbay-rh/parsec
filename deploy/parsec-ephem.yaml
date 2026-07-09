@@ -65,11 +65,13 @@ objects:
                 script_file: /etc/parsec/scripts/redhat_identity.cel
 
         authz_server:
-          token_types:
-            - type: "urn:ietf:params:oauth:token-type:txn_token"
-              header_name: "Transaction-Token"
-            - type: "urn:redhat:params:oauth:token-type:rh-identity"
-              header_name: "x-rh-identity"
+          policy:
+            type: static_authenticated
+            token_types:
+              - type: "urn:ietf:params:oauth:token-type:txn_token"
+                header_name: "Transaction-Token"
+              - type: "urn:redhat:params:oauth:token-type:rh-identity"
+                header_name: "x-rh-identity"
 
       redhat_identity.cel: |
         // Red Hat Identity Transformation
