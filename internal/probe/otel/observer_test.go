@@ -575,8 +575,157 @@ func TestJWTValidateMetrics(t *testing.T) {
 			probe.End()
 
 			body := scrape(t, p)
-			assert.Contains(t, body, "parsec_trust_jwt_validate_duration_seconds")
-			assert.Contains(t, body, `issuer="test-issuer"`)
+			assert.Contains(t, body, "parsec_trust_validate_duration_seconds")
+			assert.Contains(t, body, `validator_type="jwt"`)
+			assert.Contains(t, body, `validator="test-issuer"`)
+			assert.Contains(t, body, tt.wantResult)
+			assert.Contains(t, body, tt.wantStatus)
+		})
+	}
+}
+
+func TestLuaValidateMetrics(t *testing.T) {
+	tests := []struct {
+		name   string
+		action func(probe interface {
+			End()
+			ScriptLoadFailed(error)
+			ScriptExecutionFailed(error)
+			InvalidReturnType(string)
+			TokenInvalid(error)
+			ValidationRejected()
+			ResultConversionFailed(error)
+		})
+		wantResult string
+		wantStatus string
+	}{
+		{
+			name: "success",
+			action: func(p interface {
+				End()
+				ScriptLoadFailed(error)
+				ScriptExecutionFailed(error)
+				InvalidReturnType(string)
+				TokenInvalid(error)
+				ValidationRejected()
+				ResultConversionFailed(error)
+			}) {
+			},
+			wantResult: `result="success"`,
+			wantStatus: `status="success"`,
+		},
+		{
+			name: "script load failed",
+			action: func(p interface {
+				End()
+				ScriptLoadFailed(error)
+				ScriptExecutionFailed(error)
+				InvalidReturnType(string)
+				TokenInvalid(error)
+				ValidationRejected()
+				ResultConversionFailed(error)
+			}) {
+				p.ScriptLoadFailed(errors.New("not found"))
+			},
+			wantResult: `result="script_load_failed"`,
+			wantStatus: `status="error"`,
+		},
+		{
+			name: "execution failed",
+			action: func(p interface {
+				End()
+				ScriptLoadFailed(error)
+				ScriptExecutionFailed(error)
+				InvalidReturnType(string)
+				TokenInvalid(error)
+				ValidationRejected()
+				ResultConversionFailed(error)
+			}) {
+				p.ScriptExecutionFailed(errors.New("lua panic"))
+			},
+			wantResult: `result="execution_failed"`,
+			wantStatus: `status="error"`,
+		},
+		{
+			name: "invalid return type",
+			action: func(p interface {
+				End()
+				ScriptLoadFailed(error)
+				ScriptExecutionFailed(error)
+				InvalidReturnType(string)
+				TokenInvalid(error)
+				ValidationRejected()
+				ResultConversionFailed(error)
+			}) {
+				p.InvalidReturnType("number")
+			},
+			wantResult: `result="invalid_return_type"`,
+			wantStatus: `status="error"`,
+		},
+		{
+			name: "token invalid",
+			action: func(p interface {
+				End()
+				ScriptLoadFailed(error)
+				ScriptExecutionFailed(error)
+				InvalidReturnType(string)
+				TokenInvalid(error)
+				ValidationRejected()
+				ResultConversionFailed(error)
+			}) {
+				p.TokenInvalid(errors.New("bad token"))
+			},
+			wantResult: `result="token_invalid"`,
+			wantStatus: `status="error"`,
+		},
+		{
+			name: "rejected",
+			action: func(p interface {
+				End()
+				ScriptLoadFailed(error)
+				ScriptExecutionFailed(error)
+				InvalidReturnType(string)
+				TokenInvalid(error)
+				ValidationRejected()
+				ResultConversionFailed(error)
+			}) {
+				p.ValidationRejected()
+			},
+			wantResult: `result="rejected"`,
+			wantStatus: `status="error"`,
+		},
+		{
+			name: "conversion failed",
+			action: func(p interface {
+				End()
+				ScriptLoadFailed(error)
+				ScriptExecutionFailed(error)
+				InvalidReturnType(string)
+				TokenInvalid(error)
+				ValidationRejected()
+				ResultConversionFailed(error)
+			}) {
+				p.ResultConversionFailed(errors.New("bad type"))
+			},
+			wantResult: `result="conversion_failed"`,
+			wantStatus: `status="error"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := testProvider(t)
+			obs, err := NewObserver(p, "/metrics")
+			require.NoError(t, err)
+
+			_, probe := obs.LuaValidateStarted(context.Background(), "my-lua-validator")
+			tt.action(probe)
+			probe.End()
+
+			body := scrape(t, p)
+			assert.Contains(t, body, "parsec_trust_validate_duration_seconds")
+			assert.Contains(t, body, `validator_type="lua"`)
+			assert.Contains(t, body, `validator="my-lua-validator"`)
 			assert.Contains(t, body, tt.wantResult)
 			assert.Contains(t, body, tt.wantStatus)
 		})
@@ -804,6 +953,9 @@ func TestProbeContext_CarriesRequestContext(t *testing.T) {
 
 	_, jp := obs.JWTValidateStarted(ctx, "iss")
 	assert.Equal(t, "request-123", jp.(*jwtValidateProbe).ctx.Value(ctxKey{}))
+
+	_, lvp := obs.LuaValidateStarted(ctx, "lua-v")
+	assert.Equal(t, "request-123", lvp.(*luaValidateProbe).ctx.Value(ctxKey{}))
 
 	_, fp := obs.ForActorStarted(ctx)
 	assert.Equal(t, "request-123", fp.(*forActorProbe).ctx.Value(ctxKey{}))

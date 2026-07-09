@@ -72,7 +72,9 @@ This works because each `CredentialSource` returns `nil` when the expected heade
 
 ### 1. Strongly Typed Credentials
 
-Each credential type has its own struct with type-specific fields:
+Each credential type has its own struct with type-specific fields and json struct tags
+for native serialization. The `MarshalCredentialJSON`/`UnmarshalCredentialJSON` pair handles
+discriminated-union serialization with a `"type"` field:
 
 ```go
 type Credential interface {
@@ -80,23 +82,27 @@ type Credential interface {
 }
 
 type BearerCredential struct {
-    Token string  // The bearer token; issuer determined by validator store
+    Token string `json:"token"`
 }
 
 type JWTCredential struct {
-    Token          string
-    Algorithm      string  // Parsed from JWT header
-    KeyID          string  // Parsed from JWT header
-    IssuerIdentity string  // Parsed from JWT "iss" claim (used by trust store)
+    BearerCredential
+    Algorithm      string `json:"algorithm,omitempty"`
+    KeyID          string `json:"key_id,omitempty"`
+    IssuerIdentity string `json:"issuer_identity,omitempty"`
 }
 
 type MTLSCredential struct {
-    Certificate         []byte
-    Chain               [][]byte
-    PeerCertificateHash string
-    IssuerIdentity      string  // CA identifier (used by trust store)
+    Certificate         []byte   `json:"certificate,omitempty"`
+    Chain               [][]byte `json:"chain,omitempty"`
+    PeerCertificateHash string   `json:"peer_certificate_hash,omitempty"`
+    IssuerIdentity      string   `json:"issuer_identity,omitempty"`
 }
 ```
+
+Adding a new credential type requires only:
+1. Define the struct with json tags + `Type()` method
+2. Add one case to `UnmarshalCredentialJSON`
 
 ### 2. Issuer Identification for Validator Store
 
@@ -270,7 +276,7 @@ type DPoPCredential struct {
 | **Issuer Identification** | Some credential types carry issuer info for trust store routing; bearer tokens rely on store configuration |
 | **Security Boundary** | ext_authz removes headers used for external credentials |
 | **Exchange Body Tokens** | Protocol-level concern, separate from `CredentialSource` |
-| **Extensibility** | Easy to add new credential types or sources without changing contracts |
+| **Extensibility** | New credential types need only a struct with json tags, a `Type()` method, and one `UnmarshalCredentialJSON` case |
 
 This design cleanly separates:
 1. **Normalization** (transport -> CredentialContext)

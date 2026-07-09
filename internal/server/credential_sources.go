@@ -9,8 +9,9 @@ import (
 
 // Credential source type strings used in config.
 const (
-	CredentialSourceTypeBearer = "authorization_bearer_opaque"
-	CredentialSourceTypeCookie = "cookie_bearer_opaque"
+	CredentialSourceTypeBearer    = "authorization_bearer_opaque"
+	CredentialSourceTypeCookie    = "cookie_bearer_opaque"
+	CredentialSourceTypeBasicAuth = "authorization_basic_auth"
 )
 
 // CredentialSource extracts a credential from a transport-neutral context.
