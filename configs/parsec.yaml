@@ -9,9 +9,12 @@ server:
 
 # Observability configuration
 observability:
-  type: logging
-  log_level: debug
+  type: composite
+  log_level: info
   log_format: json
+  observers:
+    - type: logging
+    - type: metrics
 
 # Trust domain for this parsec instance
 # Used as the audience (aud) claim in all issued tokens
@@ -33,7 +36,7 @@ trust_store:
       jwks_url: "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/certs"
       trust_domain: "https://sso.redhat.com/auth/realms/redhat-external"
       refresh_interval: "15m"
-      audiences: ["rhsm-api", "customer-portal", "api.console"]
+      audiences: ["rhsm-api", "customer-portal", "api.console", ""]
 
 # Data sources for token enrichment
 data_sources:
