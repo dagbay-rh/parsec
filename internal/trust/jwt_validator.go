@@ -58,6 +58,8 @@ type JWTValidatorConfig struct {
 	Observer JWTValidatorObserver
 
 	// AllowedAudiences restricts token aud claims. Empty disables enforcement.
+	// Include an empty string ("") to permit tokens that omit the aud claim;
+	// when aud is present it must match another entry in the list.
 	AllowedAudiences []string
 }
 
@@ -221,7 +223,11 @@ func (v *JWTValidator) validateAudience(tokenAudiences []string) error {
 	if len(v.allowedAudiences) == 0 {
 		return nil
 	}
+	allowMissing := slices.Contains(v.allowedAudiences, "")
 	if len(tokenAudiences) == 0 {
+		if allowMissing {
+			return nil
+		}
 		return fmt.Errorf("%w: missing audience claim", ErrInvalidToken)
 	}
 	for _, aud := range tokenAudiences {

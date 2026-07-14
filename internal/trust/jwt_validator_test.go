@@ -430,6 +430,120 @@ func TestJWTValidator_audienceAllowlist(t *testing.T) {
 			t.Fatalf("expected validation success without allowlist, got: %v", err)
 		}
 	})
+
+}
+
+func TestJWTValidator_emptyAudienceSentinel(t *testing.T) {
+	ctx := context.Background()
+	fixture := setupTestJWKSFixture(t)
+
+	httpClient := &http.Client{
+		Transport: httpfixture.NewTransport(httpfixture.TransportConfig{
+			Provider: fixture,
+			Strict:   true,
+		}),
+	}
+
+	validator, err := NewJWTValidator(JWTValidatorConfig{
+		Issuer:           fixture.Issuer(),
+		JWKSURL:          fixture.JWKSURL(),
+		TrustDomain:      "test-domain",
+		HTTPClient:       httpClient,
+		Clock:            fixture.Clock(),
+		AllowedAudiences: []string{"allowed-aud", ""},
+	})
+	if err != nil {
+		t.Fatalf("failed to create validator: %v", err)
+	}
+
+	t.Run("accepts token without aud when missing audience allowed", func(t *testing.T) {
+		tokenString, err := fixture.CreateAndSignToken(map[string]interface{}{
+			"sub": "user@example.com",
+		})
+		if err != nil {
+			t.Fatalf("failed to create token: %v", err)
+		}
+
+		cred := &JWTCredential{BearerCredential: BearerCredential{Token: tokenString}}
+		result, err := validator.Validate(ctx, cred)
+		if err != nil {
+			t.Fatalf("expected validation success, got: %v", err)
+		}
+		if result.Subject != "user@example.com" {
+			t.Errorf("expected subject 'user@example.com', got %q", result.Subject)
+		}
+	})
+
+	t.Run("still validates present audience against allowlist", func(t *testing.T) {
+		tokenString, err := fixture.CreateAndSignToken(map[string]interface{}{
+			"sub": "user@example.com",
+			"aud": "disallowed-aud",
+		})
+		if err != nil {
+			t.Fatalf("failed to create token: %v", err)
+		}
+
+		cred := &JWTCredential{BearerCredential: BearerCredential{Token: tokenString}}
+		_, err = validator.Validate(ctx, cred)
+		if !errors.Is(err, ErrInvalidToken) {
+			t.Fatalf("expected ErrInvalidToken for disallowed audience, got: %v", err)
+		}
+	})
+
+	t.Run("accepts present audience matching allowlist", func(t *testing.T) {
+		tokenString, err := fixture.CreateAndSignToken(map[string]interface{}{
+			"sub": "user@example.com",
+			"aud": "allowed-aud",
+		})
+		if err != nil {
+			t.Fatalf("failed to create token: %v", err)
+		}
+
+		cred := &JWTCredential{BearerCredential: BearerCredential{Token: tokenString}}
+		if _, err := validator.Validate(ctx, cred); err != nil {
+			t.Fatalf("expected validation success, got: %v", err)
+		}
+	})
+
+	t.Run("empty string alone permits only missing aud", func(t *testing.T) {
+		missingOnlyValidator, err := NewJWTValidator(JWTValidatorConfig{
+			Issuer:           fixture.Issuer(),
+			JWKSURL:          fixture.JWKSURL(),
+			TrustDomain:      "test-domain",
+			HTTPClient:       httpClient,
+			Clock:            fixture.Clock(),
+			AllowedAudiences: []string{""},
+		})
+		if err != nil {
+			t.Fatalf("failed to create validator: %v", err)
+		}
+
+		tokenWithoutAud, err := fixture.CreateAndSignToken(map[string]interface{}{
+			"sub": "user@example.com",
+		})
+		if err != nil {
+			t.Fatalf("failed to create token: %v", err)
+		}
+
+		cred := &JWTCredential{BearerCredential: BearerCredential{Token: tokenWithoutAud}}
+		if _, err := missingOnlyValidator.Validate(ctx, cred); err != nil {
+			t.Fatalf("expected validation success for token without aud, got: %v", err)
+		}
+
+		tokenWithAud, err := fixture.CreateAndSignToken(map[string]interface{}{
+			"sub": "user@example.com",
+			"aud": "any-aud",
+		})
+		if err != nil {
+			t.Fatalf("failed to create token: %v", err)
+		}
+
+		cred = &JWTCredential{BearerCredential: BearerCredential{Token: tokenWithAud}}
+		_, err = missingOnlyValidator.Validate(ctx, cred)
+		if !errors.Is(err, ErrInvalidToken) {
+			t.Fatalf("expected ErrInvalidToken for present audience with missing-only allowlist, got: %v", err)
+		}
+	})
 }
 
 func TestJWTValidatorConfig(t *testing.T) {
