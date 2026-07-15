@@ -37,10 +37,7 @@ func registryAuthSubtests(t *testing.T, authzServer *server.AuthzServer) {
 			t.Errorf("expected org_id '123', got %v", identity["org_id"])
 		}
 
-		user, ok := identity["user"].(map[string]any)
-		if !ok {
-			t.Fatalf("expected user to be a map, got %T", identity["user"])
-		}
+		user := assertNestedMap(t, identity, "user")
 		if user["username"] != "alice" {
 			t.Errorf("expected username 'alice', got %v", user["username"])
 		}
@@ -59,14 +56,11 @@ func registryAuthSubtests(t *testing.T, authzServer *server.AuthzServer) {
 		if identity["auth_type"] != "registry-auth" {
 			t.Errorf("expected auth_type 'registry-auth', got %v", identity["auth_type"])
 		}
-		if identity["org_id"] != "" {
-			t.Errorf("expected org_id empty string, got %v", identity["org_id"])
+		if identity["org_id"] != nil {
+			t.Errorf("expected org_id nil, got %v", identity["org_id"])
 		}
 
-		user, ok := identity["user"].(map[string]any)
-		if !ok {
-			t.Fatalf("expected user to be a map, got %T", identity["user"])
-		}
+		user := assertNestedMap(t, identity, "user")
 		if user["username"] != "alice" {
 			t.Errorf("expected username 'alice', got %v", user["username"])
 		}
