@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -149,6 +150,14 @@ func assertDeniedResponse(t *testing.T, resp *authv3.CheckResponse) {
 	t.Helper()
 	if resp.Status.Code == int32(codes.OK) {
 		t.Fatal("expected denied response, got OK")
+	}
+}
+
+func assertDeniedContains(t *testing.T, resp *authv3.CheckResponse, substr string) {
+	t.Helper()
+	assertDeniedResponse(t, resp)
+	if !strings.Contains(resp.Status.Message, substr) {
+		t.Errorf("expected deny message to contain %q, got %q", substr, resp.Status.Message)
 	}
 }
 
