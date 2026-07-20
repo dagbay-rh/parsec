@@ -32,8 +32,11 @@ type IssueContext struct {
 	DataSourceRegistry *DataSourceRegistry
 }
 
-// ToClaims applies a set of claim mappers to produce claims
-// This is a convenience method to reduce duplication in issuer implementations
+// ToClaims applies a set of claim mappers to produce claims.
+// Mappers are composed in order via MappingResult.Merge (first non-Allow
+// decision wins; further mappers are not called). A Deny decision is adapted
+// to ClaimMappingError so Issuer.Issue can keep returning error until Decision
+// is threaded through Issue (see RHCLOUD-47315 open question #19).
 func (ic *IssueContext) ToClaims(ctx context.Context, mappers []ClaimMapper) (claims.Claims, error) {
 	// Build data source input
 	dataSourceInput := &DataSourceInput{
@@ -51,17 +54,19 @@ func (ic *IssueContext) ToClaims(ctx context.Context, mappers []ClaimMapper) (cl
 		DataSourceInput:    dataSourceInput,
 	}
 
-	// Apply mappers
-	result := make(claims.Claims)
+	acc := AllowResult(make(claims.Claims))
 	for _, mapper := range mappers {
-		mapperClaims, err := mapper.Map(ctx, mapperInput)
+		mr, err := mapper.Map(ctx, mapperInput)
 		if err != nil {
 			return nil, err
 		}
-		result.Merge(mapperClaims)
+		acc = acc.Merge(mr)
+		if !acc.Decision.IsAllow() {
+			return nil, acc.Decision.AsClaimMappingError()
+		}
 	}
 
-	return result, nil
+	return acc.Claims, nil
 }
 
 // PublicKey represents a public key for token verification

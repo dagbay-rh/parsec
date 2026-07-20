@@ -20,8 +20,8 @@ func NewStubClaimMapper(c claims.Claims) *StubClaimMapper {
 }
 
 // Map implements the ClaimMapper interface
-func (s *StubClaimMapper) Map(ctx context.Context, input *MapperInput) (claims.Claims, error) {
-	return s.claims, nil
+func (s *StubClaimMapper) Map(ctx context.Context, input *MapperInput) (MappingResult, error) {
+	return AllowResult(s.claims), nil
 }
 
 // PassthroughSubjectMapper creates claims from the subject's validated claims
@@ -33,11 +33,11 @@ func NewPassthroughSubjectMapper() *PassthroughSubjectMapper {
 }
 
 // Map implements the ClaimMapper interface
-func (p *PassthroughSubjectMapper) Map(ctx context.Context, input *MapperInput) (claims.Claims, error) {
+func (p *PassthroughSubjectMapper) Map(ctx context.Context, input *MapperInput) (MappingResult, error) {
 	if input.Subject == nil {
-		return nil, nil
+		return AllowResult(nil), nil
 	}
-	return input.Subject.Claims, nil
+	return AllowResult(input.Subject.Claims), nil
 }
 
 // RequestAttributesMapper creates claims from request attributes
@@ -49,9 +49,9 @@ func NewRequestAttributesMapper() *RequestAttributesMapper {
 }
 
 // Map implements the ClaimMapper interface
-func (r *RequestAttributesMapper) Map(ctx context.Context, input *MapperInput) (claims.Claims, error) {
+func (r *RequestAttributesMapper) Map(ctx context.Context, input *MapperInput) (MappingResult, error) {
 	if input.RequestAttributes == nil {
-		return nil, nil
+		return AllowResult(nil), nil
 	}
 
 	result := make(claims.Claims)
@@ -71,5 +71,5 @@ func (r *RequestAttributesMapper) Map(ctx context.Context, input *MapperInput) (
 	// Include all items from Additional map
 	maps.Copy(result, input.RequestAttributes.Additional)
 
-	return result, nil
+	return AllowResult(result), nil
 }

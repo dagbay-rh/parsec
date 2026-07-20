@@ -24,9 +24,9 @@ type DataSourceRegistry interface {
 // This provides compile-time declarations for:
 //   - datasource(name) - function to fetch data from a named data source
 //   - now_ms() - current Unix time in milliseconds (wall clock at evaluation)
-//   - fail(message) - reject the input with a ClaimMappingError (internal / mapping failure)
-//   - Layer A OAuth abort helpers (invalidRequest, invalidTarget, …)
-//   - Layer B reason helpers (invalidSubject, invalidActor, …)
+//   - fail(message) - unexpected mapping/system failure (Map returns error)
+//   - Layer A OAuth abort helpers (invalidRequest, invalidTarget, …) → Deny decision
+//   - Layer B reason helpers (invalidSubject, invalidActor, …) → Deny decision
 //   - subject, actor, request - variables containing identity and request data
 //
 // Pass nil for registry to create a test/validation environment.
@@ -201,8 +201,9 @@ func mappingAbort(oauthError, reason string) func(ref.Val) ref.Val {
 }
 
 // UnwrapMappingError extracts a *service.ClaimMappingError from an error chain
-// produced by CEL evaluation. Returns nil when the error is unrelated to a
-// mapper abort (fail / OAuth helpers).
+// produced by CEL evaluation. CEL abort helpers still use WrapErr internally;
+// CELMapper converts OAuth-coded errors into Deny MappingResults and leaves
+// fail()-style errors (empty OAuthError) as Map errors.
 func UnwrapMappingError(err error) *service.ClaimMappingError {
 	var me *service.ClaimMappingError
 	if errors.As(err, &me) {

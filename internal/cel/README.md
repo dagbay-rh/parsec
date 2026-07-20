@@ -38,8 +38,8 @@ This package provides CEL extensions specifically for claim mapping in Parsec:
   - Returns null if the datasource doesn't exist
   - Results are automatically cached within a single evaluation
 
-- **`fail(message)`** - Mapping / system failure abort
-  - Returns a `ClaimMappingError` with empty `OAuthError`
+- **`fail(message)`** - Unexpected mapping / system failure
+  - `ClaimMapper.Map` returns `error` (not a Deny decision)
   - Transports map this to Internal (not an OAuth client error)
   - Prefer Layer A/B helpers for policy denials
 
@@ -47,7 +47,8 @@ This package provides CEL extensions specifically for claim mapping in Parsec:
 
 Direct helpers for [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc6749#section-5.2) /
 [RFC 8693 §2.2.2](https://datatracker.ietf.org/doc/html/rfc8693#section-2.2.2)
-wire `error` values:
+wire `error` values. These become a **Deny** `MappingDecision` on
+`MappingResult` (`error == nil` from `Map`):
 
 | CEL | Wire `error` |
 |-----|--------------|
@@ -61,6 +62,8 @@ wire `error` values:
 
 #### Layer B — reason helpers (preferred for policy guards)
 
+Also Deny decisions (`error == nil` from `Map`):
+
 | CEL | Wire `error` | Reason |
 |-----|--------------|--------|
 | `invalidSubject(message)` | `invalid_request` | `invalid_subject` |
@@ -68,15 +71,24 @@ wire `error` values:
 | `invalidAudience(message)` | `invalid_target` | `invalid_audience` |
 | `unsupportedTokenType(message)` | `invalid_request` | `unsupported_token_type` |
 
+### MappingResult vs error
+
+| Outcome | `Map` return |
+|---------|----------------|
+| Claims produced | `Allow` + claims, `err == nil` |
+| Layer A/B abort | `Deny` + OAuth fields, `err == nil` |
+| `fail()` / unexpected | `err != nil` |
+
+Multiple mappers on an issuer are merged with `MappingResult.Merge` (first
+non-Allow wins; early termination). See
+[docs/issuance-policy.md](../../docs/issuance-policy.md).
+
 ### Transport mapping
 
-| `OAuthError` | Exchange (HTTP) | ext_authz (gRPC) |
-|--------------|-----------------|------------------|
-| `invalid_request` / `invalid_target` / … | 400 + `{error, error_description}` | `InvalidArgument` |
-| empty (`fail`) | 500 (default gRPC error JSON) | `Internal` |
-
-See [docs/issuance-policy.md](../../docs/issuance-policy.md) for the full
-policy-guard pattern.
+| Decision / error | Exchange (HTTP) | ext_authz (gRPC) |
+|------------------|-----------------|------------------|
+| Deny `invalid_request` / `invalid_target` / … | 400 + `{error, error_description}` | `InvalidArgument` |
+| `fail` / unexpected `error` | 500 (default gRPC error JSON) | `Internal` |
 
 ## Example CEL Expressions
 

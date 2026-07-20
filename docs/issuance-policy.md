@@ -1,8 +1,8 @@
 # Issuance Policy via CEL Claim Mappers
 
 Parsec enforces issuance policy in **CEL claim mappers**, not in a separate
-policy interface. The same script that builds claims can abort issuance with
-typed OAuth / token-exchange errors.
+policy interface. The same script that builds claims can deny issuance with
+typed OAuth / token-exchange outcomes.
 
 ## Why mappers?
 
@@ -11,6 +11,29 @@ optional actor, and request attributes (`MapperInput`). A separate
 `IssuancePolicy` abstraction duplicated that surface without carrying enough
 weight. Policy guards are CEL expressions evaluated before (or instead of)
 producing claims.
+
+## Structured result (not error) for OAuth denials
+
+`ClaimMapper.Map` returns a `MappingResult` — claims plus a `MappingDecision`
+— shaped like `AuthzCheckDecision`:
+
+| Outcome | How it is expressed |
+|---------|---------------------|
+| Allow + claims | `Decision.Action == allow`, `error == nil` |
+| OAuth denial (Layer A/B) | `Decision.Action == deny` + OAuth fields, `error == nil` |
+| Unexpected failure (`fail()`, eval bugs, …) | `error != nil` |
+
+Expected RFC outcomes are **not** stuffed into `error`. Use `error` only when
+something is unexpectedly wrong.
+
+Issuers may list multiple ordered mappers. Results are composed with
+`MappingResult.Merge`: claims merge on Allow, and the **first non-Allow
+decision wins** (further mappers are not called). Merge logic lives on the
+result type, not buried only in `IssueContext.ToClaims`.
+
+`Issuer.Issue` still returns `error` today: `ToClaims` adapts Deny to a
+temporary `ClaimMappingError` for transport mapping. Threading Decision
+through `Issue` is deferred until that adapter proves awkward.
 
 ## Two-layer OAuth abort API
 
@@ -45,19 +68,23 @@ still terminating in a Layer A code:
 
 ### `fail(message)`
 
-Reserved for **mapping / system failures**. Produces a `ClaimMappingError`
-with empty `OAuthError` → transports treat it as **Internal** (not an OAuth
-client error body).
+Reserved for **mapping / system failures**. `Map` returns `error` (not a Deny
+decision) → transports treat it as **Internal** (not an OAuth client error
+body).
 
-## Error flow
+## Decision flow
 
 ```
-CEL abort helper / fail()
-  → ClaimMappingError{Message, OAuthError, Reason}
-  → IssueContext.ToClaims() → Issuer.Issue() → TokenService.IssueTokens()
+CEL Layer A/B abort helper
+  → MappingResult{Decision: Deny{OAuthError, Reason, Message}}
+  → MappingResult.Merge across ordered mappers (first non-Allow wins)
+  → ToClaims adapts Deny → ClaimMappingError (temporary, for Issuer.Issue)
   → Exchange: HTTP 400 + { "error", "error_description" } (via gRPC ErrorInfo)
   → ext_authz: InvalidArgument (OAuth) or Internal (fail)
   → logs/metrics: mapping.oauth_error, mapping.abort_reason
+
+CEL fail() / unexpected failure
+  → error → Internal / 500
 ```
 
 ## Example: 3scale-parity guards
@@ -89,4 +116,5 @@ guards — until then, stage/prod keep previous behavior.
 ## Out of scope
 
 Broader claim-policy helpers (`requireClaim`, …), Lua mappers, and a named
-global policy registry are intentionally deferred.
+global policy registry are intentionally deferred. Widening `Issuer.Issue` to
+return `MappingDecision` is an open follow-up.
