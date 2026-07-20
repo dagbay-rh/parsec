@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/project-kessel/parsec/internal/claims"
 	"github.com/project-kessel/parsec/internal/trust"
 )
 
@@ -155,6 +156,84 @@ func TestTokenService_IssueTokens_Observability(t *testing.T) {
 		)
 	})
 
+}
+
+func TestTokenService_MapperPolicyRejection(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("invalid_subject", func(t *testing.T) {
+		mappingErr := &ClaimMappingError{
+			Message:    "impersonated tokens are not accepted",
+			OAuthError: OAuthInvalidRequest,
+			Reason:     AbortReasonInvalidSubject,
+		}
+		registry := NewSimpleRegistry()
+		registry.Register(TokenTypeTransactionToken, &testIssuerStub{err: mappingErr})
+		svc := NewTokenService("trust.example.com", nil, registry, nil)
+
+		_, err := svc.IssueTokens(ctx, &IssueRequest{
+			Subject:    &trust.Result{Subject: "user-1", Claims: claims.Claims{"impersonated": true}},
+			TokenTypes: []TokenType{TokenTypeTransactionToken},
+		})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if OAuthErrorCode(err) != OAuthInvalidRequest {
+			t.Errorf("OAuthErrorCode: got %q", OAuthErrorCode(err))
+		}
+		if AbortReason(err) != AbortReasonInvalidSubject {
+			t.Errorf("AbortReason: got %q", AbortReason(err))
+		}
+		if !errors.Is(err, ErrClaimMapping) {
+			t.Errorf("expected ErrClaimMapping, got %v", err)
+		}
+	})
+
+	t.Run("mapper_succeeds", func(t *testing.T) {
+		token := &Token{Value: "ok", Type: string(TokenTypeTransactionToken)}
+		registry := NewSimpleRegistry()
+		registry.Register(TokenTypeTransactionToken, &testIssuerStub{token: token})
+		svc := NewTokenService("trust.example.com", nil, registry, nil)
+
+		tokens, err := svc.IssueTokens(ctx, &IssueRequest{
+			Subject:    &trust.Result{Subject: "user-1"},
+			TokenTypes: []TokenType{TokenTypeTransactionToken},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if tokens[TokenTypeTransactionToken].Value != "ok" {
+			t.Errorf("unexpected token: %+v", tokens)
+		}
+	})
+
+	t.Run("one_mapper_aborts_among_multiple_issuers", func(t *testing.T) {
+		mappingErr := &ClaimMappingError{
+			Message:    "claim 'idp' is required",
+			OAuthError: OAuthInvalidRequest,
+			Reason:     AbortReasonInvalidSubject,
+		}
+		registry := NewSimpleRegistry()
+		registry.Register(TokenTypeTransactionToken, &testIssuerStub{
+			token: &Token{Value: "txn", Type: string(TokenTypeTransactionToken)},
+		})
+		registry.Register(TokenTypeAccessToken, &testIssuerStub{err: mappingErr})
+		svc := NewTokenService("trust.example.com", nil, registry, nil)
+
+		_, err := svc.IssueTokens(ctx, &IssueRequest{
+			Subject:    &trust.Result{Subject: "user-1"},
+			TokenTypes: []TokenType{TokenTypeTransactionToken, TokenTypeAccessToken},
+		})
+		if err == nil {
+			t.Fatal("expected error when second issuer aborts")
+		}
+		if OAuthErrorCode(err) != OAuthInvalidRequest {
+			t.Errorf("OAuthErrorCode: got %q", OAuthErrorCode(err))
+		}
+		if AbortReason(err) != AbortReasonInvalidSubject {
+			t.Errorf("AbortReason: got %q", AbortReason(err))
+		}
+	})
 }
 
 // testIssuerStub is a simple stub issuer for testing

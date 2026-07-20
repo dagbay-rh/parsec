@@ -9,9 +9,11 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	authv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/project-kessel/parsec/internal/issuer"
+	"github.com/project-kessel/parsec/internal/mapper"
 	"github.com/project-kessel/parsec/internal/service"
 	"github.com/project-kessel/parsec/internal/trust"
 )
@@ -1334,4 +1336,65 @@ type stubPolicy struct {
 
 func (p *stubPolicy) Decide(_ context.Context, _ AuthzCheckPolicyInput) (AuthzCheckDecision, error) {
 	return p.decision, nil
+}
+
+func TestAuthz_IssueResponse_MapperAbort(t *testing.T) {
+	ctx := context.Background()
+
+	newAuthzWithMapper := func(t *testing.T, script string) *AuthzServer {
+		t.Helper()
+		celMapper, err := mapper.NewCELMapper(script)
+		if err != nil {
+			t.Fatalf("create mapper: %v", err)
+		}
+		trustStore := trust.NewStubStore()
+		trustStore.AddValidator(trust.NewStubValidator(trust.CredentialTypeBearer))
+		registry := service.NewSimpleRegistry()
+		registry.Register(service.TokenTypeTransactionToken, issuer.NewStubIssuer(issuer.StubIssuerConfig{
+			IssuerURL:                 "https://parsec.test",
+			TTL:                       time.Minute,
+			TransactionContextMappers: []service.ClaimMapper{celMapper},
+		}))
+		tokenService := service.NewTokenService("parsec.test", service.NewDataSourceRegistry(), registry, nil)
+		return NewAuthzServer(trustStore, tokenService, nil, DefaultCredentialSources(), nil)
+	}
+
+	checkReq := &authv3.CheckRequest{
+		Attributes: &authv3.AttributeContext{
+			Request: &authv3.AttributeContext_Request{
+				Http: &authv3.AttributeContext_HttpRequest{
+					Method: "GET",
+					Path:   "/api/resource",
+					Headers: map[string]string{
+						"authorization": "Bearer test-token",
+					},
+				},
+			},
+		},
+	}
+
+	t.Run("invalid_request_not_internal", func(t *testing.T) {
+		srv := newAuthzWithMapper(t, `invalidSubject("impersonated tokens are not accepted")`)
+		resp, err := srv.Check(ctx, checkReq)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Status.Code != int32(codes.InvalidArgument) {
+			t.Errorf("code: got %d, want InvalidArgument (%d)", resp.Status.Code, codes.InvalidArgument)
+		}
+		if !strings.Contains(resp.Status.Message, "impersonated tokens are not accepted") {
+			t.Errorf("message: got %q", resp.Status.Message)
+		}
+	})
+
+	t.Run("fail_is_internal", func(t *testing.T) {
+		srv := newAuthzWithMapper(t, `fail("mapping exploded")`)
+		resp, err := srv.Check(ctx, checkReq)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Status.Code != int32(codes.Internal) {
+			t.Errorf("code: got %d, want Internal (%d)", resp.Status.Code, codes.Internal)
+		}
+	})
 }

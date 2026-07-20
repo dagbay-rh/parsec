@@ -182,7 +182,8 @@ func (s *AuthzServer) issueResponse(
 		Scope:             decision.Scope,
 	})
 	if err != nil {
-		return s.denyResponse(codes.Internal, fmt.Sprintf("failed to issue tokens: %v", err)), nil
+		code, msg := authzIssueDenialCode(err)
+		return s.denyResponse(code, msg), nil
 	}
 
 	headers := make([]*corev3.HeaderValueOption, 0, len(credHeaders)+len(issuedTokens))

@@ -836,6 +836,12 @@ func TestCELMapper_Fail(t *testing.T) {
 		if mappingErr.Message != "unsupported_token_type" {
 			t.Errorf("expected message %q, got %q", "unsupported_token_type", mappingErr.Message)
 		}
+		if mappingErr.OAuthError != "" {
+			t.Errorf("expected empty OAuthError for fail(), got %q", mappingErr.OAuthError)
+		}
+		if mappingErr.Reason != "" {
+			t.Errorf("expected empty Reason for fail(), got %q", mappingErr.Reason)
+		}
 	})
 
 	t.Run("successful branch does not trigger fail", func(t *testing.T) {
@@ -872,5 +878,237 @@ func TestCELMapper_ErrorClaimAllowedInOutput(t *testing.T) {
 	}
 	if result["other"] != "data" {
 		t.Errorf("expected other claim preserved as %q, got %v", "data", result["other"])
+	}
+}
+
+func TestCELMapper_LayerA(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name       string
+		script     string
+		oauthError string
+	}{
+		{
+			name:       "invalid_request",
+			script:     `false ? {"ok": true} : invalidRequest("bad request")`,
+			oauthError: service.OAuthInvalidRequest,
+		},
+		{
+			name:       "invalid_target",
+			script:     `false ? {"ok": true} : invalidTarget("bad target")`,
+			oauthError: service.OAuthInvalidTarget,
+		},
+		{
+			name:       "invalid_grant",
+			script:     `false ? {"ok": true} : invalidGrant("bad grant")`,
+			oauthError: service.OAuthInvalidGrant,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m, err := NewCELMapper(tt.script)
+			if err != nil {
+				t.Fatalf("failed to create mapper: %v", err)
+			}
+			_, mapErr := m.Map(ctx, &service.MapperInput{})
+			if mapErr == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !errors.Is(mapErr, service.ErrClaimMapping) {
+				t.Fatalf("expected ErrClaimMapping, got: %v", mapErr)
+			}
+			var mappingErr *service.ClaimMappingError
+			if !errors.As(mapErr, &mappingErr) {
+				t.Fatalf("expected ClaimMappingError, got: %T", mapErr)
+			}
+			if mappingErr.OAuthError != tt.oauthError {
+				t.Errorf("OAuthError: got %q, want %q", mappingErr.OAuthError, tt.oauthError)
+			}
+			if mappingErr.Reason != "" {
+				t.Errorf("Layer A Reason should be empty, got %q", mappingErr.Reason)
+			}
+		})
+	}
+}
+
+func TestCELMapper_LayerB(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name       string
+		script     string
+		oauthError string
+		reason     string
+	}{
+		{
+			name:       "invalid_subject",
+			script:     `false ? {"ok": true} : invalidSubject("bad subject")`,
+			oauthError: service.OAuthInvalidRequest,
+			reason:     service.AbortReasonInvalidSubject,
+		},
+		{
+			name:       "invalid_actor",
+			script:     `false ? {"ok": true} : invalidActor("bad actor")`,
+			oauthError: service.OAuthInvalidRequest,
+			reason:     service.AbortReasonInvalidActor,
+		},
+		{
+			name:       "invalid_audience",
+			script:     `false ? {"ok": true} : invalidAudience("bad audience")`,
+			oauthError: service.OAuthInvalidTarget,
+			reason:     service.AbortReasonInvalidAudience,
+		},
+		{
+			name:       "unsupported_token_type",
+			script:     `false ? {"ok": true} : unsupportedTokenType("unsupported_token_type")`,
+			oauthError: service.OAuthInvalidRequest,
+			reason:     service.AbortReasonUnsupportedTokenType,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m, err := NewCELMapper(tt.script)
+			if err != nil {
+				t.Fatalf("failed to create mapper: %v", err)
+			}
+			_, mapErr := m.Map(ctx, &service.MapperInput{})
+			if mapErr == nil {
+				t.Fatal("expected error, got nil")
+			}
+			var mappingErr *service.ClaimMappingError
+			if !errors.As(mapErr, &mappingErr) {
+				t.Fatalf("expected ClaimMappingError, got: %T", mapErr)
+			}
+			if mappingErr.OAuthError != tt.oauthError {
+				t.Errorf("OAuthError: got %q, want %q", mappingErr.OAuthError, tt.oauthError)
+			}
+			if mappingErr.Reason != tt.reason {
+				t.Errorf("Reason: got %q, want %q", mappingErr.Reason, tt.reason)
+			}
+		})
+	}
+}
+
+func TestCELMapper_PolicyGuard(t *testing.T) {
+	ctx := context.Background()
+
+	const policyScript = `
+has(subject.claims) && has(subject.claims.impersonated) && subject.claims.impersonated == true
+  ? invalidSubject("impersonated tokens are not accepted")
+: !(has(subject.claims) && has(subject.claims.idp))
+  ? invalidSubject("claim 'idp' is required")
+: {"user": subject.subject, "idp": subject.claims.idp}
+`
+
+	m, err := NewCELMapper(policyScript)
+	if err != nil {
+		t.Fatalf("failed to create mapper: %v", err)
+	}
+
+	t.Run("rejects_impersonated_token", func(t *testing.T) {
+		_, mapErr := m.Map(ctx, &service.MapperInput{
+			Subject: &trust.Result{
+				Subject: "user-1",
+				Claims: claims.Claims{
+					"impersonated": true,
+					"idp":          "https://idp.example.com",
+				},
+			},
+		})
+		assertMappingAbort(t, mapErr, service.OAuthInvalidRequest, service.AbortReasonInvalidSubject, "impersonated tokens are not accepted")
+	})
+
+	t.Run("accepts_non_impersonated_token", func(t *testing.T) {
+		result, mapErr := m.Map(ctx, &service.MapperInput{
+			Subject: &trust.Result{
+				Subject: "user-1",
+				Claims:  claims.Claims{"idp": "https://idp.example.com"},
+			},
+		})
+		if mapErr != nil {
+			t.Fatalf("unexpected error: %v", mapErr)
+		}
+		if result["user"] != "user-1" {
+			t.Errorf("expected user=user-1, got %v", result["user"])
+		}
+	})
+
+	t.Run("rejects_missing_idp", func(t *testing.T) {
+		_, mapErr := m.Map(ctx, &service.MapperInput{
+			Subject: &trust.Result{
+				Subject: "user-1",
+				Claims:  claims.Claims{"email": "a@b.c"},
+			},
+		})
+		assertMappingAbort(t, mapErr, service.OAuthInvalidRequest, service.AbortReasonInvalidSubject, "claim 'idp' is required")
+	})
+
+	t.Run("accepts_with_idp", func(t *testing.T) {
+		result, mapErr := m.Map(ctx, &service.MapperInput{
+			Subject: &trust.Result{
+				Subject: "user-1",
+				Claims:  claims.Claims{"idp": "https://idp.example.com"},
+			},
+		})
+		if mapErr != nil {
+			t.Fatalf("unexpected error: %v", mapErr)
+		}
+		if result["idp"] != "https://idp.example.com" {
+			t.Errorf("expected idp preserved, got %v", result["idp"])
+		}
+	})
+
+	t.Run("rejects_first_failing_guard", func(t *testing.T) {
+		_, mapErr := m.Map(ctx, &service.MapperInput{
+			Subject: &trust.Result{
+				Subject: "user-1",
+				Claims: claims.Claims{
+					"impersonated": true,
+					// idp also missing — impersonation guard must win
+				},
+			},
+		})
+		assertMappingAbort(t, mapErr, service.OAuthInvalidRequest, service.AbortReasonInvalidSubject, "impersonated tokens are not accepted")
+	})
+
+	t.Run("passes_all_guards", func(t *testing.T) {
+		result, mapErr := m.Map(ctx, &service.MapperInput{
+			Subject: &trust.Result{
+				Subject: "user-1",
+				Claims:  claims.Claims{"idp": "https://idp.example.com", "impersonated": false},
+			},
+		})
+		if mapErr != nil {
+			t.Fatalf("unexpected error: %v", mapErr)
+		}
+		if result["user"] != "user-1" {
+			t.Errorf("expected user=user-1, got %v", result["user"])
+		}
+	})
+}
+
+func assertMappingAbort(t *testing.T, err error, oauthError, reason, message string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, service.ErrClaimMapping) {
+		t.Fatalf("expected ErrClaimMapping, got: %v", err)
+	}
+	var mappingErr *service.ClaimMappingError
+	if !errors.As(err, &mappingErr) {
+		t.Fatalf("expected ClaimMappingError, got: %T", err)
+	}
+	if mappingErr.OAuthError != oauthError {
+		t.Errorf("OAuthError: got %q, want %q", mappingErr.OAuthError, oauthError)
+	}
+	if mappingErr.Reason != reason {
+		t.Errorf("Reason: got %q, want %q", mappingErr.Reason, reason)
+	}
+	if mappingErr.Message != message {
+		t.Errorf("Message: got %q, want %q", mappingErr.Message, message)
 	}
 }

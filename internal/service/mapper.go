@@ -14,10 +14,36 @@ var (
 	ErrClaimMapping = errors.New("claim mapping failed")
 )
 
+// OAuth / token-exchange error codes (RFC 6749 §5.2, RFC 8693 §2.2.2).
+const (
+	OAuthInvalidRequest       = "invalid_request"
+	OAuthInvalidTarget        = "invalid_target"
+	OAuthInvalidGrant         = "invalid_grant"
+	OAuthUnauthorizedClient   = "unauthorized_client"
+	OAuthInvalidClient        = "invalid_client"
+	OAuthUnsupportedGrantType = "unsupported_grant_type"
+	OAuthInvalidScope         = "invalid_scope"
+)
+
+// Machine-readable abort reasons for Layer B CEL helpers (observability).
+const (
+	AbortReasonInvalidSubject       = "invalid_subject"
+	AbortReasonInvalidActor         = "invalid_actor"
+	AbortReasonInvalidAudience      = "invalid_audience"
+	AbortReasonUnsupportedTokenType = "unsupported_token_type"
+)
+
 // ClaimMappingError carries detail about a specific claim mapping failure.
 // It satisfies errors.Is(err, ErrClaimMapping) via its Is method.
+//
+// OAuthError is the wire "error" value for token exchange (empty means an
+// internal/mapping failure, not an OAuth client error). Reason is an optional
+// machine-readable abort reason for logs and metrics (typically set by Layer B
+// CEL helpers).
 type ClaimMappingError struct {
-	Message string
+	Message    string // error_description
+	OAuthError string // wire "error" (empty = internal / fail)
+	Reason     string // machine reason for observability (may be empty for Layer A)
 }
 
 func (e *ClaimMappingError) Error() string {
@@ -26,6 +52,36 @@ func (e *ClaimMappingError) Error() string {
 
 func (e *ClaimMappingError) Is(target error) bool {
 	return target == ErrClaimMapping
+}
+
+// OAuthErrorCode returns the OAuth wire error code from err when it wraps a
+// ClaimMappingError, or "" otherwise (including fail()-style mapping errors).
+func OAuthErrorCode(err error) string {
+	var me *ClaimMappingError
+	if errors.As(err, &me) {
+		return me.OAuthError
+	}
+	return ""
+}
+
+// AbortReason returns the machine-readable abort reason from err when it wraps
+// a ClaimMappingError, or "" otherwise.
+func AbortReason(err error) string {
+	var me *ClaimMappingError
+	if errors.As(err, &me) {
+		return me.Reason
+	}
+	return ""
+}
+
+// MappingMessage returns the human-readable message from err when it wraps a
+// ClaimMappingError, or "" otherwise.
+func MappingMessage(err error) string {
+	var me *ClaimMappingError
+	if errors.As(err, &me) {
+		return me.Message
+	}
+	return ""
 }
 
 // ClaimMapper transforms inputs into claims for the token

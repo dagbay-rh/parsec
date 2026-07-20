@@ -38,9 +38,45 @@ This package provides CEL extensions specifically for claim mapping in Parsec:
   - Returns null if the datasource doesn't exist
   - Results are automatically cached within a single evaluation
 
-- **`fail(message)`** - Rejects the input
-  - Aborts evaluation and returns a `ClaimMappingError`
-  - Use when the mapper cannot process the input (e.g. unrecognised token type)
+- **`fail(message)`** - Mapping / system failure abort
+  - Returns a `ClaimMappingError` with empty `OAuthError`
+  - Transports map this to Internal (not an OAuth client error)
+  - Prefer Layer A/B helpers for policy denials
+
+#### Layer A — OAuth / token-exchange error codes
+
+Direct helpers for [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc6749#section-5.2) /
+[RFC 8693 §2.2.2](https://datatracker.ietf.org/doc/html/rfc8693#section-2.2.2)
+wire `error` values:
+
+| CEL | Wire `error` |
+|-----|--------------|
+| `invalidRequest(message)` | `invalid_request` |
+| `invalidTarget(message)` | `invalid_target` |
+| `invalidGrant(message)` | `invalid_grant` |
+| `unauthorizedClient(message)` | `unauthorized_client` |
+| `invalidClient(message)` | `invalid_client` |
+| `unsupportedGrantType(message)` | `unsupported_grant_type` |
+| `invalidScope(message)` | `invalid_scope` |
+
+#### Layer B — reason helpers (preferred for policy guards)
+
+| CEL | Wire `error` | Reason |
+|-----|--------------|--------|
+| `invalidSubject(message)` | `invalid_request` | `invalid_subject` |
+| `invalidActor(message)` | `invalid_request` | `invalid_actor` |
+| `invalidAudience(message)` | `invalid_target` | `invalid_audience` |
+| `unsupportedTokenType(message)` | `invalid_request` | `unsupported_token_type` |
+
+### Transport mapping
+
+| `OAuthError` | Exchange (HTTP) | ext_authz (gRPC) |
+|--------------|-----------------|------------------|
+| `invalid_request` / `invalid_target` / … | 400 + `{error, error_description}` | `InvalidArgument` |
+| empty (`fail`) | 500 (default gRPC error JSON) | `Internal` |
+
+See [docs/issuance-policy.md](../../docs/issuance-policy.md) for the full
+policy-guard pattern.
 
 ## Example CEL Expressions
 
@@ -61,12 +97,22 @@ subject.trust_domain == "prod"
   : {"env": "dev", "level": "low"}
 ```
 
-### Rejecting Input
+### Policy Guards (Layer B)
+
+```cel
+has(subject.claims) && has(subject.claims.impersonated) && subject.claims.impersonated == true
+  ? invalidSubject("impersonated tokens are not accepted")
+: !(has(subject.claims) && has(subject.claims.idp))
+  ? invalidSubject("claim 'idp' is required")
+: { "identity": { /* ... */ }, "entitlements": {} }
+```
+
+### Rejecting Unsupported Input
 
 ```cel
 isSupportedToken(subject.claims)
-  ? { "identity": { ... }, "entitlements": {} }
-  : fail("unsupported_token_type")
+  ? { "identity": { /* ... */ }, "entitlements": {} }
+  : unsupportedTokenType("unsupported_token_type")
 ```
 
 ### Fetching from Data Sources
@@ -124,4 +170,6 @@ Datasource results are automatically cached within a single evaluation, so calli
 - [CEL Language Specification](https://github.com/google/cel-spec)
 - [CEL-Go Documentation](https://pkg.go.dev/github.com/google/cel-go/cel)
 - [CEL-Go Codelab](https://codelabs.developers.google.com/codelabs/cel-go)
-
+- [RFC 8693 §2.2.2](https://datatracker.ietf.org/doc/html/rfc8693#section-2.2.2) — token exchange errors
+- [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc6749#section-5.2) — OAuth error response
+- [Issuance policy via CEL](../../docs/issuance-policy.md)

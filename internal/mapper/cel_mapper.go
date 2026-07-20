@@ -19,13 +19,16 @@ import (
 // The CEL expression has access to the following variables and functions:
 //   - datasource(name) - function to fetch data from a named data source
 //   - now_ms() - current Unix time in milliseconds
-//   - fail(message) - reject the input with a structured error
+//   - fail(message) - reject as an internal/mapping failure (no OAuth error)
+//   - Layer A OAuth aborts: invalidRequest, invalidTarget, invalidGrant, …
+//   - Layer B reason helpers: invalidSubject, invalidActor, invalidAudience,
+//     unsupportedTokenType
 //   - subject - the subject identity information as a map
 //   - actor - the actor identity information as a map
 //   - request - the request attributes as a map
 //
 // The expression should evaluate to a map that will be used as the claims,
-// or call fail() to abort mapping with a structured error.
+// or call an abort helper / fail() to abort mapping with a structured error.
 //
 // Example CEL expressions:
 //
@@ -35,8 +38,13 @@ import (
 //	// Fetch from data source
 //	{"roles": datasource("user_roles").roles}
 //
-//	// Reject unrecognised input
-//	condition ? {"user": subject.subject} : fail("unsupported_token_type")
+//	// Policy guard (Layer B) then map
+//	!has(subject.claims.idp)
+//	  ? invalidSubject("claim 'idp' is required")
+//	  : {"user": subject.subject}
+//
+//	// Reject unrecognised input (Layer B → invalid_request)
+//	condition ? {"user": subject.subject} : unsupportedTokenType("unsupported_token_type")
 //
 //	// Complex expressions
 //	{
@@ -132,7 +140,7 @@ func (m *CELMapper) Map(ctx context.Context, input *service.MapperInput) (claims
 	activation := m.createActivation(ctx, input)
 
 	// Evaluate the program with the activation.
-	// When a CEL function (fail) returns a types.Err, program.Eval
+	// When a CEL abort helper (or fail) returns a types.Err, program.Eval
 	// surfaces it through the Go error return.
 	result, _, err := program.Eval(activation)
 	if err != nil {

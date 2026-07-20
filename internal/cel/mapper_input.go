@@ -24,7 +24,9 @@ type DataSourceRegistry interface {
 // This provides compile-time declarations for:
 //   - datasource(name) - function to fetch data from a named data source
 //   - now_ms() - current Unix time in milliseconds (wall clock at evaluation)
-//   - fail(message) - reject the input with a ClaimMappingError
+//   - fail(message) - reject the input with a ClaimMappingError (internal / mapping failure)
+//   - Layer A OAuth abort helpers (invalidRequest, invalidTarget, …)
+//   - Layer B reason helpers (invalidSubject, invalidActor, …)
 //   - subject, actor, request - variables containing identity and request data
 //
 // Pass nil for registry to create a test/validation environment.
@@ -48,7 +50,7 @@ type mapperInputLib struct {
 }
 
 func (lib *mapperInputLib) CompileOptions() []cel.EnvOption {
-	return []cel.EnvOption{
+	opts := []cel.EnvOption{
 		cel.Function("datasource",
 			cel.Overload("datasource_string",
 				[]*cel.Type{cel.StringType},
@@ -76,10 +78,50 @@ func (lib *mapperInputLib) CompileOptions() []cel.EnvOption {
 		cel.Variable("actor", cel.DynType),
 		cel.Variable("request", cel.DynType),
 	}
+	opts = append(opts, oauthAbortFunctions()...)
+	return opts
 }
 
 func (lib *mapperInputLib) ProgramOptions() []cel.ProgramOption {
 	return []cel.ProgramOption{}
+}
+
+// oauthAbortFunctions registers Layer A (direct OAuth codes) and Layer B
+// (reason helpers) abort functions for claim-mapper CEL scripts.
+func oauthAbortFunctions() []cel.EnvOption {
+	type abortSpec struct {
+		name       string
+		oauthError string
+		reason     string
+	}
+	specs := []abortSpec{
+		// Layer A — direct OAuth / token-exchange error codes
+		{"invalidRequest", service.OAuthInvalidRequest, ""},
+		{"invalidTarget", service.OAuthInvalidTarget, ""},
+		{"invalidGrant", service.OAuthInvalidGrant, ""},
+		{"unauthorizedClient", service.OAuthUnauthorizedClient, ""},
+		{"invalidClient", service.OAuthInvalidClient, ""},
+		{"unsupportedGrantType", service.OAuthUnsupportedGrantType, ""},
+		{"invalidScope", service.OAuthInvalidScope, ""},
+		// Layer B — reason helpers (map onto Layer A codes)
+		{"invalidSubject", service.OAuthInvalidRequest, service.AbortReasonInvalidSubject},
+		{"invalidActor", service.OAuthInvalidRequest, service.AbortReasonInvalidActor},
+		{"invalidAudience", service.OAuthInvalidTarget, service.AbortReasonInvalidAudience},
+		{"unsupportedTokenType", service.OAuthInvalidRequest, service.AbortReasonUnsupportedTokenType},
+	}
+
+	opts := make([]cel.EnvOption, 0, len(specs))
+	for _, s := range specs {
+		name, oauthError, reason := s.name, s.oauthError, s.reason
+		opts = append(opts, cel.Function(name,
+			cel.Overload(name+"_string",
+				[]*cel.Type{cel.StringType},
+				cel.DynType,
+				cel.UnaryBinding(mappingAbort(oauthError, reason)),
+			),
+		))
+	}
+	return opts
 }
 
 // fetchDatasource implements the datasource() CEL function
@@ -144,8 +186,23 @@ func mappingFail(arg ref.Val) ref.Val {
 	})
 }
 
+func mappingAbort(oauthError, reason string) func(ref.Val) ref.Val {
+	return func(arg ref.Val) ref.Val {
+		msg, ok := arg.Value().(string)
+		if !ok {
+			return types.NewErr("abort argument must be a string")
+		}
+		return types.WrapErr(&service.ClaimMappingError{
+			Message:    msg,
+			OAuthError: oauthError,
+			Reason:     reason,
+		})
+	}
+}
+
 // UnwrapMappingError extracts a *service.ClaimMappingError from an error chain
-// produced by CEL evaluation. Returns nil when the error is unrelated to fail().
+// produced by CEL evaluation. Returns nil when the error is unrelated to a
+// mapper abort (fail / OAuth helpers).
 func UnwrapMappingError(err error) *service.ClaimMappingError {
 	var me *service.ClaimMappingError
 	if errors.As(err, &me) {

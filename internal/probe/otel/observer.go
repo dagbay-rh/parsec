@@ -119,23 +119,38 @@ func (o *serviceObserver) AuthzCheckStarted(
 
 type tokenIssuanceProbe struct {
 	service.NoOpTokenIssuanceProbe
-	obs       *serviceObserver
-	ctx       context.Context
-	startTime time.Time
-	status    attribute.KeyValue
-	result    attribute.KeyValue
+	obs         *serviceObserver
+	ctx         context.Context
+	startTime   time.Time
+	status      attribute.KeyValue
+	result      attribute.KeyValue
+	oauthError  attribute.KeyValue
+	abortReason attribute.KeyValue
 }
 
-func (p *tokenIssuanceProbe) TokenTypeIssuanceFailed(_ service.TokenType, _ error) {
+func (p *tokenIssuanceProbe) TokenTypeIssuanceFailed(_ service.TokenType, err error) {
 	p.status = errorStatusAttr
 	p.result = resultIssuanceFailed
+	if code := service.OAuthErrorCode(err); code != "" {
+		p.oauthError = attribute.String("mapping.oauth_error", code)
+	}
+	if reason := service.AbortReason(err); reason != "" {
+		p.abortReason = attribute.String("mapping.abort_reason", reason)
+	}
 }
 func (p *tokenIssuanceProbe) IssuerNotFound(_ service.TokenType, _ error) {
 	p.status = errorStatusAttr
 	p.result = resultIssuerNotFound
 }
 func (p *tokenIssuanceProbe) End() {
-	attrs := metric.WithAttributeSet(attribute.NewSet(p.result, p.status))
+	keys := []attribute.KeyValue{p.result, p.status}
+	if p.oauthError.Key != "" {
+		keys = append(keys, p.oauthError)
+	}
+	if p.abortReason.Key != "" {
+		keys = append(keys, p.abortReason)
+	}
+	attrs := metric.WithAttributeSet(attribute.NewSet(keys...))
 	p.obs.issuanceDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)
 }
 

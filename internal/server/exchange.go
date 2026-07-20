@@ -149,7 +149,7 @@ func (s *ExchangeServer) Exchange(ctx context.Context, req *parsecv1.ExchangeReq
 		Scope:             req.Scope,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to issue token: %w", err)
+		return nil, issueTokensGRPCError(err)
 	}
 
 	token, ok := tokens[requestedTokenType]
