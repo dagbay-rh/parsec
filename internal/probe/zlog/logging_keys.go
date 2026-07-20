@@ -6,6 +6,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/keys"
 )
 
@@ -20,23 +21,26 @@ var (
 type LoggingKeyRotationObserver struct {
 	keys.NoOpDualSlotRotatingSignerObserver
 	logger zerolog.Logger
+	clock  clock.Clock
 }
 
-func NewLoggingKeyRotationObserver(logger zerolog.Logger) *LoggingKeyRotationObserver {
-	return &LoggingKeyRotationObserver{logger: logger}
+func NewLoggingKeyRotationObserver(logger zerolog.Logger, clk clock.Clock) *LoggingKeyRotationObserver {
+	return &LoggingKeyRotationObserver{logger: logger, clock: clk}
 }
 
 func (o *LoggingKeyRotationObserver) RotationCheckStarted(ctx context.Context) (context.Context, keys.RotationCheckProbe) {
 	return ctx, &loggingRotationCheckProbe{
 		logger:    o.logger,
-		startTime: time.Now(),
+		startTime: o.clock.Now(),
+		clock:     o.clock,
 	}
 }
 
 func (o *LoggingKeyRotationObserver) KeyCacheUpdateStarted(ctx context.Context) (context.Context, keys.KeyCacheUpdateProbe) {
 	return ctx, &loggingKeyCacheUpdateProbe{
 		logger:    o.logger,
-		startTime: time.Now(),
+		startTime: o.clock.Now(),
+		clock:     o.clock,
 	}
 }
 
@@ -44,6 +48,7 @@ type loggingRotationCheckProbe struct {
 	keys.NoOpRotationCheckProbe
 	logger    zerolog.Logger
 	startTime time.Time
+	clock     clock.Clock
 }
 
 func (p *loggingRotationCheckProbe) RotationCheckFailed(err error) {
@@ -60,7 +65,7 @@ func (p *loggingRotationCheckProbe) RotationSkippedVersionRace(slot string) {
 
 func (p *loggingRotationCheckProbe) End() {
 	p.logger.Debug().
-		Dur("duration", time.Since(p.startTime)).
+		Dur("duration", p.clock.Now().Sub(p.startTime)).
 		Msg("rotation check completed")
 }
 
@@ -68,6 +73,7 @@ type loggingKeyCacheUpdateProbe struct {
 	keys.NoOpKeyCacheUpdateProbe
 	logger    zerolog.Logger
 	startTime time.Time
+	clock     clock.Clock
 }
 
 func (p *loggingKeyCacheUpdateProbe) KeyCacheUpdateFailed(err error) {
@@ -96,7 +102,7 @@ func (p *loggingKeyCacheUpdateProbe) MetadataFailed(slot string, err error) {
 
 func (p *loggingKeyCacheUpdateProbe) End() {
 	p.logger.Debug().
-		Dur("duration", time.Since(p.startTime)).
+		Dur("duration", p.clock.Now().Sub(p.startTime)).
 		Msg("key cache update completed")
 }
 
@@ -105,10 +111,11 @@ func (p *loggingKeyCacheUpdateProbe) End() {
 type LoggingAWSKMSProviderObserver struct {
 	keys.NoOpAWSKMSProviderObserver
 	logger zerolog.Logger
+	clock  clock.Clock
 }
 
-func NewLoggingAWSKMSProviderObserver(logger zerolog.Logger) *LoggingAWSKMSProviderObserver {
-	return &LoggingAWSKMSProviderObserver{logger: logger}
+func NewLoggingAWSKMSProviderObserver(logger zerolog.Logger, clk clock.Clock) *LoggingAWSKMSProviderObserver {
+	return &LoggingAWSKMSProviderObserver{logger: logger, clock: clk}
 }
 
 func (o *LoggingAWSKMSProviderObserver) KMSRotateStarted(ctx context.Context, trustDomain, namespace, keyName string) (context.Context, keys.KMSRotateProbe) {
@@ -119,7 +126,8 @@ func (o *LoggingAWSKMSProviderObserver) KMSRotateStarted(ctx context.Context, tr
 		Msg("KMS key rotation started")
 	return ctx, &loggingKMSRotateProbe{
 		logger:    o.logger,
-		startTime: time.Now(),
+		startTime: o.clock.Now(),
+		clock:     o.clock,
 	}
 }
 
@@ -127,6 +135,7 @@ type loggingKMSRotateProbe struct {
 	keys.NoOpKMSRotateProbe
 	logger    zerolog.Logger
 	startTime time.Time
+	clock     clock.Clock
 }
 
 func (p *loggingKMSRotateProbe) CreateKeyFailed(err error) {
@@ -147,7 +156,7 @@ func (p *loggingKMSRotateProbe) OldKeyDeletionFailed(keyID string, err error) {
 
 func (p *loggingKMSRotateProbe) End() {
 	p.logger.Debug().
-		Dur("duration", time.Since(p.startTime)).
+		Dur("duration", p.clock.Now().Sub(p.startTime)).
 		Msg("KMS key rotation completed")
 }
 
@@ -156,10 +165,11 @@ func (p *loggingKMSRotateProbe) End() {
 type LoggingDiskProviderObserver struct {
 	keys.NoOpDiskProviderObserver
 	logger zerolog.Logger
+	clock  clock.Clock
 }
 
-func NewLoggingDiskProviderObserver(logger zerolog.Logger) *LoggingDiskProviderObserver {
-	return &LoggingDiskProviderObserver{logger: logger}
+func NewLoggingDiskProviderObserver(logger zerolog.Logger, clk clock.Clock) *LoggingDiskProviderObserver {
+	return &LoggingDiskProviderObserver{logger: logger, clock: clk}
 }
 
 func (o *LoggingDiskProviderObserver) DiskRotateStarted(ctx context.Context, trustDomain, namespace, keyName string) (context.Context, keys.DiskRotateProbe) {
@@ -170,7 +180,8 @@ func (o *LoggingDiskProviderObserver) DiskRotateStarted(ctx context.Context, tru
 		Msg("disk key rotation started")
 	return ctx, &loggingDiskRotateProbe{
 		logger:    o.logger,
-		startTime: time.Now(),
+		startTime: o.clock.Now(),
+		clock:     o.clock,
 	}
 }
 
@@ -178,6 +189,7 @@ type loggingDiskRotateProbe struct {
 	keys.NoOpDiskRotateProbe
 	logger    zerolog.Logger
 	startTime time.Time
+	clock     clock.Clock
 }
 
 func (p *loggingDiskRotateProbe) KeyGenerationFailed(err error) {
@@ -190,7 +202,7 @@ func (p *loggingDiskRotateProbe) KeyWriteFailed(err error) {
 
 func (p *loggingDiskRotateProbe) End() {
 	p.logger.Debug().
-		Dur("duration", time.Since(p.startTime)).
+		Dur("duration", p.clock.Now().Sub(p.startTime)).
 		Msg("disk key rotation completed")
 }
 
@@ -199,17 +211,19 @@ func (p *loggingDiskRotateProbe) End() {
 type LoggingInMemoryProviderObserver struct {
 	keys.NoOpInMemoryProviderObserver
 	logger zerolog.Logger
+	clock  clock.Clock
 }
 
-func NewLoggingInMemoryProviderObserver(logger zerolog.Logger) *LoggingInMemoryProviderObserver {
-	return &LoggingInMemoryProviderObserver{logger: logger}
+func NewLoggingInMemoryProviderObserver(logger zerolog.Logger, clk clock.Clock) *LoggingInMemoryProviderObserver {
+	return &LoggingInMemoryProviderObserver{logger: logger, clock: clk}
 }
 
 func (o *LoggingInMemoryProviderObserver) MemoryRotateStarted(ctx context.Context) (context.Context, keys.MemoryRotateProbe) {
 	o.logger.Info().Msg("in-memory key rotation started")
 	return ctx, &loggingMemoryRotateProbe{
 		logger:    o.logger,
-		startTime: time.Now(),
+		startTime: o.clock.Now(),
+		clock:     o.clock,
 	}
 }
 
@@ -217,6 +231,7 @@ type loggingMemoryRotateProbe struct {
 	keys.NoOpMemoryRotateProbe
 	logger    zerolog.Logger
 	startTime time.Time
+	clock     clock.Clock
 }
 
 func (p *loggingMemoryRotateProbe) KeyGenerationFailed(err error) {
@@ -225,6 +240,6 @@ func (p *loggingMemoryRotateProbe) KeyGenerationFailed(err error) {
 
 func (p *loggingMemoryRotateProbe) End() {
 	p.logger.Debug().
-		Dur("duration", time.Since(p.startTime)).
+		Dur("duration", p.clock.Now().Sub(p.startTime)).
 		Msg("in-memory key rotation completed")
 }

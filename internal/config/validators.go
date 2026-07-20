@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/project-kessel/parsec/internal/claims"
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/httpclient"
 	luaservices "github.com/project-kessel/parsec/internal/lua"
 	"github.com/project-kessel/parsec/internal/request"
@@ -260,14 +261,15 @@ func newStubValidator(cfg ValidatorConfig) (trust.Validator, error) {
 		trustDomain = "test-domain"
 	}
 
+	clk := clock.NewSystemClock()
 	stubClaims := claims.Claims(maps.Clone(cfg.Claims))
 	result := &trust.Result{
 		Subject:     "test-subject",
 		Issuer:      "https://test-issuer.example.com",
 		TrustDomain: trustDomain,
 		Claims:      stubClaims,
-		ExpiresAt:   time.Now().Add(time.Hour),
-		IssuedAt:    time.Now(),
+		ExpiresAt:   clk.Now().Add(time.Hour),
+		IssuedAt:    clk.Now(),
 		Audience:    []string{"https://parsec.example.com"},
 	}
 	if scope, ok := stubClaims["scope"].(string); ok {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/trust"
 )
 
@@ -25,51 +26,58 @@ type LoggingTrustObserver struct {
 	trust.NoOpStoreObserver
 	trust.NoOpValidatorObserver
 	logger zerolog.Logger
+	clock  clock.Clock
 }
 
-func NewLoggingTrustObserver(logger zerolog.Logger) *LoggingTrustObserver {
-	return &LoggingTrustObserver{logger: logger}
+func NewLoggingTrustObserver(logger zerolog.Logger, clk clock.Clock) *LoggingTrustObserver {
+	return &LoggingTrustObserver{logger: logger, clock: clk}
 }
 
 func (o *LoggingTrustObserver) ValidationStarted(ctx context.Context) (context.Context, trust.ValidationProbe) {
 	return ctx, &loggingValidationProbe{
 		logger:    o.logger,
-		startTime: time.Now(),
+		startTime: o.clock.Now(),
+		clock:     o.clock,
 	}
 }
 
 func (o *LoggingTrustObserver) ForActorStarted(ctx context.Context) (context.Context, trust.ForActorProbe) {
 	return ctx, &loggingForActorProbe{
 		logger:    o.logger,
-		startTime: time.Now(),
+		startTime: o.clock.Now(),
+		clock:     o.clock,
 	}
 }
 
 func (o *LoggingTrustObserver) JWTValidateStarted(ctx context.Context, issuer string) (context.Context, trust.JWTValidateProbe) {
 	return ctx, &loggingJWTValidateProbe{
 		logger:    o.logger.With().Str("issuer", issuer).Logger(),
-		startTime: time.Now(),
+		startTime: o.clock.Now(),
+		clock:     o.clock,
 	}
 }
 
 func (o *LoggingTrustObserver) LuaValidateStarted(ctx context.Context, validatorName string) (context.Context, trust.LuaValidateProbe) {
 	return ctx, &loggingLuaValidateProbe{
 		logger:    o.logger.With().Str("validator", validatorName).Logger(),
-		startTime: time.Now(),
+		startTime: o.clock.Now(),
+		clock:     o.clock,
 	}
 }
 
 func (o *LoggingTrustObserver) InMemoryValidateStarted(ctx context.Context, validatorName string) (context.Context, trust.InMemoryValidateProbe) {
 	return ctx, &loggingInMemoryValidateProbe{
 		logger:    o.logger.With().Str("validator", validatorName).Logger(),
-		startTime: time.Now(),
+		startTime: o.clock.Now(),
+		clock:     o.clock,
 	}
 }
 
 func (o *LoggingTrustObserver) DistributedValidateStarted(ctx context.Context, validatorName string) (context.Context, trust.DistributedValidateProbe) {
 	return ctx, &loggingDistributedValidateProbe{
 		logger:    o.logger.With().Str("validator", validatorName).Logger(),
-		startTime: time.Now(),
+		startTime: o.clock.Now(),
+		clock:     o.clock,
 	}
 }
 
@@ -79,6 +87,7 @@ type loggingValidationProbe struct {
 	trust.NoOpValidationProbe
 	logger    zerolog.Logger
 	startTime time.Time
+	clock     clock.Clock
 }
 
 func (p *loggingValidationProbe) ValidatorFailed(validatorName string, credType trust.CredentialType, err error) {
@@ -99,7 +108,7 @@ func (p *loggingValidationProbe) AllValidatorsFailed(credType trust.CredentialTy
 
 func (p *loggingValidationProbe) End() {
 	p.logger.Debug().
-		Dur("duration", time.Since(p.startTime)).
+		Dur("duration", p.clock.Now().Sub(p.startTime)).
 		Msg("trust validation completed")
 }
 
@@ -109,6 +118,7 @@ type loggingForActorProbe struct {
 	trust.NoOpForActorProbe
 	logger    zerolog.Logger
 	startTime time.Time
+	clock     clock.Clock
 }
 
 func (p *loggingForActorProbe) ValidatorFiltered(validatorName string, actorSubject string) {
@@ -127,7 +137,7 @@ func (p *loggingForActorProbe) FilterEvaluationFailed(validatorName string, err 
 
 func (p *loggingForActorProbe) End() {
 	p.logger.Debug().
-		Dur("duration", time.Since(p.startTime)).
+		Dur("duration", p.clock.Now().Sub(p.startTime)).
 		Msg("actor filter evaluation completed")
 }
 
@@ -137,6 +147,7 @@ type loggingJWTValidateProbe struct {
 	trust.NoOpJWTValidateProbe
 	logger    zerolog.Logger
 	startTime time.Time
+	clock     clock.Clock
 }
 
 func (p *loggingJWTValidateProbe) JWKSLookupFailed(err error) {
@@ -164,7 +175,7 @@ func (p *loggingJWTValidateProbe) ClaimsExtractionFailed(err error) {
 
 func (p *loggingJWTValidateProbe) End() {
 	p.logger.Debug().
-		Dur("duration", time.Since(p.startTime)).
+		Dur("duration", p.clock.Now().Sub(p.startTime)).
 		Msg("JWT validation completed")
 }
 
@@ -174,6 +185,7 @@ type loggingLuaValidateProbe struct {
 	trust.NoOpLuaValidateProbe
 	logger    zerolog.Logger
 	startTime time.Time
+	clock     clock.Clock
 }
 
 func (p *loggingLuaValidateProbe) ScriptLoadFailed(err error) {
@@ -206,7 +218,7 @@ func (p *loggingLuaValidateProbe) ValidationCompleted() {
 
 func (p *loggingLuaValidateProbe) End() {
 	p.logger.Debug().
-		Dur("duration", time.Since(p.startTime)).
+		Dur("duration", p.clock.Now().Sub(p.startTime)).
 		Msg("lua validation ended")
 }
 
@@ -216,6 +228,7 @@ type loggingInMemoryValidateProbe struct {
 	trust.NoOpInMemoryValidateProbe
 	logger    zerolog.Logger
 	startTime time.Time
+	clock     clock.Clock
 }
 
 func (p *loggingInMemoryValidateProbe) CacheKeyFailed(err error) {
@@ -240,7 +253,7 @@ func (p *loggingInMemoryValidateProbe) SourceFailed(err error) {
 
 func (p *loggingInMemoryValidateProbe) End() {
 	p.logger.Debug().
-		Dur("duration", time.Since(p.startTime)).
+		Dur("duration", p.clock.Now().Sub(p.startTime)).
 		Msg("in-memory caching validate completed")
 }
 
@@ -250,6 +263,7 @@ type loggingDistributedValidateProbe struct {
 	trust.NoOpDistributedValidateProbe
 	logger    zerolog.Logger
 	startTime time.Time
+	clock     clock.Clock
 }
 
 func (p *loggingDistributedValidateProbe) CacheKeyFailed(err error) {
@@ -266,6 +280,6 @@ func (p *loggingDistributedValidateProbe) ResultExpired() {
 
 func (p *loggingDistributedValidateProbe) End() {
 	p.logger.Debug().
-		Dur("duration", time.Since(p.startTime)).
+		Dur("duration", p.clock.Now().Sub(p.startTime)).
 		Msg("distributed caching validate completed")
 }

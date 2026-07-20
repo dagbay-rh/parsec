@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/datasource"
 	"github.com/project-kessel/parsec/internal/keys"
 	"github.com/project-kessel/parsec/internal/server"
@@ -18,6 +20,10 @@ import (
 
 func testLogger(buf *bytes.Buffer) zerolog.Logger {
 	return zerolog.New(buf).Level(zerolog.DebugLevel)
+}
+
+func testClock() clock.Clock {
+	return clock.NewFixtureClock(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC))
 }
 
 // assertLog verifies the log output contains the expected level, message,
@@ -46,7 +52,7 @@ func TestLoggingDataSourceCacheObserver_DebugEvents(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			obs := NewLoggingDataSourceCacheObserver(testLogger(&buf))
+			obs := NewLoggingDataSourceCacheObserver(testLogger(&buf), testClock())
 			_, p := obs.CacheFetchStarted(context.Background(), "ds")
 			tt.call(p)
 			assertLog(t, buf.String(), "debug", tt.msg, `"datasource":"ds"`)
@@ -56,7 +62,7 @@ func TestLoggingDataSourceCacheObserver_DebugEvents(t *testing.T) {
 
 func TestLoggingDataSourceCacheObserver_FetchFailed(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingDataSourceCacheObserver(testLogger(&buf))
+	obs := NewLoggingDataSourceCacheObserver(testLogger(&buf), testClock())
 	_, p := obs.CacheFetchStarted(context.Background(), "my_ds")
 
 	p.FetchFailed(errors.New("timeout"))
@@ -81,7 +87,7 @@ func TestLoggingLuaDataSourceObserver_ErrorEvents(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			obs := NewLoggingLuaDataSourceObserver(testLogger(&buf))
+			obs := NewLoggingLuaDataSourceObserver(testLogger(&buf), testClock())
 			_, p := obs.LuaFetchStarted(context.Background(), "my_lua_ds")
 			tt.call(p)
 			assertLog(t, buf.String(), tt.level, tt.msg, `"datasource":"my_lua_ds"`)
@@ -91,7 +97,7 @@ func TestLoggingLuaDataSourceObserver_ErrorEvents(t *testing.T) {
 
 func TestLoggingLuaDataSourceObserver_FetchCompletedNil(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingLuaDataSourceObserver(testLogger(&buf))
+	obs := NewLoggingLuaDataSourceObserver(testLogger(&buf), testClock())
 	_, p := obs.LuaFetchStarted(context.Background(), "my_lua_ds")
 	p.FetchCompletedNil()
 	assertLog(t, buf.String(), "debug", "lua fetch completed with nil result", `"datasource":"my_lua_ds"`)
@@ -101,7 +107,7 @@ func TestLoggingLuaDataSourceObserver_FetchCompletedNil(t *testing.T) {
 
 func TestLoggingKeyRotationObserver_RotationCheckFailed(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingKeyRotationObserver(testLogger(&buf))
+	obs := NewLoggingKeyRotationObserver(testLogger(&buf), testClock())
 	_, p := obs.RotationCheckStarted(context.Background())
 
 	p.RotationCheckFailed(errors.New("slot locked"))
@@ -125,7 +131,7 @@ func TestLoggingKeyRotationObserver_InfoEvents(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			obs := NewLoggingKeyRotationObserver(testLogger(&buf))
+			obs := NewLoggingKeyRotationObserver(testLogger(&buf), testClock())
 			_, p := obs.RotationCheckStarted(context.Background())
 			tt.call(p)
 			assertLog(t, buf.String(), "info", tt.msg,
@@ -136,7 +142,7 @@ func TestLoggingKeyRotationObserver_InfoEvents(t *testing.T) {
 
 func TestLoggingKeyRotationObserver_KeyCacheUpdateFailed(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingKeyRotationObserver(testLogger(&buf))
+	obs := NewLoggingKeyRotationObserver(testLogger(&buf), testClock())
 	_, p := obs.KeyCacheUpdateStarted(context.Background())
 
 	p.KeyCacheUpdateFailed(errors.New("no slots"))
@@ -147,7 +153,7 @@ func TestLoggingKeyRotationObserver_KeyCacheUpdateFailed(t *testing.T) {
 
 func TestLoggingKeyRotationObserver_KeyProviderNotFound(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingKeyRotationObserver(testLogger(&buf))
+	obs := NewLoggingKeyRotationObserver(testLogger(&buf), testClock())
 	_, p := obs.KeyCacheUpdateStarted(context.Background())
 
 	p.KeyProviderNotFound("aws_kms", "primary")
@@ -170,7 +176,7 @@ func TestLoggingKeyRotationObserver_WarningMethods(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			obs := NewLoggingKeyRotationObserver(testLogger(&buf))
+			obs := NewLoggingKeyRotationObserver(testLogger(&buf), testClock())
 			_, p := obs.KeyCacheUpdateStarted(context.Background())
 			tt.call(p)
 			assertLog(t, buf.String(), "warn", tt.msg, `"slot":"s1"`)
@@ -182,7 +188,7 @@ func TestLoggingKeyRotationObserver_WarningMethods(t *testing.T) {
 
 func TestLoggingAWSKMSProviderObserver_CreateKeyFailed(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingAWSKMSProviderObserver(testLogger(&buf))
+	obs := NewLoggingAWSKMSProviderObserver(testLogger(&buf), testClock())
 	_, p := obs.KMSRotateStarted(context.Background(), "td", "ns", "key")
 
 	p.CreateKeyFailed(errors.New("access denied"))
@@ -193,7 +199,7 @@ func TestLoggingAWSKMSProviderObserver_CreateKeyFailed(t *testing.T) {
 
 func TestLoggingAWSKMSProviderObserver_OldKeyDeletionFailed(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingAWSKMSProviderObserver(testLogger(&buf))
+	obs := NewLoggingAWSKMSProviderObserver(testLogger(&buf), testClock())
 	_, p := obs.KMSRotateStarted(context.Background(), "td", "ns", "key")
 
 	p.OldKeyDeletionFailed("key-123", errors.New("access denied"))
@@ -206,7 +212,7 @@ func TestLoggingAWSKMSProviderObserver_OldKeyDeletionFailed(t *testing.T) {
 
 func TestLoggingDiskProviderObserver_KeyWriteFailed(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingDiskProviderObserver(testLogger(&buf))
+	obs := NewLoggingDiskProviderObserver(testLogger(&buf), testClock())
 	_, p := obs.DiskRotateStarted(context.Background(), "td", "ns", "test-key")
 
 	p.KeyWriteFailed(errors.New("permission denied"))
@@ -219,7 +225,7 @@ func TestLoggingDiskProviderObserver_KeyWriteFailed(t *testing.T) {
 
 func TestLoggingInMemoryProviderObserver_KeyGenerationFailed(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingInMemoryProviderObserver(testLogger(&buf))
+	obs := NewLoggingInMemoryProviderObserver(testLogger(&buf), testClock())
 	_, p := obs.MemoryRotateStarted(context.Background())
 
 	p.KeyGenerationFailed(errors.New("entropy exhausted"))
@@ -232,7 +238,7 @@ func TestLoggingInMemoryProviderObserver_KeyGenerationFailed(t *testing.T) {
 
 func TestLoggingTrustValidationObserver_ValidatorFailed(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingTrustObserver(testLogger(&buf))
+	obs := NewLoggingTrustObserver(testLogger(&buf), testClock())
 	_, p := obs.ValidationStarted(context.Background())
 
 	p.ValidatorFailed("oidc_v1", trust.CredentialTypeJWT, errors.New("expired"))
@@ -243,7 +249,7 @@ func TestLoggingTrustValidationObserver_ValidatorFailed(t *testing.T) {
 
 func TestLoggingTrustValidationObserver_AllValidatorsFailed(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingTrustObserver(testLogger(&buf))
+	obs := NewLoggingTrustObserver(testLogger(&buf), testClock())
 	_, p := obs.ValidationStarted(context.Background())
 
 	p.AllValidatorsFailed(trust.CredentialTypeBearer, 3, errors.New("no match"))
@@ -254,7 +260,7 @@ func TestLoggingTrustValidationObserver_AllValidatorsFailed(t *testing.T) {
 
 func TestLoggingTrustValidationObserver_ValidatorFiltered(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingTrustObserver(testLogger(&buf))
+	obs := NewLoggingTrustObserver(testLogger(&buf), testClock())
 	_, p := obs.ForActorStarted(context.Background())
 
 	p.ValidatorFiltered("v1", "actor-xyz")
@@ -265,7 +271,7 @@ func TestLoggingTrustValidationObserver_ValidatorFiltered(t *testing.T) {
 
 func TestLoggingTrustValidationObserver_FilterEvaluationFailed(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingTrustObserver(testLogger(&buf))
+	obs := NewLoggingTrustObserver(testLogger(&buf), testClock())
 	_, p := obs.ForActorStarted(context.Background())
 
 	p.FilterEvaluationFailed("v2", errors.New("cel error"))
@@ -278,7 +284,7 @@ func TestLoggingTrustValidationObserver_FilterEvaluationFailed(t *testing.T) {
 
 func TestLoggingTrustObserver_JWKSLookupFailed(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingTrustObserver(testLogger(&buf))
+	obs := NewLoggingTrustObserver(testLogger(&buf), testClock())
 	_, p := obs.JWTValidateStarted(context.Background(), "https://idp.example.com")
 
 	p.JWKSLookupFailed(errors.New("connection refused"))
@@ -289,7 +295,7 @@ func TestLoggingTrustObserver_JWKSLookupFailed(t *testing.T) {
 
 func TestLoggingTrustObserver_TokenExpired(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingTrustObserver(testLogger(&buf))
+	obs := NewLoggingTrustObserver(testLogger(&buf), testClock())
 	_, p := obs.JWTValidateStarted(context.Background(), "https://idp.example.com")
 
 	p.TokenExpired()
@@ -300,7 +306,7 @@ func TestLoggingTrustObserver_TokenExpired(t *testing.T) {
 
 func TestLoggingTrustObserver_TokenInvalid(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingTrustObserver(testLogger(&buf))
+	obs := NewLoggingTrustObserver(testLogger(&buf), testClock())
 	_, p := obs.JWTValidateStarted(context.Background(), "https://idp.example.com")
 
 	p.TokenInvalid(errors.New("bad signature"))
@@ -313,7 +319,7 @@ func TestLoggingTrustObserver_TokenInvalid(t *testing.T) {
 
 func TestLoggingJWKSObserver_InitPopulationFailed(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingJWKSObserver(testLogger(&buf))
+	obs := NewLoggingJWKSObserver(testLogger(&buf), testClock())
 	_, p := obs.InitPopulationStarted(context.Background())
 	p.InitialCachePopulationFailed(errors.New("timeout"))
 	assertLog(t, buf.String(), "error", "initial JWKS cache population failed",
@@ -341,7 +347,7 @@ func TestLoggingJWKSObserver(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			obs := NewLoggingJWKSObserver(testLogger(&buf))
+			obs := NewLoggingJWKSObserver(testLogger(&buf), testClock())
 			_, p := obs.CacheRefreshStarted(context.Background())
 			tt.call(p)
 			assertLog(t, buf.String(), "warn", tt.msg, tt.fields...)
@@ -354,13 +360,13 @@ func TestLoggingJWKSObserver(t *testing.T) {
 func TestLoggingServerLifecycleObserver_ServeFailed(t *testing.T) {
 	t.Run("GRPCServeFailed", func(t *testing.T) {
 		var buf bytes.Buffer
-		obs := NewLoggingServerLifecycleObserver(testLogger(&buf))
+		obs := NewLoggingServerLifecycleObserver(testLogger(&buf), testClock())
 		obs.GRPCServeFailed(errors.New("bind error"))
 		assertLog(t, buf.String(), "error", "gRPC server error")
 	})
 	t.Run("HTTPServeFailed", func(t *testing.T) {
 		var buf bytes.Buffer
-		obs := NewLoggingServerLifecycleObserver(testLogger(&buf))
+		obs := NewLoggingServerLifecycleObserver(testLogger(&buf), testClock())
 		obs.HTTPServeFailed(errors.New("port in use"))
 		assertLog(t, buf.String(), "error", "HTTP server error")
 	})
@@ -368,7 +374,7 @@ func TestLoggingServerLifecycleObserver_ServeFailed(t *testing.T) {
 
 func TestLoggingServerLifecycleObserver_StopStarted(t *testing.T) {
 	var buf bytes.Buffer
-	obs := NewLoggingServerLifecycleObserver(testLogger(&buf))
+	obs := NewLoggingServerLifecycleObserver(testLogger(&buf), testClock())
 	_, p := obs.StopStarted(context.Background())
 	p.End()
 	assertLog(t, buf.String(), "debug", "server stopped")

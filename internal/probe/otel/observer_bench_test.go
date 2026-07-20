@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
@@ -23,7 +24,7 @@ func benchProvider(b *testing.B) *Provider {
 // attribute (1 KeyValue in the set).
 func BenchmarkProbeRecord_StatusOnly(b *testing.B) {
 	p := benchProvider(b)
-	obs, err := NewObserver(p, "/metrics")
+	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
 	require.NoError(b, err)
 
 	ctx := context.Background()
@@ -39,7 +40,7 @@ func BenchmarkProbeRecord_StatusOnly(b *testing.B) {
 // attributes (2 KeyValues in the set).
 func BenchmarkProbeRecord_WithResult(b *testing.B) {
 	p := benchProvider(b)
-	obs, err := NewObserver(p, "/metrics")
+	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
 	require.NoError(b, err)
 
 	ctx := context.Background()
@@ -55,7 +56,7 @@ func BenchmarkProbeRecord_WithResult(b *testing.B) {
 // result + status probe.
 func BenchmarkProbeRecord_WithResult_Error(b *testing.B) {
 	p := benchProvider(b)
-	obs, err := NewObserver(p, "/metrics")
+	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
 	require.NoError(b, err)
 
 	ctx := context.Background()
@@ -72,7 +73,7 @@ func BenchmarkProbeRecord_WithResult_Error(b *testing.B) {
 // known at creation (validator_type + validator + result + status = 4 KeyValues).
 func BenchmarkProbeRecord_KnownAtStartAttrs(b *testing.B) {
 	p := benchProvider(b)
-	obs, err := NewObserver(p, "/metrics")
+	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
 	require.NoError(b, err)
 
 	ctx := context.Background()
@@ -88,7 +89,7 @@ func BenchmarkProbeRecord_KnownAtStartAttrs(b *testing.B) {
 // of a probe with creation-time attributes.
 func BenchmarkProbeRecord_KnownAtStartAttrs_Error(b *testing.B) {
 	p := benchProvider(b)
-	obs, err := NewObserver(p, "/metrics")
+	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
 	require.NoError(b, err)
 
 	ctx := context.Background()
@@ -105,7 +106,7 @@ func BenchmarkProbeRecord_KnownAtStartAttrs_Error(b *testing.B) {
 // attribute is set by a lifecycle method (datasource + result + status).
 func BenchmarkProbeRecord_FieldSelectedAttrs(b *testing.B) {
 	p := benchProvider(b)
-	obs, err := NewObserver(p, "/metrics")
+	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
 	require.NoError(b, err)
 
 	ctx := context.Background()
@@ -122,7 +123,7 @@ func BenchmarkProbeRecord_FieldSelectedAttrs(b *testing.B) {
 // with a fully pre-built attribute set (no probe lifecycle).
 func BenchmarkProbeRecord_ServeFailedStatic(b *testing.B) {
 	p := benchProvider(b)
-	obs, err := NewObserver(p, "/metrics")
+	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
 	require.NoError(b, err)
 
 	b.ResetTimer()

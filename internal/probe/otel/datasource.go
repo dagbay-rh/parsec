@@ -7,6 +7,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/datasource"
 )
 
@@ -31,9 +32,10 @@ type dataSourceObserver struct {
 
 	cacheFetchDuration metric.Float64Histogram
 	luaFetchDuration   metric.Float64Histogram
+	clock              clock.Clock
 }
 
-func newDataSourceObserver(m metric.Meter) (*dataSourceObserver, error) {
+func newDataSourceObserver(m metric.Meter, clk clock.Clock) (*dataSourceObserver, error) {
 	cfd, err := m.Float64Histogram("parsec.datasource.cache.fetch.duration",
 		metric.WithDescription("Data source cache fetch duration in seconds"),
 		metric.WithUnit("s"),
@@ -52,12 +54,13 @@ func newDataSourceObserver(m metric.Meter) (*dataSourceObserver, error) {
 	return &dataSourceObserver{
 		cacheFetchDuration: cfd,
 		luaFetchDuration:   lfd,
+		clock:              clk,
 	}, nil
 }
 
 func (o *dataSourceObserver) CacheFetchStarted(ctx context.Context, dataSourceName string) (context.Context, datasource.CacheFetchProbe) {
 	return ctx, &cacheFetchProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status:     successStatusAttr,
 		datasource: attribute.String("datasource", dataSourceName),
 	}
@@ -65,7 +68,7 @@ func (o *dataSourceObserver) CacheFetchStarted(ctx context.Context, dataSourceNa
 
 func (o *dataSourceObserver) LuaFetchStarted(ctx context.Context, dataSourceName string) (context.Context, datasource.LuaFetchProbe) {
 	return ctx, &luaFetchProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status:     successStatusAttr,
 		datasource: attribute.String("datasource", dataSourceName),
 	}
@@ -96,7 +99,7 @@ func (p *cacheFetchProbe) End() {
 		p.result = cacheResultUnknown
 	}
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.datasource, p.result, p.status))
-	p.obs.cacheFetchDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.cacheFetchDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
 }
 
 // --- lua fetch probe ---
@@ -135,7 +138,7 @@ func (p *luaFetchProbe) End() {
 		p.result = luaResultUnknown
 	}
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.datasource, p.result, p.status))
-	p.obs.luaFetchDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.luaFetchDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
 }
 
 var (

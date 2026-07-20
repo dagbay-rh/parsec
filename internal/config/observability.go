@@ -8,6 +8,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/observer"
 	"github.com/project-kessel/parsec/internal/probe/zlog"
 )
@@ -74,18 +75,21 @@ func newLoggingObserver(cfg *ObservabilityConfig, logCtx LoggerContext) (observe
 		return nil, err
 	}
 
+	clk := clock.NewSystemClock()
+
 	app := zlog.NewLoggingObserverWithConfig(zlog.LoggingObserverConfig{
 		TokenIssuanceLogger: tiLog,
 		TokenExchangeLogger: teLog,
 		AuthzCheckLogger:    acLog,
+		Clock:               clk,
 	})
 
 	return observer.Compose(
 		app,
-		zlog.NewLoggingDataSourceObserver(dcLog, luaLog),
-		zlog.NewLoggingKeysObserver(krLog, kpLog),
-		zlog.NewLoggingTrustObserver(tvLog),
-		zlog.NewLoggingServerObserver(jcLog, slLog),
+		zlog.NewLoggingDataSourceObserver(dcLog, luaLog, clk),
+		zlog.NewLoggingKeysObserver(krLog, kpLog, clk),
+		zlog.NewLoggingTrustObserver(tvLog, clk),
+		zlog.NewLoggingServerObserver(jcLog, slLog, clk),
 	), nil
 }
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/datasource"
 )
 
@@ -15,16 +16,18 @@ var _ datasource.CacheObserver = (*LoggingDataSourceCacheObserver)(nil)
 type LoggingDataSourceCacheObserver struct {
 	datasource.NoOpCacheObserver
 	logger zerolog.Logger
+	clock  clock.Clock
 }
 
-func NewLoggingDataSourceCacheObserver(logger zerolog.Logger) *LoggingDataSourceCacheObserver {
-	return &LoggingDataSourceCacheObserver{logger: logger}
+func NewLoggingDataSourceCacheObserver(logger zerolog.Logger, clk clock.Clock) *LoggingDataSourceCacheObserver {
+	return &LoggingDataSourceCacheObserver{logger: logger, clock: clk}
 }
 
 func (o *LoggingDataSourceCacheObserver) CacheFetchStarted(ctx context.Context, dataSourceName string) (context.Context, datasource.CacheFetchProbe) {
 	return ctx, &loggingCacheFetchProbe{
 		logger:    o.logger.With().Str("datasource", dataSourceName).Logger(),
-		startTime: time.Now(),
+		startTime: o.clock.Now(),
+		clock:     o.clock,
 	}
 }
 
@@ -32,6 +35,7 @@ type loggingCacheFetchProbe struct {
 	datasource.NoOpCacheFetchProbe
 	logger    zerolog.Logger
 	startTime time.Time
+	clock     clock.Clock
 }
 
 func (p *loggingCacheFetchProbe) CacheHit() {
@@ -52,6 +56,6 @@ func (p *loggingCacheFetchProbe) FetchFailed(err error) {
 
 func (p *loggingCacheFetchProbe) End() {
 	p.logger.Debug().
-		Dur("duration", time.Since(p.startTime)).
+		Dur("duration", p.clock.Now().Sub(p.startTime)).
 		Msg("cache fetch completed")
 }

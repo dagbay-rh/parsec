@@ -6,6 +6,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/datasource"
 )
 
@@ -14,16 +15,18 @@ var _ datasource.LuaObserver = (*LoggingLuaDataSourceObserver)(nil)
 type LoggingLuaDataSourceObserver struct {
 	datasource.NoOpLuaObserver
 	logger zerolog.Logger
+	clock  clock.Clock
 }
 
-func NewLoggingLuaDataSourceObserver(logger zerolog.Logger) *LoggingLuaDataSourceObserver {
-	return &LoggingLuaDataSourceObserver{logger: logger}
+func NewLoggingLuaDataSourceObserver(logger zerolog.Logger, clk clock.Clock) *LoggingLuaDataSourceObserver {
+	return &LoggingLuaDataSourceObserver{logger: logger, clock: clk}
 }
 
 func (o *LoggingLuaDataSourceObserver) LuaFetchStarted(ctx context.Context, dataSourceName string) (context.Context, datasource.LuaFetchProbe) {
 	return ctx, &loggingLuaFetchProbe{
 		logger:    o.logger.With().Str("datasource", dataSourceName).Logger(),
-		startTime: time.Now(),
+		startTime: o.clock.Now(),
+		clock:     o.clock,
 	}
 }
 
@@ -31,6 +34,7 @@ type loggingLuaFetchProbe struct {
 	datasource.NoOpLuaFetchProbe
 	logger    zerolog.Logger
 	startTime time.Time
+	clock     clock.Clock
 }
 
 func (p *loggingLuaFetchProbe) ScriptLoadFailed(err error) {
@@ -59,6 +63,6 @@ func (p *loggingLuaFetchProbe) ResultConversionFailed(err error) {
 
 func (p *loggingLuaFetchProbe) End() {
 	p.logger.Debug().
-		Dur("duration", time.Since(p.startTime)).
+		Dur("duration", p.clock.Now().Sub(p.startTime)).
 		Msg("lua fetch ended")
 }

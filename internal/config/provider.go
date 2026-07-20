@@ -6,6 +6,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/httpclient"
 	"github.com/project-kessel/parsec/internal/httpfixture"
 	"github.com/project-kessel/parsec/internal/observer"
@@ -127,7 +128,7 @@ func (p *Provider) buildObserver(cfg *ObservabilityConfig, parentLogCtx *LoggerC
 		}
 		endpoint := "/metrics"
 		p.bootstrapFields["metrics_endpoint"] = endpoint
-		return otel.NewObserver(mp, endpoint)
+		return otel.NewObserver(mp, endpoint, clock.NewSystemClock())
 
 	case "composite":
 		return p.buildCompositeObserver(cfg, parentLogCtx)

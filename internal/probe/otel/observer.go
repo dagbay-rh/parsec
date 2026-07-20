@@ -7,6 +7,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/service"
 	"github.com/project-kessel/parsec/internal/trust"
 )
@@ -42,9 +43,10 @@ type serviceObserver struct {
 	issuanceDuration metric.Float64Histogram
 	exchangeDuration metric.Float64Histogram
 	authzDuration    metric.Float64Histogram
+	clock            clock.Clock
 }
 
-func newServiceObserver(m metric.Meter) (*serviceObserver, error) {
+func newServiceObserver(m metric.Meter, clk clock.Clock) (*serviceObserver, error) {
 	id, err := m.Float64Histogram("parsec.token.issuance.duration",
 		metric.WithDescription("Token issuance duration in seconds"),
 		metric.WithUnit("s"),
@@ -71,6 +73,7 @@ func newServiceObserver(m metric.Meter) (*serviceObserver, error) {
 		issuanceDuration: id,
 		exchangeDuration: ed,
 		authzDuration:    ad,
+		clock:            clk,
 	}, nil
 }
 
@@ -82,7 +85,7 @@ func (o *serviceObserver) TokenIssuanceStarted(
 	_ []service.TokenType,
 ) (context.Context, service.TokenIssuanceProbe) {
 	return ctx, &tokenIssuanceProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status: successStatusAttr, result: resultSuccess,
 	}
 }
@@ -95,7 +98,7 @@ func (o *serviceObserver) TokenExchangeStarted(
 	_ string,
 ) (context.Context, service.TokenExchangeProbe) {
 	return ctx, &tokenExchangeProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status:             successStatusAttr,
 		result:             resultSuccess,
 		grantType:          attribute.String("grant_type", grantType),
@@ -107,7 +110,7 @@ func (o *serviceObserver) AuthzCheckStarted(
 	ctx context.Context,
 ) (context.Context, service.AuthzCheckProbe) {
 	return ctx, &authzCheckProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status: successStatusAttr, result: resultSuccess,
 	}
 }
@@ -133,7 +136,7 @@ func (p *tokenIssuanceProbe) IssuerNotFound(_ service.TokenType, _ error) {
 }
 func (p *tokenIssuanceProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.result, p.status))
-	p.obs.issuanceDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.issuanceDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
 }
 
 // --- token exchange probe ---
@@ -165,7 +168,7 @@ func (p *tokenExchangeProbe) SubjectTokenValidationFailed(_ error) {
 func (p *tokenExchangeProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(
 		p.grantType, p.requestedTokenType, p.result, p.status))
-	p.obs.exchangeDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.exchangeDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
 }
 
 // --- authz check probe ---
@@ -207,7 +210,7 @@ func (p *authzCheckProbe) PolicyEvaluationFailed(_ error) {
 }
 func (p *authzCheckProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.result, p.status))
-	p.obs.authzDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.authzDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
 }
 
 var (

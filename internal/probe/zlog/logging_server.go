@@ -6,6 +6,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/server"
 )
 
@@ -15,10 +16,11 @@ var _ server.LifecycleObserver = (*LoggingServerLifecycleObserver)(nil)
 type LoggingServerLifecycleObserver struct {
 	server.NoOpLifecycleObserver
 	logger zerolog.Logger
+	clock  clock.Clock
 }
 
-func NewLoggingServerLifecycleObserver(logger zerolog.Logger) *LoggingServerLifecycleObserver {
-	return &LoggingServerLifecycleObserver{logger: logger}
+func NewLoggingServerLifecycleObserver(logger zerolog.Logger, clk clock.Clock) *LoggingServerLifecycleObserver {
+	return &LoggingServerLifecycleObserver{logger: logger, clock: clk}
 }
 
 func (o *LoggingServerLifecycleObserver) GRPCServeFailed(err error) {
@@ -32,7 +34,8 @@ func (o *LoggingServerLifecycleObserver) HTTPServeFailed(err error) {
 func (o *LoggingServerLifecycleObserver) StopStarted(ctx context.Context) (context.Context, server.StopProbe) {
 	return ctx, &loggingStopProbe{
 		logger:    o.logger,
-		startTime: time.Now(),
+		startTime: o.clock.Now(),
+		clock:     o.clock,
 	}
 }
 
@@ -40,10 +43,11 @@ type loggingStopProbe struct {
 	server.NoOpStopProbe
 	logger    zerolog.Logger
 	startTime time.Time
+	clock     clock.Clock
 }
 
 func (p *loggingStopProbe) End() {
 	p.logger.Debug().
-		Dur("duration", time.Since(p.startTime)).
+		Dur("duration", p.clock.Now().Sub(p.startTime)).
 		Msg("server stopped")
 }

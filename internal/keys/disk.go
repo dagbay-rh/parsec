@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/fs"
 )
 
@@ -24,11 +25,12 @@ import (
 // It's suitable for single-pod Kubernetes deployments with ReadWriteOnce persistent volumes.
 type DiskKeyProvider struct {
 	mu        sync.RWMutex
-	keyType   KeyType       // The key type this provider creates
-	algorithm string        // The signing algorithm to use
-	keysPath  string        // Directory path for storing key files
-	fs        fs.FileSystem // Filesystem abstraction for operations
+	keyType   KeyType        // The key type this provider creates
+	algorithm string         // The signing algorithm to use
+	keysPath  string         // Directory path for storing key files
+	fs        fs.FileSystem  // Filesystem abstraction for operations
 	observer  DiskProviderObserver
+	clock     clock.Clock
 }
 
 // DiskKeyProviderConfig configures the disk key provider
@@ -47,6 +49,9 @@ type DiskKeyProviderConfig struct {
 
 	// Observer for disk key rotation events. If nil, a no-op observer is used.
 	Observer DiskProviderObserver
+
+	// Clock for time operations. If nil, defaults to SystemClock.
+	Clock clock.Clock
 }
 
 // keyFileData represents the JSON structure stored on disk
@@ -105,12 +110,18 @@ func NewDiskKeyProvider(cfg DiskKeyProviderConfig) (*DiskKeyProvider, error) {
 		obs = NoOpDiskProviderObserver{}
 	}
 
+	clk := cfg.Clock
+	if clk == nil {
+		clk = clock.NewSystemClock()
+	}
+
 	return &DiskKeyProvider{
 		keyType:   cfg.KeyType,
 		algorithm: algorithm,
 		keysPath:  cfg.KeysPath,
 		fs:        filesystem,
 		observer:  obs,
+		clock:     clk,
 	}, nil
 }
 
@@ -173,7 +184,7 @@ func (m *DiskKeyProvider) rotateKey(ctx context.Context, trustDomain, namespace,
 		Algorithm:  m.algorithm,
 		KeyType:    string(m.keyType),
 		PrivateKey: privateKeyB64,
-		CreatedAt:  time.Now().UTC(),
+		CreatedAt:  m.clock.Now().UTC(),
 	}
 
 	// Write to disk atomically

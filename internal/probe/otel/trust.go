@@ -7,6 +7,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/trust"
 )
 
@@ -51,9 +52,10 @@ type trustObserver struct {
 	validateDuration                 metric.Float64Histogram
 	cachingValidatorValidateDuration metric.Float64Histogram
 	actorFilterDuration              metric.Float64Histogram
+	clock                            clock.Clock
 }
 
-func newTrustObserver(m metric.Meter) (*trustObserver, error) {
+func newTrustObserver(m metric.Meter, clk clock.Clock) (*trustObserver, error) {
 	vd, err := m.Float64Histogram("parsec.trust.validation.duration",
 		metric.WithDescription("Trust validation duration in seconds"),
 		metric.WithUnit("s"),
@@ -88,6 +90,7 @@ func newTrustObserver(m metric.Meter) (*trustObserver, error) {
 		validateDuration:                 vald,
 		cachingValidatorValidateDuration: cvvd,
 		actorFilterDuration:              afd,
+		clock:                            clk,
 	}, nil
 }
 
@@ -95,7 +98,7 @@ func newTrustObserver(m metric.Meter) (*trustObserver, error) {
 
 func (o *trustObserver) ValidationStarted(ctx context.Context) (context.Context, trust.ValidationProbe) {
 	return ctx, &validationProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status: successStatusAttr,
 	}
 }
@@ -113,14 +116,14 @@ func (p *validationProbe) AllValidatorsFailed(_ trust.CredentialType, _ int, _ e
 }
 func (p *validationProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.status))
-	p.obs.validationDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.validationDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
 }
 
 // --- JWT validate probe ---
 
 func (o *trustObserver) JWTValidateStarted(ctx context.Context, issuer string) (context.Context, trust.JWTValidateProbe) {
 	return ctx, &jwtValidateProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status:        successStatusAttr,
 		result:        resultSuccess,
 		validatorType: validatorTypeJWT,
@@ -160,14 +163,14 @@ func (p *jwtValidateProbe) ClaimsExtractionFailed(_ error) {
 }
 func (p *jwtValidateProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.validatorType, p.validator, p.result, p.status))
-	p.obs.validateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.validateDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
 }
 
 // --- Lua validate probe ---
 
 func (o *trustObserver) LuaValidateStarted(ctx context.Context, validatorName string) (context.Context, trust.LuaValidateProbe) {
 	return ctx, &luaValidateProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status:        successStatusAttr,
 		result:        resultSuccess,
 		validatorType: validatorTypeLua,
@@ -212,14 +215,14 @@ func (p *luaValidateProbe) ResultConversionFailed(_ error) {
 }
 func (p *luaValidateProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.validatorType, p.validator, p.result, p.status))
-	p.obs.validateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.validateDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
 }
 
 // --- in-memory caching validator probe ---
 
 func (o *trustObserver) InMemoryValidateStarted(ctx context.Context, validatorName string) (context.Context, trust.InMemoryValidateProbe) {
 	return ctx, &inMemoryValidateProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status:    successStatusAttr,
 		result:    resultSuccess,
 		cacheType: cacheTypeInMemory,
@@ -251,14 +254,14 @@ func (p *inMemoryValidateProbe) SourceFailed(_ error) {
 }
 func (p *inMemoryValidateProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.cacheType, p.validator, p.result, p.status))
-	p.obs.cachingValidatorValidateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.cachingValidatorValidateDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
 }
 
 // --- distributed caching validator probe ---
 
 func (o *trustObserver) DistributedValidateStarted(ctx context.Context, validatorName string) (context.Context, trust.DistributedValidateProbe) {
 	return ctx, &distributedValidateProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status:    successStatusAttr,
 		result:    resultSuccess,
 		cacheType: cacheTypeDistributed,
@@ -291,14 +294,14 @@ func (p *distributedValidateProbe) ResultExpired() {
 }
 func (p *distributedValidateProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.cacheType, p.validator, p.result, p.status))
-	p.obs.cachingValidatorValidateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.cachingValidatorValidateDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
 }
 
 // --- actor filter probe ---
 
 func (o *trustObserver) ForActorStarted(ctx context.Context) (context.Context, trust.ForActorProbe) {
 	return ctx, &forActorProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status: successStatusAttr,
 	}
 }
@@ -314,7 +317,7 @@ type forActorProbe struct {
 func (p *forActorProbe) FilterEvaluationFailed(_ string, _ error) { p.status = errorStatusAttr }
 func (p *forActorProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.status))
-	p.obs.actorFilterDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.actorFilterDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
 }
 
 var (

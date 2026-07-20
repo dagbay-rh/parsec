@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/project-kessel/parsec/internal/claims"
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/request"
 )
 
@@ -72,6 +73,7 @@ type StubValidator struct {
 	credTypes []CredentialType
 	result    *Result
 	err       error
+	clock     clock.Clock
 }
 
 // NewStubValidator creates a new stub validator
@@ -81,8 +83,11 @@ func NewStubValidator(credTypes ...CredentialType) *StubValidator {
 		credTypes = []CredentialType{CredentialTypeBearer}
 	}
 
+	clk := clock.NewSystemClock()
+
 	return &StubValidator{
 		credTypes: credTypes,
+		clock:     clk,
 		result: &Result{
 			Subject:     "test-subject",
 			Issuer:      "https://test-issuer.example.com",
@@ -90,8 +95,8 @@ func NewStubValidator(credTypes ...CredentialType) *StubValidator {
 			Claims: claims.Claims{
 				"email": "test@example.com",
 			},
-			ExpiresAt: time.Now().Add(time.Hour),
-			IssuedAt:  time.Now(),
+			ExpiresAt: clk.Now().Add(time.Hour),
+			IssuedAt:  clk.Now(),
 			Audience:  []string{"https://parsec.example.com"},
 			Scope:     "read write",
 		},
@@ -107,6 +112,16 @@ func (v *StubValidator) WithResult(result *Result) *StubValidator {
 // WithError configures the stub to return an error
 func (v *StubValidator) WithError(err error) *StubValidator {
 	v.err = err
+	return v
+}
+
+// WithClock configures the stub to use a specific clock for time operations.
+// This is useful for testing with deterministic time.
+func (v *StubValidator) WithClock(clk clock.Clock) *StubValidator {
+	v.clock = clk
+	now := clk.Now()
+	v.result.ExpiresAt = now.Add(time.Hour)
+	v.result.IssuedAt = now
 	return v
 }
 
