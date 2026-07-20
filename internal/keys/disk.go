@@ -26,10 +26,10 @@ import (
 // It's suitable for single-pod Kubernetes deployments with ReadWriteOnce persistent volumes.
 type DiskKeyProvider struct {
 	mu        sync.RWMutex
-	keyType   KeyType        // The key type this provider creates
-	algorithm string         // The signing algorithm to use
-	keysPath  string         // Directory path for storing key files
-	fs        fs.FileSystem  // Filesystem abstraction for operations
+	keyType   KeyType       // The key type this provider creates
+	algorithm string        // The signing algorithm to use
+	keysPath  string        // Directory path for storing key files
+	fs        fs.FileSystem // Filesystem abstraction for operations
 	observer  DiskProviderObserver
 	clock     clock.Clock
 }
