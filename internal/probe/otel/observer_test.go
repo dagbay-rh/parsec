@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/datasource"
 	"github.com/project-kessel/parsec/internal/keys"
 	"github.com/project-kessel/parsec/internal/service"
@@ -41,7 +40,7 @@ func scrape(t *testing.T, p *Provider) string {
 
 func TestNewObserver_SatisfiesObserverInterface(t *testing.T) {
 	p := testProvider(t)
-	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+	obs, err := NewObserver(p, "/metrics")
 	require.NoError(t, err)
 	require.NotNil(t, obs)
 }
@@ -76,7 +75,7 @@ func TestTokenIssuanceMetrics(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := testProvider(t)
-			obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+			obs, err := NewObserver(p, "/metrics")
 			require.NoError(t, err)
 
 			_, probe := obs.TokenIssuanceStarted(context.Background(), nil, nil, "test", []service.TokenType{"jwt"})
@@ -127,7 +126,7 @@ func TestTokenExchangeMetrics(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := testProvider(t)
-			obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+			obs, err := NewObserver(p, "/metrics")
 			require.NoError(t, err)
 
 			_, probe := obs.TokenExchangeStarted(context.Background(),
@@ -199,7 +198,7 @@ func TestAuthzCheckMetrics(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := testProvider(t)
-			obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+			obs, err := NewObserver(p, "/metrics")
 			require.NoError(t, err)
 
 			_, probe := obs.AuthzCheckStarted(context.Background())
@@ -262,7 +261,7 @@ func TestCacheFetchMetrics(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := testProvider(t)
-			obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+			obs, err := NewObserver(p, "/metrics")
 			require.NoError(t, err)
 
 			_, probe := obs.CacheFetchStarted(context.Background(), tt.dataSourceName)
@@ -332,7 +331,7 @@ func TestLuaFetchMetrics(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := testProvider(t)
-			obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+			obs, err := NewObserver(p, "/metrics")
 			require.NoError(t, err)
 
 			_, probe := obs.LuaFetchStarted(context.Background(), "enrichment")
@@ -350,7 +349,7 @@ func TestLuaFetchMetrics(t *testing.T) {
 
 func TestTrustValidationMetrics(t *testing.T) {
 	p := testProvider(t)
-	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+	obs, err := NewObserver(p, "/metrics")
 	require.NoError(t, err)
 
 	_, probe := obs.ValidationStarted(context.Background())
@@ -397,7 +396,7 @@ func TestKeyRotationMetrics(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := testProvider(t)
-			obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+			obs, err := NewObserver(p, "/metrics")
 			require.NoError(t, err)
 
 			_, probe := obs.RotationCheckStarted(context.Background())
@@ -466,7 +465,7 @@ func TestKeyCacheUpdateMetrics(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := testProvider(t)
-			obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+			obs, err := NewObserver(p, "/metrics")
 			require.NoError(t, err)
 
 			_, probe := obs.KeyCacheUpdateStarted(context.Background())
@@ -568,7 +567,7 @@ func TestJWTValidateMetrics(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := testProvider(t)
-			obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+			obs, err := NewObserver(p, "/metrics")
 			require.NoError(t, err)
 
 			_, probe := obs.JWTValidateStarted(context.Background(), "test-issuer")
@@ -716,7 +715,7 @@ func TestLuaValidateMetrics(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := testProvider(t)
-			obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+			obs, err := NewObserver(p, "/metrics")
 			require.NoError(t, err)
 
 			_, probe := obs.LuaValidateStarted(context.Background(), "my-lua-validator")
@@ -735,7 +734,7 @@ func TestLuaValidateMetrics(t *testing.T) {
 
 func TestForActorFilterMetrics_Success(t *testing.T) {
 	p := testProvider(t)
-	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+	obs, err := NewObserver(p, "/metrics")
 	require.NoError(t, err)
 
 	_, probe := obs.ForActorStarted(context.Background())
@@ -748,7 +747,7 @@ func TestForActorFilterMetrics_Success(t *testing.T) {
 
 func TestForActorFilterMetrics_Error(t *testing.T) {
 	p := testProvider(t)
-	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+	obs, err := NewObserver(p, "/metrics")
 	require.NoError(t, err)
 
 	_, probe := obs.ForActorStarted(context.Background())
@@ -762,7 +761,7 @@ func TestForActorFilterMetrics_Error(t *testing.T) {
 
 func TestKMSRotateMetrics_Success(t *testing.T) {
 	p := testProvider(t)
-	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+	obs, err := NewObserver(p, "/metrics")
 	require.NoError(t, err)
 
 	_, probe := obs.KMSRotateStarted(context.Background(), "td", "ns", "my-key")
@@ -776,7 +775,7 @@ func TestKMSRotateMetrics_Success(t *testing.T) {
 
 func TestKMSRotateMetrics_Error(t *testing.T) {
 	p := testProvider(t)
-	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+	obs, err := NewObserver(p, "/metrics")
 	require.NoError(t, err)
 
 	_, probe := obs.KMSRotateStarted(context.Background(), "td", "ns", "my-key")
@@ -790,7 +789,7 @@ func TestKMSRotateMetrics_Error(t *testing.T) {
 
 func TestDiskRotateMetrics_Success(t *testing.T) {
 	p := testProvider(t)
-	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+	obs, err := NewObserver(p, "/metrics")
 	require.NoError(t, err)
 
 	_, probe := obs.DiskRotateStarted(context.Background(), "td", "ns", "disk-key")
@@ -804,7 +803,7 @@ func TestDiskRotateMetrics_Success(t *testing.T) {
 
 func TestDiskRotateMetrics_Error(t *testing.T) {
 	p := testProvider(t)
-	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+	obs, err := NewObserver(p, "/metrics")
 	require.NoError(t, err)
 
 	_, probe := obs.DiskRotateStarted(context.Background(), "td", "ns", "disk-key")
@@ -818,7 +817,7 @@ func TestDiskRotateMetrics_Error(t *testing.T) {
 
 func TestMemoryRotateMetrics_Success(t *testing.T) {
 	p := testProvider(t)
-	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+	obs, err := NewObserver(p, "/metrics")
 	require.NoError(t, err)
 
 	_, probe := obs.MemoryRotateStarted(context.Background())
@@ -831,7 +830,7 @@ func TestMemoryRotateMetrics_Success(t *testing.T) {
 
 func TestMemoryRotateMetrics_Error(t *testing.T) {
 	p := testProvider(t)
-	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+	obs, err := NewObserver(p, "/metrics")
 	require.NoError(t, err)
 
 	_, probe := obs.MemoryRotateStarted(context.Background())
@@ -845,7 +844,7 @@ func TestMemoryRotateMetrics_Error(t *testing.T) {
 
 func TestInitPopulationMetrics_Success(t *testing.T) {
 	p := testProvider(t)
-	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+	obs, err := NewObserver(p, "/metrics")
 	require.NoError(t, err)
 
 	_, probe := obs.InitPopulationStarted(context.Background())
@@ -858,7 +857,7 @@ func TestInitPopulationMetrics_Success(t *testing.T) {
 
 func TestInitPopulationMetrics_Error(t *testing.T) {
 	p := testProvider(t)
-	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+	obs, err := NewObserver(p, "/metrics")
 	require.NoError(t, err)
 
 	_, probe := obs.InitPopulationStarted(context.Background())
@@ -872,7 +871,7 @@ func TestInitPopulationMetrics_Error(t *testing.T) {
 
 func TestCacheRefreshMetrics_Success(t *testing.T) {
 	p := testProvider(t)
-	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+	obs, err := NewObserver(p, "/metrics")
 	require.NoError(t, err)
 
 	_, probe := obs.CacheRefreshStarted(context.Background())
@@ -885,7 +884,7 @@ func TestCacheRefreshMetrics_Success(t *testing.T) {
 
 func TestCacheRefreshMetrics_Error(t *testing.T) {
 	p := testProvider(t)
-	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+	obs, err := NewObserver(p, "/metrics")
 	require.NoError(t, err)
 
 	_, probe := obs.CacheRefreshStarted(context.Background())
@@ -899,7 +898,7 @@ func TestCacheRefreshMetrics_Error(t *testing.T) {
 
 func TestServeFailedMetrics_GRPC(t *testing.T) {
 	p := testProvider(t)
-	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+	obs, err := NewObserver(p, "/metrics")
 	require.NoError(t, err)
 
 	obs.GRPCServeFailed(errors.New("bind error"))
@@ -911,7 +910,7 @@ func TestServeFailedMetrics_GRPC(t *testing.T) {
 
 func TestServeFailedMetrics_HTTP(t *testing.T) {
 	p := testProvider(t)
-	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+	obs, err := NewObserver(p, "/metrics")
 	require.NoError(t, err)
 
 	obs.HTTPServeFailed(errors.New("bind error"))
@@ -923,7 +922,7 @@ func TestServeFailedMetrics_HTTP(t *testing.T) {
 
 func TestProbeContext_CarriesRequestContext(t *testing.T) {
 	p := testProvider(t)
-	obs, err := NewObserver(p, "/metrics", clock.NewSystemClock())
+	obs, err := NewObserver(p, "/metrics")
 	require.NoError(t, err)
 
 	ctx := context.WithValue(context.Background(), ctxKey{}, "request-123")

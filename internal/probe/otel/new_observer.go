@@ -3,7 +3,6 @@ package otel
 import (
 	"net/http"
 
-	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/observer"
 )
 
@@ -13,7 +12,9 @@ import (
 //
 // The returned observer's Shutdown delegates to p.Shutdown, and its
 // ConfigureHTTPMux registers the Prometheus scrape handler at the given endpoint.
-func NewObserver(p *Provider, endpoint string, clk clock.Clock) (observer.Observer, error) {
+func NewObserver(p *Provider, endpoint string, opts ...ObserverOption) (observer.Observer, error) {
+	cfg := resolveObserverOptions(opts)
+	clk := cfg.clk
 	m := p.Meter(meterName)
 
 	svc, err := newServiceObserver(m, clk)

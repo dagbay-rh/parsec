@@ -19,8 +19,9 @@ type LoggingJWKSObserver struct {
 	clock  clock.Clock
 }
 
-func NewLoggingJWKSObserver(logger zerolog.Logger, clk clock.Clock) *LoggingJWKSObserver {
-	return &LoggingJWKSObserver{logger: logger, clock: clk}
+func NewLoggingJWKSObserver(logger zerolog.Logger, opts ...Option) *LoggingJWKSObserver {
+	cfg := resolveOptions(opts)
+	return &LoggingJWKSObserver{logger: logger, clock: cfg.clk}
 }
 
 func (o *LoggingJWKSObserver) InitPopulationStarted(ctx context.Context) (context.Context, server.InitPopulationProbe) {

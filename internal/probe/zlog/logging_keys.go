@@ -24,8 +24,9 @@ type LoggingKeyRotationObserver struct {
 	clock  clock.Clock
 }
 
-func NewLoggingKeyRotationObserver(logger zerolog.Logger, clk clock.Clock) *LoggingKeyRotationObserver {
-	return &LoggingKeyRotationObserver{logger: logger, clock: clk}
+func NewLoggingKeyRotationObserver(logger zerolog.Logger, opts ...Option) *LoggingKeyRotationObserver {
+	cfg := resolveOptions(opts)
+	return &LoggingKeyRotationObserver{logger: logger, clock: cfg.clk}
 }
 
 func (o *LoggingKeyRotationObserver) RotationCheckStarted(ctx context.Context) (context.Context, keys.RotationCheckProbe) {
@@ -114,8 +115,9 @@ type LoggingAWSKMSProviderObserver struct {
 	clock  clock.Clock
 }
 
-func NewLoggingAWSKMSProviderObserver(logger zerolog.Logger, clk clock.Clock) *LoggingAWSKMSProviderObserver {
-	return &LoggingAWSKMSProviderObserver{logger: logger, clock: clk}
+func NewLoggingAWSKMSProviderObserver(logger zerolog.Logger, opts ...Option) *LoggingAWSKMSProviderObserver {
+	cfg := resolveOptions(opts)
+	return &LoggingAWSKMSProviderObserver{logger: logger, clock: cfg.clk}
 }
 
 func (o *LoggingAWSKMSProviderObserver) KMSRotateStarted(ctx context.Context, trustDomain, namespace, keyName string) (context.Context, keys.KMSRotateProbe) {
@@ -168,8 +170,9 @@ type LoggingDiskProviderObserver struct {
 	clock  clock.Clock
 }
 
-func NewLoggingDiskProviderObserver(logger zerolog.Logger, clk clock.Clock) *LoggingDiskProviderObserver {
-	return &LoggingDiskProviderObserver{logger: logger, clock: clk}
+func NewLoggingDiskProviderObserver(logger zerolog.Logger, opts ...Option) *LoggingDiskProviderObserver {
+	cfg := resolveOptions(opts)
+	return &LoggingDiskProviderObserver{logger: logger, clock: cfg.clk}
 }
 
 func (o *LoggingDiskProviderObserver) DiskRotateStarted(ctx context.Context, trustDomain, namespace, keyName string) (context.Context, keys.DiskRotateProbe) {
@@ -214,8 +217,9 @@ type LoggingInMemoryProviderObserver struct {
 	clock  clock.Clock
 }
 
-func NewLoggingInMemoryProviderObserver(logger zerolog.Logger, clk clock.Clock) *LoggingInMemoryProviderObserver {
-	return &LoggingInMemoryProviderObserver{logger: logger, clock: clk}
+func NewLoggingInMemoryProviderObserver(logger zerolog.Logger, opts ...Option) *LoggingInMemoryProviderObserver {
+	cfg := resolveOptions(opts)
+	return &LoggingInMemoryProviderObserver{logger: logger, clock: cfg.clk}
 }
 
 func (o *LoggingInMemoryProviderObserver) MemoryRotateStarted(ctx context.Context) (context.Context, keys.MemoryRotateProbe) {

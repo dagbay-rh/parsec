@@ -5,7 +5,6 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/datasource"
 	"github.com/project-kessel/parsec/internal/keys"
 	"github.com/project-kessel/parsec/internal/server"
@@ -19,10 +18,10 @@ type LoggingDataSourceObserver struct {
 	lua   *LoggingLuaDataSourceObserver
 }
 
-func NewLoggingDataSourceObserver(cacheLogger, luaLogger zerolog.Logger, clk clock.Clock) *LoggingDataSourceObserver {
+func NewLoggingDataSourceObserver(cacheLogger, luaLogger zerolog.Logger, opts ...Option) *LoggingDataSourceObserver {
 	return &LoggingDataSourceObserver{
-		cache: NewLoggingDataSourceCacheObserver(cacheLogger, clk),
-		lua:   NewLoggingLuaDataSourceObserver(luaLogger, clk),
+		cache: NewLoggingDataSourceCacheObserver(cacheLogger, opts...),
+		lua:   NewLoggingLuaDataSourceObserver(luaLogger, opts...),
 	}
 }
 
@@ -46,12 +45,12 @@ type LoggingKeysObserver struct {
 	memory   *LoggingInMemoryProviderObserver
 }
 
-func NewLoggingKeysObserver(rotationLogger, providerLogger zerolog.Logger, clk clock.Clock) *LoggingKeysObserver {
+func NewLoggingKeysObserver(rotationLogger, providerLogger zerolog.Logger, opts ...Option) *LoggingKeysObserver {
 	return &LoggingKeysObserver{
-		rotation: NewLoggingKeyRotationObserver(rotationLogger, clk),
-		kms:      NewLoggingAWSKMSProviderObserver(providerLogger, clk),
-		disk:     NewLoggingDiskProviderObserver(providerLogger, clk),
-		memory:   NewLoggingInMemoryProviderObserver(providerLogger, clk),
+		rotation: NewLoggingKeyRotationObserver(rotationLogger, opts...),
+		kms:      NewLoggingAWSKMSProviderObserver(providerLogger, opts...),
+		disk:     NewLoggingDiskProviderObserver(providerLogger, opts...),
+		memory:   NewLoggingInMemoryProviderObserver(providerLogger, opts...),
 	}
 }
 
@@ -85,10 +84,10 @@ type LoggingServerObserver struct {
 	lifecycle *LoggingServerLifecycleObserver
 }
 
-func NewLoggingServerObserver(jwksLogger, lifecycleLogger zerolog.Logger, clk clock.Clock) *LoggingServerObserver {
+func NewLoggingServerObserver(jwksLogger, lifecycleLogger zerolog.Logger, opts ...Option) *LoggingServerObserver {
 	return &LoggingServerObserver{
-		jwks:      NewLoggingJWKSObserver(jwksLogger, clk),
-		lifecycle: NewLoggingServerLifecycleObserver(lifecycleLogger, clk),
+		jwks:      NewLoggingJWKSObserver(jwksLogger, opts...),
+		lifecycle: NewLoggingServerLifecycleObserver(lifecycleLogger, opts...),
 	}
 }
 

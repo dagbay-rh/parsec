@@ -29,8 +29,9 @@ type LoggingTrustObserver struct {
 	clock  clock.Clock
 }
 
-func NewLoggingTrustObserver(logger zerolog.Logger, clk clock.Clock) *LoggingTrustObserver {
-	return &LoggingTrustObserver{logger: logger, clock: clk}
+func NewLoggingTrustObserver(logger zerolog.Logger, opts ...Option) *LoggingTrustObserver {
+	cfg := resolveOptions(opts)
+	return &LoggingTrustObserver{logger: logger, clock: cfg.clk}
 }
 
 func (o *LoggingTrustObserver) ValidationStarted(ctx context.Context) (context.Context, trust.ValidationProbe) {

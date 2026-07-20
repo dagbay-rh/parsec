@@ -19,8 +19,9 @@ type LoggingDataSourceCacheObserver struct {
 	clock  clock.Clock
 }
 
-func NewLoggingDataSourceCacheObserver(logger zerolog.Logger, clk clock.Clock) *LoggingDataSourceCacheObserver {
-	return &LoggingDataSourceCacheObserver{logger: logger, clock: clk}
+func NewLoggingDataSourceCacheObserver(logger zerolog.Logger, opts ...Option) *LoggingDataSourceCacheObserver {
+	cfg := resolveOptions(opts)
+	return &LoggingDataSourceCacheObserver{logger: logger, clock: cfg.clk}
 }
 
 func (o *LoggingDataSourceCacheObserver) CacheFetchStarted(ctx context.Context, dataSourceName string) (context.Context, datasource.CacheFetchProbe) {

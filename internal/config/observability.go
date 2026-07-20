@@ -75,13 +75,13 @@ func newLoggingObserver(cfg *ObservabilityConfig, logCtx LoggerContext) (observe
 		return nil, err
 	}
 
-	clk := clock.NewSystemClock()
+	clk := zlog.WithClock(clock.NewSystemClock())
 
 	app := zlog.NewLoggingObserverWithConfig(zlog.LoggingObserverConfig{
 		TokenIssuanceLogger: tiLog,
 		TokenExchangeLogger: teLog,
 		AuthzCheckLogger:    acLog,
-		Clock:               clk,
+		Clock:               clock.NewSystemClock(),
 	})
 
 	return observer.Compose(

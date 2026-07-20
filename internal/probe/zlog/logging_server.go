@@ -19,8 +19,9 @@ type LoggingServerLifecycleObserver struct {
 	clock  clock.Clock
 }
 
-func NewLoggingServerLifecycleObserver(logger zerolog.Logger, clk clock.Clock) *LoggingServerLifecycleObserver {
-	return &LoggingServerLifecycleObserver{logger: logger, clock: clk}
+func NewLoggingServerLifecycleObserver(logger zerolog.Logger, opts ...Option) *LoggingServerLifecycleObserver {
+	cfg := resolveOptions(opts)
+	return &LoggingServerLifecycleObserver{logger: logger, clock: cfg.clk}
 }
 
 func (o *LoggingServerLifecycleObserver) GRPCServeFailed(err error) {

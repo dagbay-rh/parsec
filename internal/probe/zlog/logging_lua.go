@@ -18,8 +18,9 @@ type LoggingLuaDataSourceObserver struct {
 	clock  clock.Clock
 }
 
-func NewLoggingLuaDataSourceObserver(logger zerolog.Logger, clk clock.Clock) *LoggingLuaDataSourceObserver {
-	return &LoggingLuaDataSourceObserver{logger: logger, clock: clk}
+func NewLoggingLuaDataSourceObserver(logger zerolog.Logger, opts ...Option) *LoggingLuaDataSourceObserver {
+	cfg := resolveOptions(opts)
+	return &LoggingLuaDataSourceObserver{logger: logger, clock: cfg.clk}
 }
 
 func (o *LoggingLuaDataSourceObserver) LuaFetchStarted(ctx context.Context, dataSourceName string) (context.Context, datasource.LuaFetchProbe) {
