@@ -81,8 +81,7 @@ func newLoggingObserver(cfg *ObservabilityConfig, logCtx LoggerContext) (observe
 		TokenIssuanceLogger: tiLog,
 		TokenExchangeLogger: teLog,
 		AuthzCheckLogger:    acLog,
-		Clock:               clock.NewSystemClock(),
-	})
+	}, clk)
 
 	return observer.Compose(
 		app,

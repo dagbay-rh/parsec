@@ -32,9 +32,6 @@ type LoggingObserverConfig struct {
 	TokenIssuanceLogger zerolog.Logger
 	TokenExchangeLogger zerolog.Logger
 	AuthzCheckLogger    zerolog.Logger
-
-	// Clock for time operations. If nil, defaults to SystemClock.
-	Clock clock.Clock
 }
 
 // NewLoggingObserver creates an application observer that logs all observability events
@@ -48,16 +45,13 @@ func NewLoggingObserver(logger zerolog.Logger) service.ServiceObserver {
 }
 
 // NewLoggingObserverWithConfig creates a logging observer with pre-configured per-event loggers.
-func NewLoggingObserverWithConfig(cfg LoggingObserverConfig) service.ServiceObserver {
-	clk := cfg.Clock
-	if clk == nil {
-		clk = clock.NewSystemClock()
-	}
+func NewLoggingObserverWithConfig(cfg LoggingObserverConfig, opts ...Option) service.ServiceObserver {
+	resolved := resolveOptions(opts)
 	return &loggingObserver{
 		tokenIssuanceLogger: cfg.TokenIssuanceLogger,
 		tokenExchangeLogger: cfg.TokenExchangeLogger,
 		authzCheckLogger:    cfg.AuthzCheckLogger,
-		clock:               clk,
+		clock:               resolved.clk,
 	}
 }
 
