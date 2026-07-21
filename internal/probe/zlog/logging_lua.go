@@ -64,6 +64,6 @@ func (p *loggingLuaFetchProbe) ResultConversionFailed(err error) {
 
 func (p *loggingLuaFetchProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("lua fetch ended")
 }

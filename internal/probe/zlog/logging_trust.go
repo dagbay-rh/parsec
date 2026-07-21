@@ -109,7 +109,7 @@ func (p *loggingValidationProbe) AllValidatorsFailed(credType trust.CredentialTy
 
 func (p *loggingValidationProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("trust validation completed")
 }
 
@@ -138,7 +138,7 @@ func (p *loggingForActorProbe) FilterEvaluationFailed(validatorName string, err 
 
 func (p *loggingForActorProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("actor filter evaluation completed")
 }
 
@@ -176,7 +176,7 @@ func (p *loggingJWTValidateProbe) ClaimsExtractionFailed(err error) {
 
 func (p *loggingJWTValidateProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("JWT validation completed")
 }
 
@@ -219,7 +219,7 @@ func (p *loggingLuaValidateProbe) ValidationCompleted() {
 
 func (p *loggingLuaValidateProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("lua validation ended")
 }
 
@@ -254,7 +254,7 @@ func (p *loggingInMemoryValidateProbe) SourceFailed(err error) {
 
 func (p *loggingInMemoryValidateProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("in-memory caching validate completed")
 }
 
@@ -281,6 +281,6 @@ func (p *loggingDistributedValidateProbe) ResultExpired() {
 
 func (p *loggingDistributedValidateProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("distributed caching validate completed")
 }

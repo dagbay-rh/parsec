@@ -66,7 +66,7 @@ func (p *loggingRotationCheckProbe) RotationSkippedVersionRace(slot string) {
 
 func (p *loggingRotationCheckProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("rotation check completed")
 }
 
@@ -103,7 +103,7 @@ func (p *loggingKeyCacheUpdateProbe) MetadataFailed(slot string, err error) {
 
 func (p *loggingKeyCacheUpdateProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("key cache update completed")
 }
 
@@ -158,7 +158,7 @@ func (p *loggingKMSRotateProbe) OldKeyDeletionFailed(keyID string, err error) {
 
 func (p *loggingKMSRotateProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("KMS key rotation completed")
 }
 
@@ -205,7 +205,7 @@ func (p *loggingDiskRotateProbe) KeyWriteFailed(err error) {
 
 func (p *loggingDiskRotateProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("disk key rotation completed")
 }
 
@@ -244,6 +244,6 @@ func (p *loggingMemoryRotateProbe) KeyGenerationFailed(err error) {
 
 func (p *loggingMemoryRotateProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("in-memory key rotation completed")
 }

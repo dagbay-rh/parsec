@@ -75,7 +75,7 @@ type initPopulationProbe struct {
 func (p *initPopulationProbe) InitialCachePopulationFailed(_ error) { p.status = errorStatusAttr }
 func (p *initPopulationProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.status))
-	p.obs.initPopDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
+	p.obs.initPopDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)
 }
 
 // --- cache refresh probe ---
@@ -99,7 +99,7 @@ func (p *cacheRefreshProbe) CacheRefreshFailed(_ error)            { p.status = 
 func (p *cacheRefreshProbe) KeyConversionFailed(_ string, _ error) { p.status = errorStatusAttr }
 func (p *cacheRefreshProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.status))
-	p.obs.cacheRefreshDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
+	p.obs.cacheRefreshDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)
 }
 
 // --- serve failed (fire-and-forget, counter only) ---

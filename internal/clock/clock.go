@@ -19,6 +19,8 @@ type Ticker interface {
 type Clock interface {
 	// Now returns the current time
 	Now() time.Time
+	// Since returns the time elapsed since t
+	Since(t time.Time) time.Duration
 	// Sleep pauses execution for the given duration
 	Sleep(d time.Duration)
 	// Ticker creates a new ticker that ticks at the given interval
@@ -36,6 +38,11 @@ func NewSystemClock() *SystemClock {
 // Now returns the current system time
 func (c *SystemClock) Now() time.Time {
 	return time.Now()
+}
+
+// Since returns the time elapsed since t using time.Since
+func (c *SystemClock) Since(t time.Time) time.Duration {
+	return time.Since(t)
 }
 
 // Sleep pauses for the given duration using time.Sleep
@@ -105,6 +112,11 @@ func NewFixtureClock(startTime time.Time) *FixtureClock {
 // Now returns the current fixture time
 func (c *FixtureClock) Now() time.Time {
 	return c.currentTime
+}
+
+// Since returns the elapsed time since t relative to the fixture's current time
+func (c *FixtureClock) Since(t time.Time) time.Duration {
+	return c.currentTime.Sub(t)
 }
 
 // Set sets the fixture clock to a specific time

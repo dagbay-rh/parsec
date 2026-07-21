@@ -112,7 +112,7 @@ func (p *rotationCheckProbe) End() {
 		p.result = rotationResultNotNeeded
 	}
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.result, p.status))
-	p.obs.rotationDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
+	p.obs.rotationDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)
 }
 
 // --- key cache update probe ---
@@ -159,7 +159,7 @@ func (p *keyCacheUpdateProbe) MetadataFailed(_ string, _ error) {
 }
 func (p *keyCacheUpdateProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.result, p.status))
-	p.obs.cacheUpdateDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
+	p.obs.cacheUpdateDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)
 }
 
 // --- KMS rotate probe ---
@@ -190,7 +190,7 @@ func (p *kmsRotateProbe) AliasUpdateFailed(_ error)              { p.status = er
 func (p *kmsRotateProbe) OldKeyDeletionFailed(_ string, _ error) { p.status = errorStatusAttr }
 func (p *kmsRotateProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.keyName, p.status))
-	p.obs.kmsRotateDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
+	p.obs.kmsRotateDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)
 }
 
 // --- disk rotate probe ---
@@ -219,7 +219,7 @@ func (p *diskRotateProbe) KeyGenerationFailed(_ error) { p.status = errorStatusA
 func (p *diskRotateProbe) KeyWriteFailed(_ error)      { p.status = errorStatusAttr }
 func (p *diskRotateProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.keyName, p.status))
-	p.obs.diskRotateDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
+	p.obs.diskRotateDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)
 }
 
 // --- memory rotate probe ---
@@ -242,7 +242,7 @@ type memoryRotateProbe struct {
 func (p *memoryRotateProbe) KeyGenerationFailed(_ error) { p.status = errorStatusAttr }
 func (p *memoryRotateProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.status))
-	p.obs.memoryRotateDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
+	p.obs.memoryRotateDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)
 }
 
 var (

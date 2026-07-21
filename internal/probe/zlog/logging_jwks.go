@@ -54,7 +54,7 @@ func (p *loggingInitPopulationProbe) InitialCachePopulationFailed(err error) {
 
 func (p *loggingInitPopulationProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("initial JWKS cache population completed")
 }
 
@@ -75,6 +75,6 @@ func (p *loggingCacheRefreshProbe) KeyConversionFailed(keyID string, err error) 
 
 func (p *loggingCacheRefreshProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("cache refresh completed")
 }

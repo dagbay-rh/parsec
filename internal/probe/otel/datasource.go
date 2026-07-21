@@ -99,7 +99,7 @@ func (p *cacheFetchProbe) End() {
 		p.result = cacheResultUnknown
 	}
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.datasource, p.result, p.status))
-	p.obs.cacheFetchDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
+	p.obs.cacheFetchDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)
 }
 
 // --- lua fetch probe ---
@@ -138,7 +138,7 @@ func (p *luaFetchProbe) End() {
 		p.result = luaResultUnknown
 	}
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.datasource, p.result, p.status))
-	p.obs.luaFetchDuration.Record(p.ctx, p.obs.clock.Now().Sub(p.startTime).Seconds(), attrs)
+	p.obs.luaFetchDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)
 }
 
 var (

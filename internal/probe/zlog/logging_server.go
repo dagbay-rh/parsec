@@ -49,6 +49,6 @@ type loggingStopProbe struct {
 
 func (p *loggingStopProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("server stopped")
 }

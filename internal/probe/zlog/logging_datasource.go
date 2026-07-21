@@ -57,6 +57,6 @@ func (p *loggingCacheFetchProbe) FetchFailed(err error) {
 
 func (p *loggingCacheFetchProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("cache fetch completed")
 }

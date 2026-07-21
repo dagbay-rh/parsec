@@ -156,7 +156,7 @@ func (p *loggingTokenIssuanceProbe) IssuerNotFound(tokenType service.TokenType, 
 
 func (p *loggingTokenIssuanceProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("Token issuance completed")
 }
 
@@ -243,7 +243,7 @@ func (p *loggingTokenExchangeProbe) SubjectTokenValidationFailed(err error) {
 
 func (p *loggingTokenExchangeProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("Token exchange completed")
 }
 
@@ -371,6 +371,6 @@ func (p *loggingAuthzCheckProbe) PolicyEvaluationFailed(err error) {
 
 func (p *loggingAuthzCheckProbe) End() {
 	p.logger.Debug().
-		Dur("duration", p.clock.Now().Sub(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("Authorization check completed")
 }
