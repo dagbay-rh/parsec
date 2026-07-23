@@ -118,6 +118,16 @@ func TestAuthzIssueDenialCode(t *testing.T) {
 			t.Errorf("msg: got %q", msg)
 		}
 	})
+
+	t.Run("other_errors_internal", func(t *testing.T) {
+		code, msg := authzIssueDenialCode(errors.New("signing failed"))
+		if code != codes.Internal {
+			t.Errorf("code: got %v, want Internal", code)
+		}
+		if msg != "failed to issue tokens: signing failed" {
+			t.Errorf("msg: got %q", msg)
+		}
+	})
 }
 
 func TestOAuthHTTPErrorHandler(t *testing.T) {

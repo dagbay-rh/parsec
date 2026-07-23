@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -60,7 +61,7 @@ func authzIssueDenialCode(err error) (codes.Code, string) {
 		if msg := service.MappingMessage(err); msg != "" {
 			return codes.Internal, "failed to issue tokens: " + msg
 		}
-		return codes.Internal, "failed to issue tokens"
+		return codes.Internal, fmt.Sprintf("failed to issue tokens: %v", err)
 	}
 	msg := service.MappingMessage(err)
 	if msg == "" {

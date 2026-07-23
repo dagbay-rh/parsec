@@ -521,11 +521,7 @@ Document:
 
 #### Step 8: Close or supersede GitHub PR #157
 
-**Status**: Pending (after merge)
-
-After this PR merges:
-1. Close GitHub PR #157 with a comment explaining the unified approach
-2. Reference this PR and the meeting decision
+**Status**: Done — PR #157 closed (superseded by unified CEL mapper / MappingResult approach)
 
 ## Naming
 
@@ -583,17 +579,48 @@ When a CEL script calls an OAuth abort helper:
 1. `CELMapper.Map()` returns `MappingResult{Decision: Deny{...}}`, `err == nil`
 2. `ToClaims` merges / early-stops; translates Deny for Issue (first cut)
 3. `TokenService.IssueTokens()` reports via existing issuance failure probes
-4. Spans/logs distinguish Deny (OAuth code + reason) from unexpected `error`
+4. Logs/metrics distinguish Deny outcomes from unexpected `error`
 
 When `fail()` / unexpected failure: `Map` returns `error` → Internal path.
 
-**No new probe methods required** for the first cut. Ripple:
-- `mapping.oauth_error=<wire code>` (empty for unexpected/`fail`)
-- `mapping.abort_reason=<reason>` when Layer B (or Layer A if set)
+**No new probe methods required** for the first cut.
 
-Do **not** collapse to a single soft `policy_denied`. If Issue is later
-widened to return Decision (#19), probes can observe Deny without an
-`error` — same spirit as `AuthzCheckProbe.PolicyDecisionDeny`.
+### Metric dimensions vs `result` values (Alec — 2026-07-23)
+
+Current PR code adds **two new OTel metric attributes** on token-issuance
+failure:
+
+- `mapping.oauth_error=<wire code>`
+- `mapping.abort_reason=<reason>`
+
+alongside the existing `result` / `status` attributes.
+
+**Alec’s feedback** (PR #169, not a thorough review yet; otherwise looked
+right): unsure these new dimensions are necessary; **leans toward different
+`result` values** instead. Correlated dimensions may not inflate time-series
+cost much, but he does not want a pattern of “add a dimension just to reuse
+existing result buckets.” No shared decision framework yet for
+dimension-vs-result.
+
+**Plan direction (prefer Alec’s lean until contradicted):**
+
+| Signal | Prefer | Avoid as default |
+|--------|--------|------------------|
+| Metrics | Encode OAuth Deny / mapping failure in **`result`** (bounded enum-like values), e.g. `invalid_request`, `invalid_target`, `mapping_failed` / keep `issuance_failed` for unexpected | New metric dimensions `mapping.oauth_error` / `mapping.abort_reason` on histograms |
+| Logs | Structured fields `mapping.oauth_error` / `mapping.abort_reason` remain useful (high cardinality OK in logs) | — |
+
+Concrete follow-up before or just after merge (open question **#22**):
+
+1. Drop `mapping.oauth_error` / `mapping.abort_reason` from the OTel
+   `tokenIssuanceProbe` attribute set (keep them in zlog if desired).
+2. Map Deny’s `OAuthError` (and optionally Layer B reason) onto distinct
+   `result=…` constants — keep the set **bounded** (Layer A codes + one
+   internal failure), not free-form script messages.
+3. Document the choice in `docs/observer-pattern.md` when the team settles
+   a dimension-vs-result rule of thumb.
+
+Do **not** collapse everything to a single soft `policy_denied` if that
+hides protocol-useful distinctions already expressed as OAuth codes.
 
 ## Security
 
@@ -749,7 +776,8 @@ issuers:
 - [x] `ClaimMapper` returns `(MappingResult, error)`; `error` = unexpected only
 - [x] Multi-mapper: ordered merge + first non-Allow wins via `Merge`
 - [x] `Issuer.Issue` left unchanged in first cut; revisit (#19)
-- [x] Observability: ripple `oauth_error` + `abort_reason` through the stack
+- [x] Observability: distinguish Deny vs unexpected failure; prefer `result`
+      values over new metric dimensions (#22 — Alec lean)
 - [x] Test cases cover Merge, early-stop, Layer A/B, guards, exchange +
       ext_authz, `fail` vs Deny
 - [x] Security implications addressed (OAuth Deny vs Internal `error`)
@@ -775,7 +803,7 @@ issuers:
 | 9 | Per-issuer vs. universal policy guards — each issuer's mapper needs the same guards. Is this redundant? | **Resolved** | Alec: OK for now; per-issuer is more expressive. Share via `script_file` today. Disregard further for this work. |
 | 10 | `fail()` is too generic — policy vs system failures; all `IssueTokens` errors map to Internal. | **Resolved (v2.5)** | OAuth denials are `MappingDecision` (Deny). `fail()` / unexpected → `error` only. Transport maps Deny → OAuth body; `error` → Internal. |
 | 11 | Broader claim helpers / Lua / named policy registry. | Out of scope | Much later. Layer B reason helpers in this PR are the abort ergonomics; not full `requireClaim`-style policy DSL. |
-| 12 | GitHub PR #157 disposition. | Open | Close after this PR merges. Reference meeting decision in closing comment. |
+| 12 | GitHub PR #157 disposition. | **Resolved** | PR #157 closed; superseded by unified CEL mapper / MappingResult approach (this PR). |
 | 13 | 401 vs 403 for policy denials (HTTP-named helpers). | **Superseded** | Primary vocabulary is OAuth `error`. See #16. |
 | 14 | Couples CEL surface to HTTP vocabulary. | **Superseded** | CEL surface is OAuth codes (+ reasons); HTTP/gRPC derived. |
 | 15 | Should `fail()` be renamed to `internalError()` for symmetry? | Open | Prefer keep `fail()` for backward compatibility. |
@@ -785,6 +813,7 @@ issuers:
 | 19 | **NEW (v2.5)**: Should `Issuer.Issue` / `TokenService` return `MappingDecision`? | Open | Alec: start without; translate Deny below Issue; widen if awkward. |
 | 20 | **NEW (v2.5)**: On Deny, discard later mappers’ claims — also discard claims already merged from earlier Allows? | Open | Start: keep prior Allow claims in the result but do not issue; Decision carries Deny. Revisit if callers ever inspect claims on Deny. |
 | 21 | **NEW (v2.5)**: Other multi-mapper concerns Alec flagged beyond first-non-allow. | Open | Start with first non-Allow wins + early stop; revisit if more merge rules needed. |
+| 22 | **NEW (2026-07-23)**: New metric dimensions `mapping.oauth_error` / `mapping.abort_reason` vs distinct `result` values. | Open | Alec (PR #169): lean toward **`result` values**, not new dimensions; no decision framework yet. Plan prefers dropping those attrs from OTel histograms; keep richer detail in logs. Small code follow-up on the PR. |
 
 ## Review Log
 
@@ -796,3 +825,4 @@ issuers:
 | 2026-07-16 | Jozef | Risk 10 is real: `fail()` is too generic (policy vs future system failures); want a `reject()` sibling that marks policy denial and returns a corresponding status code. | **v2.1**: Introduced typed policy denial concept; later superseded by OAuth-coded aborts. |
 | 2026-07-16 | Alec | (1) Assumed `fail` would get typed failure siblings. (2) Risk 9 OK for now. (3) Keep ClaimMapper name. (4) Prefer token exchange / OAuth errors over HTTP names; ripple through the stack. (5) **Either or both**: direct OAuth-code helpers (`invalid_request`, `invalid_target`, `invalid_grant`, …) **and/or** reason helpers (e.g. `invalidSubject(...)`) that map to those codes with richer description/observability. | **v2.4**: Two-layer API — Layer A (OAuth codes) + Layer B (reason helpers); `OAuthError`+`Reason`; scripts prefer `invalidSubject`; open #17 (subject→`invalid_request` vs Alec’s `invalid_target` example), #16 (ext_authz 400 vs 401), #18 (inventory size). |
 | 2026-07-20 | Alec | Use a structured result (like `AuthzCheckPolicy` / `AuthzCheckDecision`), not `error`, for expected OAuth outcomes. `error` only for unexpected failures. Return claims + Decision from mappers. Start without changing `Issuer.Issue`; translate Deny to token-exchange responses and revisit threading Decision through Issue. Multi-mapper: ordered merges as today, also merge decisions; first non-Allow wins + early termination; put that in `MappingResult.Merge`, not only in `ToClaims`. | **v2.5**: Redesign around `MappingResult`/`MappingDecision`/`Merge`; CEL Layer A/B → Deny; `fail` → error; Issuer unchanged initially (#19); open #20–#21 for merge edge cases. Implementation steps reset to Pending for the refactor. |
+| 2026-07-23 | Alec | PR #169 skim: seemed right. Unsure new metric dimensions are necessary; leans toward different **`result` values** instead of adding dimensions to reuse existing buckets. Correlated dims may be cheap, but no good decision framework yet for dimension-vs-result. | **Plan iterate**: Observability section + open **#22** — prefer `result` enum for metrics; keep oauth/reason detail in logs; small OTel probe follow-up on the PR. |
