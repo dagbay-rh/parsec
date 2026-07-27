@@ -91,8 +91,8 @@ func (lib *mapperInputLib) ProgramOptions() []cel.ProgramOption {
 func oauthAbortFunctions() []cel.EnvOption {
 	type abortSpec struct {
 		name       string
-		oauthError string
-		reason     string
+		oauthError service.OAuthErrorCode
+		reason     service.AbortReason
 	}
 	specs := []abortSpec{
 		// Layer A — direct OAuth / token-exchange error codes
@@ -103,16 +103,16 @@ func oauthAbortFunctions() []cel.EnvOption {
 		{"invalidClient", service.OAuthInvalidClient, ""},
 		{"unsupportedGrantType", service.OAuthUnsupportedGrantType, ""},
 		{"invalidScope", service.OAuthInvalidScope, ""},
-		// Layer B — reason helpers (map onto Layer A codes)
-		{"invalidSubject", service.OAuthInvalidRequest, service.AbortReasonInvalidSubject},
-		{"invalidActor", service.OAuthInvalidRequest, service.AbortReasonInvalidActor},
-		{"invalidAudience", service.OAuthInvalidTarget, service.AbortReasonInvalidAudience},
-		{"unsupportedTokenType", service.OAuthInvalidRequest, service.AbortReasonUnsupportedTokenType},
+		// Layer B — reason helpers (reason→code mapping lives in service)
+		{"invalidSubject", service.OAuthCodeForReason(service.AbortReasonInvalidSubject), service.AbortReasonInvalidSubject},
+		{"invalidActor", service.OAuthCodeForReason(service.AbortReasonInvalidActor), service.AbortReasonInvalidActor},
+		{"invalidAudience", service.OAuthCodeForReason(service.AbortReasonInvalidAudience), service.AbortReasonInvalidAudience},
+		{"unsupportedTokenType", service.OAuthCodeForReason(service.AbortReasonUnsupportedTokenType), service.AbortReasonUnsupportedTokenType},
 	}
 
 	opts := make([]cel.EnvOption, 0, len(specs))
-	for _, s := range specs {
-		name, oauthError, reason := s.name, s.oauthError, s.reason
+	for _, spec := range specs {
+		name, oauthError, reason := spec.name, spec.oauthError, spec.reason
 		opts = append(opts, cel.Function(name,
 			cel.Overload(name+"_string",
 				[]*cel.Type{cel.StringType},
@@ -186,24 +186,44 @@ func mappingFail(arg ref.Val) ref.Val {
 	})
 }
 
-func mappingAbort(oauthError, reason string) func(ref.Val) ref.Val {
+// abortError carries a MappingDecision for CEL abort helpers.
+// It is distinct from fail() errors — AbortDecision extracts it.
+type abortError struct {
+	decision service.MappingDecision
+}
+
+func (e *abortError) Error() string { return e.decision.Message }
+
+func mappingAbort(oauthError service.OAuthErrorCode, reason service.AbortReason) func(ref.Val) ref.Val {
 	return func(arg ref.Val) ref.Val {
 		msg, ok := arg.Value().(string)
 		if !ok {
 			return types.NewErr("abort argument must be a string")
 		}
-		return types.WrapErr(&service.ClaimMappingError{
-			Message:    msg,
-			OAuthError: oauthError,
-			Reason:     reason,
+		return types.WrapErr(&abortError{
+			decision: service.MappingDecision{
+				Action:     service.MappingDeny,
+				OAuthError: oauthError,
+				Reason:     reason,
+				Message:    msg,
+			},
 		})
 	}
 }
 
+// AbortDecision extracts a MappingDecision from a CEL abort error.
+// Returns false for fail()-style errors and any other unexpected errors.
+func AbortDecision(err error) (service.MappingDecision, bool) {
+	var ae *abortError
+	if errors.As(err, &ae) {
+		return ae.decision, true
+	}
+	return service.MappingDecision{}, false
+}
+
 // UnwrapMappingError extracts a *service.ClaimMappingError from an error chain
-// produced by CEL evaluation. CEL abort helpers still use WrapErr internally;
-// CELMapper converts OAuth-coded errors into Deny MappingResults and leaves
-// fail()-style errors (empty OAuthError) as Map errors.
+// produced by CEL evaluation. Retained for backward compatibility with
+// fail()-style errors (empty OAuthError) that are still ClaimMappingError.
 func UnwrapMappingError(err error) *service.ClaimMappingError {
 	var me *service.ClaimMappingError
 	if errors.As(err, &me) {

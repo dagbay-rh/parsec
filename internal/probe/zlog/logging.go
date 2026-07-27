@@ -144,11 +144,11 @@ func (p *loggingTokenIssuanceProbe) TokenTypeIssuanceFailed(tokenType service.To
 	event := p.logger.Error().
 		Str("token_type", string(tokenType)).
 		Err(err)
-	if code := service.OAuthErrorCode(err); code != "" {
-		event = event.Str("mapping.oauth_error", code)
+	if code := service.ExtractOAuthErrorCode(err); code != "" {
+		event = event.Str("mapping.oauth_error", string(code))
 	}
-	if reason := service.AbortReason(err); reason != "" {
-		event = event.Str("mapping.abort_reason", reason)
+	if reason := service.ExtractAbortReason(err); reason != "" {
+		event = event.Str("mapping.abort_reason", string(reason))
 	}
 	event.Msg("Token issuance failed")
 }

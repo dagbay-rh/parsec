@@ -28,12 +28,34 @@ something is unexpectedly wrong.
 
 Issuers may list multiple ordered mappers. Results are composed with
 `MappingResult.Merge`: claims merge on Allow, and the **first non-Allow
-decision wins** (further mappers are not called). Merge logic lives on the
-result type, not buried only in `IssueContext.ToClaims`.
+decision wins** (further mappers are not called). Deny merges also **clear
+prior Allow claims** — no partial claims linger on a deny. Merge logic lives
+on the result type, not buried only in `IssueContext.ToClaims`.
 
-`Issuer.Issue` still returns `error` today: `ToClaims` adapts Deny to a
-temporary `ClaimMappingError` for transport mapping. Threading Decision
-through `Issue` is deferred until that adapter proves awkward.
+### ExchangeResult contract
+
+`Issuer.Issue` returns `(ExchangeResult, error)` — three explicit outcomes:
+
+| Outcome | Return |
+|---------|--------|
+| Token issued | `ExchangeResult{Token: &Token{…}}`, `error == nil` |
+| OAuth denial | `ExchangeResult{Error: &ExchangeError{…}}`, `error == nil` |
+| Unexpected failure | zero `ExchangeResult`, `error != nil` |
+
+`IssueTokens` returns per-type results (`map[TokenType]ExchangeResult`).
+ext_authz treats **any** per-type `ExchangeError` as a full request denial.
+
+## Deny constructors
+
+Mappers (CEL or future implementations) produce denials via shared
+constructors in `service`:
+
+- `DenyOAuth(code OAuthErrorCode, message string)` — Layer A, direct OAuth code
+- `DenyReason(reason AbortReason, message string)` — Layer B, reason → OAuth code
+  via `OAuthCodeForReason` mapping table
+
+The reason→code mapping table lives once in `service`, so non-CEL mappers
+get the same mapping without repeating it.
 
 ## Two-layer OAuth abort API
 
@@ -76,15 +98,18 @@ body).
 
 ```
 CEL Layer A/B abort helper
+  → abortError{MappingDecision} (distinct from fail)
+  → celhelpers.AbortDecision(err) extracts decision
   → MappingResult{Decision: Deny{OAuthError, Reason, Message}}
-  → MappingResult.Merge across ordered mappers (first non-Allow wins)
-  → ToClaims adapts Deny → ClaimMappingError (temporary, for Issuer.Issue)
+  → MappingResult.Merge (first non-Allow wins; clears claims on deny)
+  → ToClaims returns (nil, *ExchangeError, nil)
+  → Issuer.Issue returns ExchangeResult{Error: &ExchangeError{…}}
   → Exchange: HTTP 400 + { "error", "error_description" } (via gRPC ErrorInfo)
-  → ext_authz: InvalidArgument (OAuth) or Internal (fail)
+  → ext_authz: any type's ExchangeError → full request denial (InvalidArgument)
   → logs/metrics: mapping.oauth_error, mapping.abort_reason
 
 CEL fail() / unexpected failure
-  → error → Internal / 500
+  → error (not an abortError) → Internal / 500
 ```
 
 ## Example: 3scale-parity guards
@@ -116,5 +141,4 @@ guards — until then, stage/prod keep previous behavior.
 ## Out of scope
 
 Broader claim-policy helpers (`requireClaim`, …), Lua mappers, and a named
-global policy registry are intentionally deferred. Widening `Issuer.Issue` to
-return `MappingDecision` is an open follow-up.
+global policy registry are intentionally deferred.

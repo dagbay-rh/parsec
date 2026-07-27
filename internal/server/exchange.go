@@ -141,7 +141,7 @@ func (s *ExchangeServer) Exchange(ctx context.Context, req *parsecv1.ExchangeReq
 	}
 
 	// 8. Issue the token via TokenService
-	tokens, err := s.tokenService.IssueTokens(ctx, &service.IssueRequest{
+	results, err := s.tokenService.IssueTokens(ctx, &service.IssueRequest{
 		Subject:           result,
 		Actor:             actor,
 		RequestAttributes: reqAttrs,
@@ -152,17 +152,20 @@ func (s *ExchangeServer) Exchange(ctx context.Context, req *parsecv1.ExchangeReq
 		return nil, issueTokensGRPCError(err)
 	}
 
-	token, ok := tokens[requestedTokenType]
+	r, ok := results[requestedTokenType]
 	if !ok {
 		return nil, fmt.Errorf("token service did not return requested token type %s", requestedTokenType)
+	}
+	if r.Error != nil {
+		return nil, issueTokensGRPCError(r.Error)
 	}
 
 	// 9. Return response
 	return &parsecv1.ExchangeResponse{
-		AccessToken:     token.Value,
+		AccessToken:     r.Token.Value,
 		IssuedTokenType: string(requestedTokenType),
 		TokenType:       "Bearer",
-		ExpiresIn:       int64(token.ExpiresAt.Sub(token.IssuedAt).Seconds()),
+		ExpiresIn:       int64(r.Token.ExpiresAt.Sub(r.Token.IssuedAt).Seconds()),
 		Scope:           req.Scope,
 	}, nil
 }

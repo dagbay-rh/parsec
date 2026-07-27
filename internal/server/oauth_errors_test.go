@@ -35,10 +35,10 @@ func TestIssueTokensGRPCError(t *testing.T) {
 			t.Errorf("message: got %q", st.Message())
 		}
 		info := oauthErrorInfo(t, st)
-		if info.Reason != service.OAuthInvalidRequest {
+		if info.Reason != string(service.OAuthInvalidRequest) {
 			t.Errorf("ErrorInfo.Reason: got %q", info.Reason)
 		}
-		if info.Metadata["abort_reason"] != service.AbortReasonInvalidSubject {
+		if info.Metadata["abort_reason"] != string(service.AbortReasonInvalidSubject) {
 			t.Errorf("abort_reason: got %q", info.Metadata["abort_reason"])
 		}
 	})
@@ -57,7 +57,7 @@ func TestIssueTokensGRPCError(t *testing.T) {
 			t.Errorf("code: got %v, want InvalidArgument", st.Code())
 		}
 		info := oauthErrorInfo(t, st)
-		if info.Reason != service.OAuthInvalidTarget {
+		if info.Reason != string(service.OAuthInvalidTarget) {
 			t.Errorf("ErrorInfo.Reason: got %q", info.Reason)
 		}
 	})
@@ -151,7 +151,7 @@ func TestOAuthHTTPErrorHandler(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 			t.Fatalf("unmarshal body: %v", err)
 		}
-		if body["error"] != service.OAuthInvalidRequest {
+		if body["error"] != string(service.OAuthInvalidRequest) {
 			t.Errorf("error: got %q", body["error"])
 		}
 		if body["error_description"] != "impersonated tokens are not accepted" {

@@ -34,10 +34,14 @@ func TestStubIssuer(t *testing.T) {
 			DataSourceRegistry: service.NewDataSourceRegistry(),
 		}
 
-		token, err := issuer.Issue(ctx, issueCtx)
+		result, err := issuer.Issue(ctx, issueCtx)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
+		if result.Error != nil {
+			t.Fatalf("unexpected ExchangeError: %v", result.Error)
+		}
+		token := result.Token
 
 		if token == nil {
 			t.Fatal("expected token, got nil")
@@ -74,13 +78,13 @@ func TestStubIssuer(t *testing.T) {
 			DataSourceRegistry: service.NewDataSourceRegistry(),
 		}
 
-		token, err := issuer.Issue(ctx, issueCtx)
+		result, err := issuer.Issue(ctx, issueCtx)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
+		token := result.Token
 
 		expectedExpiry := time.Now().Add(ttl)
-		// Allow 1 second tolerance for test execution time
 		diff := token.ExpiresAt.Sub(expectedExpiry)
 		if diff > time.Second || diff < -time.Second {
 			t.Errorf("expected expiry around %v, got %v (diff: %v)",
@@ -135,11 +139,11 @@ func TestStubIssuer(t *testing.T) {
 			DataSourceRegistry: service.NewDataSourceRegistry(),
 		}
 
-		token1, _ := issuer.Issue(ctx, issueCtx)
-		clk.Advance(10 * time.Millisecond) // Advance time deterministically
-		token2, _ := issuer.Issue(ctx, issueCtx)
+		r1, _ := issuer.Issue(ctx, issueCtx)
+		clk.Advance(10 * time.Millisecond)
+		r2, _ := issuer.Issue(ctx, issueCtx)
 
-		if token1.Value == token2.Value {
+		if r1.Token.Value == r2.Token.Value {
 			t.Error("expected unique token values")
 		}
 	})

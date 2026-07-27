@@ -902,10 +902,10 @@ func TestExchange_InvalidRequest(t *testing.T) {
 	for _, d := range st.Details() {
 		if info, ok := d.(*errdetails.ErrorInfo); ok && info.Domain == oauthErrorDomain {
 			found = true
-			if info.Reason != service.OAuthInvalidRequest {
+			if info.Reason != string(service.OAuthInvalidRequest) {
 				t.Errorf("OAuth error: got %q", info.Reason)
 			}
-			if info.Metadata["abort_reason"] != service.AbortReasonInvalidSubject {
+			if info.Metadata["abort_reason"] != string(service.AbortReasonInvalidSubject) {
 				t.Errorf("abort_reason: got %q", info.Metadata["abort_reason"])
 			}
 		}
@@ -953,7 +953,7 @@ func TestExchange_InvalidTarget(t *testing.T) {
 	}
 	for _, d := range st.Details() {
 		if info, ok := d.(*errdetails.ErrorInfo); ok && info.Domain == oauthErrorDomain {
-			if info.Reason != service.OAuthInvalidTarget {
+			if info.Reason != string(service.OAuthInvalidTarget) {
 				t.Errorf("OAuth error: got %q, want invalid_target", info.Reason)
 			}
 			return

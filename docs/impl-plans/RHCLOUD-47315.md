@@ -1,9 +1,9 @@
 # RHCLOUD-47315: Reject impersonated tokens and enforce IdP claim presence in JWT validation
 
 **JIRA**: https://redhat.atlassian.net/browse/RHCLOUD-47315
-**Status**: Implemented (pending PR) — v2.5 structured MappingResult
+**Status**: In Review — v2.6 ExchangeResult + DenyOAuth/DenyReason
 **Author**: AI Assistant
-**Date**: 2026-07-08 (v1), 2026-07-14 (v2), 2026-07-16 (v2.1–v2.4), 2026-07-20 (v2.5)
+**Date**: 2026-07-08 (v1), 2026-07-14 (v2), 2026-07-16 (v2.1–v2.4), 2026-07-20 (v2.5), 2026-07-27 (v2.6)
 
 ## Context
 
@@ -144,19 +144,73 @@ type ClaimMapper interface {
    non-Allow (first non-allow wins).
 4. `Merge` owns the merge rules so `ToClaims` stays a thin loop.
 
-**Issuer interface — start without changing it**:
+**Issuer interface — widen with `ExchangeResult`** (v2.6 — Alec PR #169):
 
-Alec: begin by translating Deny decisions into token-exchange-compatible
-responses at the boundary below `Issuer.Issue` (e.g. `ToClaims` converts
-Deny → today's transport-facing error shape, or a thin adapter). Inspect
-how that looks. **Only if** that translation is awkward, thread
-`MappingDecision` up through `Issuer.Issue` / `TokenService.IssueTokens`
-in a follow-up. Do not expand `Issuer` in the first cut.
+v2.5 deferred widening `Issuer.Issue`; v2.6 resolves that: the translation
+from Deny to error proved awkward (callers must `errors.As` + check empty
+`OAuthError`). Per Alec's PR #169 review, widen the API to distinguish
+three explicit outcomes:
 
-**Interim note**: The already-pushed v2.4 code uses `ClaimMappingError` for
-OAuth denials. v2.5 refactors that into `MappingResult`/`MappingDecision`;
-`ClaimMappingError` (or equivalent) may remain briefly as a **transport
-adapter** at the Issue→server boundary until/unless Issue is widened.
+1. Success with token
+2. Known token-exchange denial (`*ExchangeError`)
+3. Unexpected error (`error`)
+
+```go
+type ExchangeError struct {
+    Message    string         // error_description
+    OAuthError OAuthErrorCode // wire "error"
+    Reason     AbortReason    // optional Layer B
+}
+
+type ExchangeResult struct {
+    Token *Token
+    Error *ExchangeError // non-nil when no token; nil on success
+}
+
+// Issuer
+Issue(ctx, issueCtx) (ExchangeResult, error)
+
+// TokenService — per-type results; top-level error = abort whole call
+IssueTokens(ctx, req) (map[TokenType]ExchangeResult, error)
+```
+
+- Top-level `error` = something went wrong; abort (issuer not found, `fail()`, etc.).
+- Per type: either `Token` or `ExchangeError` explaining why there is no token.
+- ext_authz treats any type's `ExchangeError` as full request denial.
+- Transports read `ExchangeResult.Error` directly instead of `errors.As`.
+
+Rename `ClaimMappingError` → `ExchangeError` (token-exchange semantics).
+
+**Shared deny constructors** (v2.6 — Alec PR #169):
+
+Layer A/B OAuth knowledge must not live only in `internal/cel`. Move to
+`service` so any mapper implementation can produce correct denials:
+
+```go
+type OAuthErrorCode string
+type AbortReason string
+
+func DenyOAuth(code OAuthErrorCode, message string) MappingResult
+func DenyReason(reason AbortReason, message string) MappingResult
+```
+
+The reason→OAuth mapping table (`invalid_audience` → `invalid_target`, etc.)
+lives once in `service`. CEL helpers register function names and call
+`DenyOAuth` / `DenyReason` via a thin abort error type.
+
+**Distinct CEL abort vs fail** (v2.6 — Alec PR #169):
+
+CEL mapper error handling uses distinct types rather than checking
+`OAuthError != ""` on a shared error type:
+
+```go
+if err != nil {
+    if decision, ok := celhelpers.AbortDecision(err); ok {
+        return service.MappingResult{Decision: decision}, nil
+    }
+    return service.MappingResult{}, err // fail() and unexpected
+}
+```
 
 **Two-layer OAuth CEL aborts** (v2.4 vocabulary — retained; delivery via Decision):
 
@@ -340,9 +394,12 @@ Single PR (refactor current branch) covering:
 
 `fail()` remains for mapping/system failures only (not an OAuth decision).
 
-**Later (not this PR)**: Thread Decision through `Issuer.Issue` if needed;
-broader claim helpers (`requireClaim`, …), Lua mappers, named policy
-registry — far-future.
+**v2.6 additions**: `DenyOAuth` / `DenyReason` constructors in `service`;
+`ExchangeResult` / `ExchangeError` widening of `Issue` / `IssueTokens`;
+distinct CEL abort error type.
+
+**Later (not this PR)**: Broader claim helpers (`requireClaim`, …),
+Lua mappers, named policy registry — far-future.
 
 ### Alternatives Considered
 
@@ -355,7 +412,7 @@ registry — far-future.
 | Layer A only (no reason helpers) | Smaller API | Easy to pick wrong code; weaker observability | Rejected — Alec: do either **or both**; we do both |
 | Layer B only (no direct codes) | Ergonomic | Can’t express every OAuth code without growing reason set | Rejected — keep Layer A for completeness |
 | Encode OAuth denials in `ClaimMappingError` / `error` (v2.4) | Small delta; already sketched | Conflates expected RFC outcomes with unexpected failures; unlike `AuthzCheckPolicy` | **Superseded (v2.5)** — Alec: structured result + Decision |
-| Change `Issuer.Issue` in the same cut | Clean end-to-end Decision | Larger blast radius before we see the translation shape | Deferred — start without; revisit |
+| Keep `Issuer.Issue` unchanged (v2.5) | Smaller first cut | Callers must `errors.As` + branch on empty `OAuthError`; implicit contract | **Superseded (v2.6)** — Alec: widen now with `ExchangeResult` |
 | Merge decision logic only inside `ToClaims` | Fewer exported types | Harder to reuse/test; hides multi-mapper rules | Rejected — `MappingResult.Merge` owns it |
 | gRPC-named helpers | Match ext_authz codes | Wrong primary protocol for exchange | Prefer OAuth codes; derive gRPC |
 | Per-validator config (`required_claims` / `rejected_claims` on `jwt_validator`) | Simple, follows `audiences` pattern | Wrong layer: validators establish trust, not policy | Conceptual mismatch |
@@ -374,11 +431,13 @@ registry — far-future.
 | `fail()` | `internal/cel` | Remains unexpected → `error` from `Map` |
 | `ToClaims` multi-mapper loop | `internal/service` | Uses `Merge` + early termination; translates Deny for `Issuer` |
 | Transport mapping | `internal/server` | Exchange / ext_authz from Deny’s `OAuthError` (via adapter) |
-| `Issuer.Issue` | `internal/service` | **Unchanged in first cut** (open question #19) |
+| `ExchangeResult` / `ExchangeError` | `internal/service` | Explicit success-vs-denial-vs-error contract |
+| `Issuer.Issue` | `internal/service` | Returns `(ExchangeResult, error)` (v2.6) |
+| `TokenService.IssueTokens` | `internal/service` | Returns `(map[TokenType]ExchangeResult, error)` (v2.6) |
+| `DenyOAuth` / `DenyReason` | `internal/service` | Shared deny constructors with reason→OAuth mapping |
+| `OAuthErrorCode` / `AbortReason` | `internal/service` | Typed string constants |
 
-`errors.Is(..., ErrClaimMapping)` may still apply to unexpected mapping
-failures and/or a temporary Deny→error adapter. Prefer reading
-`MappingDecision` where available.
+`ErrClaimMapping` removed; `ExchangeError` replaces `ClaimMappingError`.
 
 ### Package Impact
 
@@ -810,10 +869,12 @@ issuers:
 | 16 | ext_authz / 3scale HTTP for `invalid_request` — OAuth typically **400**; 3scale used **401**. | Open | Exchange follows RFC (400 + `invalid_request`). ext_authz: default `InvalidArgument` (400) unless product wants `Unauthenticated` (401). |
 | 17 | Alec example `invalidSubject → invalid_target` vs RFC 8693 subject → `invalid_request`. | Open | Plan uses RFC mapping (`invalidSubject` → `invalid_request`). Confirm with Alec. |
 | 18 | Exact Layer A/B function inventory (which OAuth codes / reasons to ship in v1). | Open | Plan lists a full Layer A set + initial Layer B set; trim if review wants a smaller first cut. |
-| 19 | **NEW (v2.5)**: Should `Issuer.Issue` / `TokenService` return `MappingDecision`? | Open | Alec: start without; translate Deny below Issue; widen if awkward. |
-| 20 | **NEW (v2.5)**: On Deny, discard later mappers’ claims — also discard claims already merged from earlier Allows? | Open | Start: keep prior Allow claims in the result but do not issue; Decision carries Deny. Revisit if callers ever inspect claims on Deny. |
+| 19 | **NEW (v2.5)**: Should `Issuer.Issue` / `TokenService` return `MappingDecision`? | **Resolved (v2.6)** | Alec (PR #169): yes, widen now. `Issue` → `(ExchangeResult, error)`; `IssueTokens` → `(map[TokenType]ExchangeResult, error)`. Rename `ClaimMappingError` → `ExchangeError`. |
+| 20 | **NEW (v2.5)**: On Deny, discard later mappers’ claims — also discard claims already merged from earlier Allows? | **Resolved (v2.6)** | Alec (PR #169): clear claims on deny merge. `Merge` returns `MappingResult{Decision: d}` with no claims. Implemented. |
 | 21 | **NEW (v2.5)**: Other multi-mapper concerns Alec flagged beyond first-non-allow. | Open | Start with first non-Allow wins + early stop; revisit if more merge rules needed. |
 | 22 | **NEW (2026-07-23)**: New metric dimensions `mapping.oauth_error` / `mapping.abort_reason` vs distinct `result` values. | Open | Alec (PR #169): lean toward **`result` values**, not new dimensions; no decision framework yet. Plan prefers dropping those attrs from OTel histograms; keep richer detail in logs. Small code follow-up on the PR. |
+| 23 | **NEW (v2.6)**: Name: `ExchangeResult` vs `IssueResult`. | Open | Prefer Alec’s `ExchangeResult`. |
+| 24 | **NEW (v2.6)**: Layer A/B mapping table in `service` vs new package. | Resolved | In `service` next to `DenyOAuth` / `DenyReason` (Alec pointed at `service`). |
 
 ## Review Log
 
@@ -826,3 +887,4 @@ issuers:
 | 2026-07-16 | Alec | (1) Assumed `fail` would get typed failure siblings. (2) Risk 9 OK for now. (3) Keep ClaimMapper name. (4) Prefer token exchange / OAuth errors over HTTP names; ripple through the stack. (5) **Either or both**: direct OAuth-code helpers (`invalid_request`, `invalid_target`, `invalid_grant`, …) **and/or** reason helpers (e.g. `invalidSubject(...)`) that map to those codes with richer description/observability. | **v2.4**: Two-layer API — Layer A (OAuth codes) + Layer B (reason helpers); `OAuthError`+`Reason`; scripts prefer `invalidSubject`; open #17 (subject→`invalid_request` vs Alec’s `invalid_target` example), #16 (ext_authz 400 vs 401), #18 (inventory size). |
 | 2026-07-20 | Alec | Use a structured result (like `AuthzCheckPolicy` / `AuthzCheckDecision`), not `error`, for expected OAuth outcomes. `error` only for unexpected failures. Return claims + Decision from mappers. Start without changing `Issuer.Issue`; translate Deny to token-exchange responses and revisit threading Decision through Issue. Multi-mapper: ordered merges as today, also merge decisions; first non-Allow wins + early termination; put that in `MappingResult.Merge`, not only in `ToClaims`. | **v2.5**: Redesign around `MappingResult`/`MappingDecision`/`Merge`; CEL Layer A/B → Deny; `fail` → error; Issuer unchanged initially (#19); open #20–#21 for merge edge cases. Implementation steps reset to Pending for the refactor. |
 | 2026-07-23 | Alec | PR #169 skim: seemed right. Unsure new metric dimensions are necessary; leans toward different **`result` values** instead of adding dimensions to reuse existing buckets. Correlated dims may be cheap, but no good decision framework yet for dimension-vs-result. | **Plan iterate**: Observability section + open **#22** — prefer `result` enum for metrics; keep oauth/reason detail in logs; small OTel probe follow-up on the PR. |
+| 2026-07-24 | Alec | PR #169 inline review (5 threads): (1) Widen `Issue`/`IssueTokens` with explicit `ExchangeResult`; rename `ClaimMappingError` → `ExchangeError`. (2) Clear claims on Deny merge. (3) Move Layer A/B OAuth knowledge from CEL to `service` (`DenyOAuth`/`DenyReason`). (4) Distinct abort error type vs `fail()`; `AbortDecision(err)`. (5) ext_authz: any token-type denial denies whole request. | **v2.6**: Widen Issue/IssueTokens (#19 resolved); clear claims on deny (#20 resolved); `DenyOAuth`/`DenyReason` + reason→code map in service; distinct CEL abort type; `ExchangeResult`/`ExchangeError`. |

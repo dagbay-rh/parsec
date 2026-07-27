@@ -147,13 +147,8 @@ func (m *CELMapper) Map(ctx context.Context, input *service.MapperInput) (servic
 	// surfaces it through the Go error return.
 	result, _, err := program.Eval(activation)
 	if err != nil {
-		if me := celhelpers.UnwrapMappingError(err); me != nil {
-			// OAuth aborts (Layer A/B) are expected Deny decisions.
-			if me.OAuthError != "" {
-				return service.DenyResult(me.OAuthError, me.Reason, me.Message), nil
-			}
-			// fail() — unexpected mapping/system failure.
-			return service.MappingResult{}, me
+		if decision, ok := celhelpers.AbortDecision(err); ok {
+			return service.MappingResult{Decision: decision}, nil
 		}
 		return service.MappingResult{}, fmt.Errorf("failed to evaluate CEL expression: %w", err)
 	}

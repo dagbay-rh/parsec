@@ -174,7 +174,7 @@ func (s *AuthzServer) issueResponse(
 		tokenTypes[i] = spec.Type
 	}
 
-	issuedTokens, err := s.tokenService.IssueTokens(ctx, &service.IssueRequest{
+	results, err := s.tokenService.IssueTokens(ctx, &service.IssueRequest{
 		Subject:           subject.Result,
 		Actor:             actor.Result,
 		RequestAttributes: reqAttrs,
@@ -186,14 +186,22 @@ func (s *AuthzServer) issueResponse(
 		return s.denyResponse(code, msg), nil
 	}
 
-	headers := make([]*corev3.HeaderValueOption, 0, len(credHeaders)+len(issuedTokens))
+	// Any token-type denial denies the entire ext_authz request.
+	for _, r := range results {
+		if r.Error != nil {
+			code, msg := authzIssueDenialCode(r.Error)
+			return s.denyResponse(code, msg), nil
+		}
+	}
+
+	headers := make([]*corev3.HeaderValueOption, 0, len(credHeaders)+len(results))
 	headers = append(headers, credHeaders...)
 	for _, spec := range decision.TokenTypes {
-		if token, ok := issuedTokens[spec.Type]; ok {
+		if r, ok := results[spec.Type]; ok && r.Token != nil {
 			headers = append(headers, &corev3.HeaderValueOption{
 				Header: &corev3.HeaderValue{
 					Key:   spec.HeaderName,
-					Value: token.Value,
+					Value: r.Token.Value,
 				},
 				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
 			})

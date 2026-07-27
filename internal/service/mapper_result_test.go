@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"sync/atomic"
 	"testing"
 
@@ -34,7 +33,7 @@ func TestMappingResult_Merge(t *testing.T) {
 
 	t.Run("first_deny_wins", func(t *testing.T) {
 		t.Parallel()
-		deny := DenyResult(OAuthInvalidRequest, AbortReasonInvalidSubject, "nope")
+		deny := DenyReason(AbortReasonInvalidSubject, "nope")
 		allow := AllowResult(claims.Claims{"x": 1})
 		got := deny.Merge(allow)
 		if got.Decision.Action != MappingDeny {
@@ -51,7 +50,7 @@ func TestMappingResult_Merge(t *testing.T) {
 	t.Run("allow_then_deny_clears_claims", func(t *testing.T) {
 		t.Parallel()
 		allow := AllowResult(claims.Claims{"kept": true})
-		deny := DenyResult(OAuthInvalidTarget, AbortReasonInvalidAudience, "bad aud")
+		deny := DenyReason(AbortReasonInvalidAudience, "bad aud")
 		got := allow.Merge(deny)
 		if got.Decision.Action != MappingDeny {
 			t.Fatalf("expected Deny, got %+v", got.Decision)
@@ -65,22 +64,19 @@ func TestMappingResult_Merge(t *testing.T) {
 	})
 }
 
-func TestMappingDecision_AsClaimMappingError(t *testing.T) {
+func TestMappingDecision_AsExchangeError(t *testing.T) {
 	t.Parallel()
 
-	if AllowResult(nil).Decision.AsClaimMappingError() != nil {
-		t.Fatal("Allow should not adapt to error")
+	if AllowResult(nil).Decision.AsExchangeError() != nil {
+		t.Fatal("Allow should not produce ExchangeError")
 	}
 
-	err := DenyResult(OAuthInvalidRequest, AbortReasonInvalidSubject, "msg").Decision.AsClaimMappingError()
-	if err == nil {
-		t.Fatal("Deny should adapt to ClaimMappingError")
+	exchErr := DenyReason(AbortReasonInvalidSubject, "msg").Decision.AsExchangeError()
+	if exchErr == nil {
+		t.Fatal("Deny should produce ExchangeError")
 	}
-	if !errors.Is(err, ErrClaimMapping) {
-		t.Fatalf("expected ErrClaimMapping, got %v", err)
-	}
-	if err.OAuthError != OAuthInvalidRequest || err.Reason != AbortReasonInvalidSubject || err.Message != "msg" {
-		t.Fatalf("unexpected adapted error: %+v", err)
+	if exchErr.OAuthError != OAuthInvalidRequest || exchErr.Reason != AbortReasonInvalidSubject || exchErr.Message != "msg" {
+		t.Fatalf("unexpected ExchangeError: %+v", exchErr)
 	}
 }
 
@@ -104,7 +100,7 @@ func TestToClaims_EarlyStopOnDeny(t *testing.T) {
 		calls:  &calls,
 	}
 	second := &countingMapper{
-		result: DenyResult(OAuthInvalidRequest, AbortReasonInvalidSubject, "stop"),
+		result: DenyReason(AbortReasonInvalidSubject, "stop"),
 		calls:  &calls,
 	}
 	third := &countingMapper{
@@ -113,15 +109,18 @@ func TestToClaims_EarlyStopOnDeny(t *testing.T) {
 	}
 
 	ic := &IssueContext{}
-	_, err := ic.ToClaims(context.Background(), []ClaimMapper{first, second, third})
-	if err == nil {
-		t.Fatal("expected Deny adapted to error")
+	_, exchErr, err := ic.ToClaims(context.Background(), []ClaimMapper{first, second, third})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if OAuthErrorCode(err) != OAuthInvalidRequest {
-		t.Fatalf("OAuthErrorCode: got %q", OAuthErrorCode(err))
+	if exchErr == nil {
+		t.Fatal("expected ExchangeError from Deny")
 	}
-	if AbortReason(err) != AbortReasonInvalidSubject {
-		t.Fatalf("AbortReason: got %q", AbortReason(err))
+	if exchErr.OAuthError != OAuthInvalidRequest {
+		t.Fatalf("OAuthErrorCode: got %q", exchErr.OAuthError)
+	}
+	if exchErr.Reason != AbortReasonInvalidSubject {
+		t.Fatalf("AbortReason: got %q", exchErr.Reason)
 	}
 	if got := calls.Load(); got != 2 {
 		t.Fatalf("expected 2 mapper calls (early stop), got %d", got)
@@ -132,12 +131,15 @@ func TestToClaims_MergesAllowMappers(t *testing.T) {
 	t.Parallel()
 
 	ic := &IssueContext{}
-	got, err := ic.ToClaims(context.Background(), []ClaimMapper{
+	got, exchErr, err := ic.ToClaims(context.Background(), []ClaimMapper{
 		NewStubClaimMapper(claims.Claims{"a": 1}),
 		NewStubClaimMapper(claims.Claims{"b": 2}),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if exchErr != nil {
+		t.Fatalf("unexpected ExchangeError: %v", exchErr)
 	}
 	if got["a"] != 1 || got["b"] != 2 {
 		t.Fatalf("claims: %+v", got)

@@ -21,7 +21,7 @@ const oauthErrorDomain = "oauth"
 // details carrying the OAuth wire code (and optional abort reason). Empty
 // OAuthError (fail()) and all other errors become Internal.
 func issueTokensGRPCError(err error) error {
-	oauthCode := service.OAuthErrorCode(err)
+	oauthCode := service.ExtractOAuthErrorCode(err)
 	if oauthCode == "" {
 		if msg := service.MappingMessage(err); msg != "" {
 			return status.Errorf(codes.Internal, "failed to issue token: %s", msg)
@@ -31,19 +31,19 @@ func issueTokensGRPCError(err error) error {
 
 	msg := service.MappingMessage(err)
 	if msg == "" {
-		msg = oauthCode
+		msg = string(oauthCode)
 	}
 
 	st := status.New(codes.InvalidArgument, msg)
 	info := &errdetails.ErrorInfo{
-		Reason: oauthCode,
+		Reason: string(oauthCode),
 		Domain: oauthErrorDomain,
 		Metadata: map[string]string{
 			"error_description": msg,
 		},
 	}
-	if reason := service.AbortReason(err); reason != "" {
-		info.Metadata["abort_reason"] = reason
+	if reason := service.ExtractAbortReason(err); reason != "" {
+		info.Metadata["abort_reason"] = string(reason)
 	}
 	detailed, detailErr := st.WithDetails(info)
 	if detailErr != nil {
@@ -56,7 +56,7 @@ func issueTokensGRPCError(err error) error {
 // an IssueTokens error. OAuth client errors map to InvalidArgument; others
 // remain Internal.
 func authzIssueDenialCode(err error) (codes.Code, string) {
-	oauthCode := service.OAuthErrorCode(err)
+	oauthCode := service.ExtractOAuthErrorCode(err)
 	if oauthCode == "" {
 		if msg := service.MappingMessage(err); msg != "" {
 			return codes.Internal, "failed to issue tokens: " + msg
@@ -65,7 +65,7 @@ func authzIssueDenialCode(err error) (codes.Code, string) {
 	}
 	msg := service.MappingMessage(err)
 	if msg == "" {
-		msg = oauthCode
+		msg = string(oauthCode)
 	}
 	return codes.InvalidArgument, msg
 }

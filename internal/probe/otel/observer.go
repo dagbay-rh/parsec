@@ -131,11 +131,11 @@ type tokenIssuanceProbe struct {
 func (p *tokenIssuanceProbe) TokenTypeIssuanceFailed(_ service.TokenType, err error) {
 	p.status = errorStatusAttr
 	p.result = resultIssuanceFailed
-	if code := service.OAuthErrorCode(err); code != "" {
-		p.oauthError = attribute.String("mapping.oauth_error", code)
+	if code := service.ExtractOAuthErrorCode(err); code != "" {
+		p.oauthError = attribute.String("mapping.oauth_error", string(code))
 	}
-	if reason := service.AbortReason(err); reason != "" {
-		p.abortReason = attribute.String("mapping.abort_reason", reason)
+	if reason := service.ExtractAbortReason(err); reason != "" {
+		p.abortReason = attribute.String("mapping.abort_reason", string(reason))
 	}
 }
 func (p *tokenIssuanceProbe) IssuerNotFound(_ service.TokenType, _ error) {

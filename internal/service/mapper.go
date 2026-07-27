@@ -10,30 +10,54 @@ import (
 )
 
 var (
-	// ErrClaimMapping is returned when claim mapping fails unexpectedly
-	// (e.g. CEL fail()), or as a temporary adapter when a Deny decision is
-	// translated for Issuer.Issue (which still returns error).
+	// ErrClaimMapping is a sentinel for backward compatibility.
+	// Deprecated: use ExchangeError directly.
 	ErrClaimMapping = errors.New("claim mapping failed")
 )
 
-// OAuth / token-exchange error codes (RFC 6749 §5.2, RFC 8693 §2.2.2).
+// OAuthErrorCode is a wire "error" value for token exchange
+// (RFC 6749 §5.2, RFC 8693 §2.2.2).
+type OAuthErrorCode string
+
 const (
-	OAuthInvalidRequest       = "invalid_request"
-	OAuthInvalidTarget        = "invalid_target"
-	OAuthInvalidGrant         = "invalid_grant"
-	OAuthUnauthorizedClient   = "unauthorized_client"
-	OAuthInvalidClient        = "invalid_client"
-	OAuthUnsupportedGrantType = "unsupported_grant_type"
-	OAuthInvalidScope         = "invalid_scope"
+	OAuthInvalidRequest       OAuthErrorCode = "invalid_request"
+	OAuthInvalidTarget        OAuthErrorCode = "invalid_target"
+	OAuthInvalidGrant         OAuthErrorCode = "invalid_grant"
+	OAuthUnauthorizedClient   OAuthErrorCode = "unauthorized_client"
+	OAuthInvalidClient        OAuthErrorCode = "invalid_client"
+	OAuthUnsupportedGrantType OAuthErrorCode = "unsupported_grant_type"
+	OAuthInvalidScope         OAuthErrorCode = "invalid_scope"
 )
 
-// Machine-readable abort reasons for Layer B CEL helpers (observability).
+// AbortReason is a machine-readable reason for Layer B deny helpers.
+// Each reason maps to exactly one OAuthErrorCode via OAuthCodeForReason.
+type AbortReason string
+
 const (
-	AbortReasonInvalidSubject       = "invalid_subject"
-	AbortReasonInvalidActor         = "invalid_actor"
-	AbortReasonInvalidAudience      = "invalid_audience"
-	AbortReasonUnsupportedTokenType = "unsupported_token_type"
+	AbortReasonInvalidSubject       AbortReason = "invalid_subject"
+	AbortReasonInvalidActor         AbortReason = "invalid_actor"
+	AbortReasonInvalidAudience      AbortReason = "invalid_audience"
+	AbortReasonUnsupportedTokenType AbortReason = "unsupported_token_type"
 )
+
+// reasonToOAuthCode maps each Layer B abort reason to its Layer A OAuth code.
+// This table is the single source of truth for the reason→code relationship,
+// so non-CEL mappers get the same mapping without repeating it.
+var reasonToOAuthCode = map[AbortReason]OAuthErrorCode{
+	AbortReasonInvalidSubject:       OAuthInvalidRequest,
+	AbortReasonInvalidActor:         OAuthInvalidRequest,
+	AbortReasonInvalidAudience:      OAuthInvalidTarget,
+	AbortReasonUnsupportedTokenType: OAuthInvalidRequest,
+}
+
+// OAuthCodeForReason returns the OAuth error code for a Layer B abort reason.
+// Unknown reasons default to invalid_request.
+func OAuthCodeForReason(reason AbortReason) OAuthErrorCode {
+	if code, ok := reasonToOAuthCode[reason]; ok {
+		return code
+	}
+	return OAuthInvalidRequest
+}
 
 // MappingAction is the expected outcome of a claim mapper evaluation.
 // Analogous to AuthzCheckAction: denials are normal outcomes, not errors.
@@ -53,9 +77,9 @@ const (
 // Deny carries OAuth wire fields; Allow leaves them empty.
 type MappingDecision struct {
 	Action     MappingAction
-	OAuthError string // wire "error" when Action == Deny
-	Reason     string // machine reason (Layer B); observability
-	Message    string // error_description
+	OAuthError OAuthErrorCode // wire "error" when Action == Deny
+	Reason     AbortReason    // machine reason (Layer B); observability
+	Message    string         // error_description
 }
 
 // IsAllow reports whether the decision permits continuing mapper merge /
@@ -64,13 +88,13 @@ func (d MappingDecision) IsAllow() bool {
 	return d.Action == MappingAllow || d.Action == ""
 }
 
-// AsClaimMappingError adapts a Deny decision for callers that still use error
-// returns (Issuer.Issue). Returns nil when the decision is Allow.
-func (d MappingDecision) AsClaimMappingError() *ClaimMappingError {
+// AsExchangeError adapts a Deny decision to an ExchangeError.
+// Returns nil when the decision is Allow.
+func (d MappingDecision) AsExchangeError() *ExchangeError {
 	if d.IsAllow() {
 		return nil
 	}
-	return &ClaimMappingError{
+	return &ExchangeError{
 		Message:    d.Message,
 		OAuthError: d.OAuthError,
 		Reason:     d.Reason,
@@ -93,8 +117,18 @@ func AllowResult(c claims.Claims) MappingResult {
 	}
 }
 
-// DenyResult returns a Deny MappingResult with OAuth wire fields.
-func DenyResult(oauthError, reason, message string) MappingResult {
+// DenyOAuth returns a Deny MappingResult for a Layer A OAuth error code.
+func DenyOAuth(code OAuthErrorCode, message string) MappingResult {
+	return denyResult(code, "", message)
+}
+
+// DenyReason returns a Deny MappingResult for a Layer B abort reason.
+// The reason is mapped to the appropriate OAuth error code via reasonToOAuthCode.
+func DenyReason(reason AbortReason, message string) MappingResult {
+	return denyResult(OAuthCodeForReason(reason), reason, message)
+}
+
+func denyResult(oauthError OAuthErrorCode, reason AbortReason, message string) MappingResult {
 	return MappingResult{
 		Decision: MappingDecision{
 			Action:     MappingDeny,
@@ -142,53 +176,60 @@ func (r MappingResult) Merge(other MappingResult) MappingResult {
 	return out
 }
 
-// ClaimMappingError carries detail about a mapping failure or a Deny adapted
-// for error-returning APIs (Issuer.Issue). It satisfies
-// errors.Is(err, ErrClaimMapping) via its Is method.
-//
-// OAuthError is the wire "error" value for token exchange (empty means an
-// internal/mapping failure from fail(), not an OAuth client error). Reason is
-// an optional machine-readable abort reason for logs and metrics.
-type ClaimMappingError struct {
-	Message    string // error_description
-	OAuthError string // wire "error" (empty = internal / fail)
-	Reason     string // machine reason for observability (may be empty for Layer A)
+// ExchangeError represents a known token-exchange denial: the request was
+// understood but issuance was refused for a policy/protocol reason expressible
+// as an OAuth error. Unexpected failures remain plain errors.
+type ExchangeError struct {
+	Message    string         // error_description
+	OAuthError OAuthErrorCode // wire "error"
+	Reason     AbortReason    // optional Layer B reason for observability
 }
 
-func (e *ClaimMappingError) Error() string {
+func (e *ExchangeError) Error() string {
 	return e.Message
 }
 
-func (e *ClaimMappingError) Is(target error) bool {
+func (e *ExchangeError) Is(target error) bool {
 	return target == ErrClaimMapping
 }
 
-// OAuthErrorCode returns the OAuth wire error code from err when it wraps a
-// ClaimMappingError, or "" otherwise (including fail()-style mapping errors).
-func OAuthErrorCode(err error) string {
-	var me *ClaimMappingError
-	if errors.As(err, &me) {
-		return me.OAuthError
+// ExchangeResult is the explicit outcome of Issuer.Issue.
+// Exactly one of Token or Error is non-nil.
+type ExchangeResult struct {
+	Token *Token
+	Error *ExchangeError
+}
+
+// ClaimMappingError is an alias for backward compatibility.
+// Deprecated: use ExchangeError.
+type ClaimMappingError = ExchangeError
+
+// ExtractOAuthErrorCode returns the OAuth wire error code from err when it
+// wraps an ExchangeError, or "" otherwise (including fail()-style errors).
+func ExtractOAuthErrorCode(err error) OAuthErrorCode {
+	var ee *ExchangeError
+	if errors.As(err, &ee) {
+		return ee.OAuthError
 	}
 	return ""
 }
 
-// AbortReason returns the machine-readable abort reason from err when it wraps
-// a ClaimMappingError, or "" otherwise.
-func AbortReason(err error) string {
-	var me *ClaimMappingError
-	if errors.As(err, &me) {
-		return me.Reason
+// ExtractAbortReason returns the machine-readable abort reason from err when
+// it wraps an ExchangeError, or "" otherwise.
+func ExtractAbortReason(err error) AbortReason {
+	var ee *ExchangeError
+	if errors.As(err, &ee) {
+		return ee.Reason
 	}
 	return ""
 }
 
-// MappingMessage returns the human-readable message from err when it wraps a
-// ClaimMappingError, or "" otherwise.
+// MappingMessage returns the human-readable message from err when it wraps an
+// ExchangeError, or "" otherwise.
 func MappingMessage(err error) string {
-	var me *ClaimMappingError
-	if errors.As(err, &me) {
-		return me.Message
+	var ee *ExchangeError
+	if errors.As(err, &ee) {
+		return ee.Message
 	}
 	return ""
 }

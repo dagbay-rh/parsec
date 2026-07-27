@@ -79,15 +79,33 @@ Also Deny decisions (`error == nil` from `Map`):
 | Layer A/B abort | `Deny` + OAuth fields, `err == nil` |
 | `fail()` / unexpected | `err != nil` |
 
+CEL abort helpers produce a distinct `abortError` carrying a
+`MappingDecision`. The CEL mapper extracts it via `AbortDecision(err)` — no
+need to check `OAuthError != ""`. `fail()` remains a separate error path.
+
 Multiple mappers on an issuer are merged with `MappingResult.Merge` (first
-non-Allow wins; early termination). See
-[docs/issuance-policy.md](../../docs/issuance-policy.md).
+non-Allow wins; early termination; deny merges clear claims from prior
+allows). See [docs/issuance-policy.md](../../docs/issuance-policy.md).
+
+### Deny constructors
+
+CEL Layer B functions use `service.DenyReason(reason, message)` which maps
+the reason to the correct OAuth code via a shared table in `service`.
+Layer A functions use `service.DenyOAuth(code, message)`. The mapping table
+(`invalid_audience` → `invalid_target`, etc.) lives once in `service`.
+
+### ExchangeResult
+
+`Issuer.Issue` returns `(ExchangeResult, error)`. `ExchangeResult` contains
+either a `Token` (success) or an `*ExchangeError` (known denial). Unexpected
+errors use the top-level `error` return. `IssueTokens` returns per-type
+results; ext_authz treats any type's `ExchangeError` as a full request denial.
 
 ### Transport mapping
 
 | Decision / error | Exchange (HTTP) | ext_authz (gRPC) |
 |------------------|-----------------|------------------|
-| Deny `invalid_request` / `invalid_target` / … | 400 + `{error, error_description}` | `InvalidArgument` |
+| `ExchangeError` (`invalid_request` / `invalid_target` / …) | 400 + `{error, error_description}` | `InvalidArgument` (any-type denial = full deny) |
 | `fail` / unexpected `error` | 500 (default gRPC error JSON) | `Internal` |
 
 ## Example CEL Expressions

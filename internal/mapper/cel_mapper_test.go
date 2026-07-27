@@ -890,7 +890,7 @@ func TestCELMapper_LayerA(t *testing.T) {
 	tests := []struct {
 		name       string
 		script     string
-		oauthError string
+		oauthError service.OAuthErrorCode
 	}{
 		{
 			name:       "invalid_request",
@@ -938,8 +938,8 @@ func TestCELMapper_LayerB(t *testing.T) {
 	tests := []struct {
 		name       string
 		script     string
-		oauthError string
-		reason     string
+		oauthError service.OAuthErrorCode
+		reason     service.AbortReason
 	}{
 		{
 			name:       "invalid_subject",
@@ -1088,7 +1088,7 @@ has(subject.claims) && has(subject.claims.impersonated) && subject.claims.impers
 	})
 }
 
-func assertMappingDeny(t *testing.T, result service.MappingResult, err error, oauthError, reason, message string) {
+func assertMappingDeny(t *testing.T, result service.MappingResult, err error, oauthError service.OAuthErrorCode, reason service.AbortReason, message string) {
 	t.Helper()
 	if err != nil {
 		t.Fatalf("Deny must not be returned as error, got: %v", err)

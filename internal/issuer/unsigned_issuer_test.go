@@ -38,34 +38,32 @@ func TestUnsignedIssuer_Issue(t *testing.T) {
 		DataSourceRegistry: service.NewDataSourceRegistry(),
 	}
 
-	// Issue the token
-	token, err := issuer.Issue(context.Background(), issueCtx)
+	result, err := issuer.Issue(context.Background(), issueCtx)
 	if err != nil {
 		t.Fatalf("Issue() failed: %v", err)
 	}
+	if result.Error != nil {
+		t.Fatalf("unexpected ExchangeError: %v", result.Error)
+	}
+	token := result.Token
 
-	// Verify token is not empty
 	if token.Value == "" {
 		t.Error("Token value should not be empty")
 	}
 
-	// Verify token type is set correctly
 	if token.Type != tokenType {
 		t.Errorf("Expected token type %q, got %q", tokenType, token.Type)
 	}
 
-	// Verify token expires far in the future (year 9999)
 	if token.ExpiresAt.Year() != 9999 {
 		t.Errorf("Token should expire in year 9999, but ExpiresAt = %v", token.ExpiresAt)
 	}
 
-	// Verify IssuedAt is recent
 	now := time.Now()
 	if token.IssuedAt.After(now) || token.IssuedAt.Before(now.Add(-5*time.Second)) {
 		t.Errorf("IssuedAt should be recent, got %v", token.IssuedAt)
 	}
 
-	// Decode the token value
 	decodedJSON, err := base64.StdEncoding.DecodeString(token.Value)
 	if err != nil {
 		t.Fatalf("Failed to base64 decode token: %v", err)
@@ -117,32 +115,27 @@ func TestUnsignedIssuer_Issue_EmptyTransactionContext(t *testing.T) {
 		DataSourceRegistry: service.NewDataSourceRegistry(),
 	}
 
-	// Issue the token
-	token, err := issuer.Issue(context.Background(), issueCtx)
+	result, err := issuer.Issue(context.Background(), issueCtx)
 	if err != nil {
 		t.Fatalf("Issue() failed: %v", err)
 	}
 
-	// Decode the token value
-	decodedJSON, err := base64.StdEncoding.DecodeString(token.Value)
+	decodedJSON, err := base64.StdEncoding.DecodeString(result.Token.Value)
 	if err != nil {
 		t.Fatalf("Failed to base64 decode token: %v", err)
 	}
 
-	// Unmarshal the JSON - should be an empty object
 	var decodedClaims claims.Claims
 	if err := json.Unmarshal(decodedJSON, &decodedClaims); err != nil {
 		t.Fatalf("Failed to unmarshal token JSON: %v", err)
 	}
 
-	// Verify the claims are empty
 	if len(decodedClaims) != 0 {
 		t.Errorf("Expected empty claims, got %v", decodedClaims)
 	}
 }
 
 func TestUnsignedIssuer_Issue_NilTransactionContext(t *testing.T) {
-	// No mappers means nil claims
 	issuer := NewUnsignedIssuer(UnsignedIssuerConfig{
 		TokenType:    "test-token-type",
 		ClaimMappers: []service.ClaimMapper{},
@@ -156,14 +149,12 @@ func TestUnsignedIssuer_Issue_NilTransactionContext(t *testing.T) {
 		DataSourceRegistry: service.NewDataSourceRegistry(),
 	}
 
-	// Issue the token
-	token, err := issuer.Issue(context.Background(), issueCtx)
+	result, err := issuer.Issue(context.Background(), issueCtx)
 	if err != nil {
 		t.Fatalf("Issue() failed: %v", err)
 	}
 
-	// Decode the token value
-	decodedJSON, err := base64.StdEncoding.DecodeString(token.Value)
+	decodedJSON, err := base64.StdEncoding.DecodeString(result.Token.Value)
 	if err != nil {
 		t.Fatalf("Failed to base64 decode token: %v", err)
 	}
@@ -193,24 +184,21 @@ func TestUnsignedIssuer_Issue_MapperFailureDenied(t *testing.T) {
 		DataSourceRegistry: service.NewDataSourceRegistry(),
 	}
 
-	token, issueErr := iss.Issue(context.Background(), issueCtx)
+	_, issueErr := iss.Issue(context.Background(), issueCtx)
 	if issueErr == nil {
 		t.Fatal("expected Issue() to return error for mapper failure, got nil")
-	}
-	if token != nil {
-		t.Errorf("expected nil token on error, got %v", token)
 	}
 
 	if !errors.Is(issueErr, service.ErrClaimMapping) {
 		t.Fatalf("expected errors.Is(err, ErrClaimMapping), got: %v", issueErr)
 	}
 
-	var mappingErr *service.ClaimMappingError
-	if !errors.As(issueErr, &mappingErr) {
-		t.Fatalf("expected errors.As to unwrap ClaimMappingError, got: %T", issueErr)
+	var exchErr *service.ExchangeError
+	if !errors.As(issueErr, &exchErr) {
+		t.Fatalf("expected errors.As to unwrap ExchangeError, got: %T", issueErr)
 	}
-	if mappingErr.Message != "unsupported_token_type" {
-		t.Errorf("expected message %q, got %q", "unsupported_token_type", mappingErr.Message)
+	if exchErr.Message != "unsupported_token_type" {
+		t.Errorf("expected message %q, got %q", "unsupported_token_type", exchErr.Message)
 	}
 }
 

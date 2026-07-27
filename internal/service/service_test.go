@@ -162,30 +162,31 @@ func TestTokenService_MapperPolicyRejection(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("invalid_subject", func(t *testing.T) {
-		mappingErr := &ClaimMappingError{
+		exchErr := &ExchangeError{
 			Message:    "impersonated tokens are not accepted",
 			OAuthError: OAuthInvalidRequest,
 			Reason:     AbortReasonInvalidSubject,
 		}
 		registry := NewSimpleRegistry()
-		registry.Register(TokenTypeTransactionToken, &testIssuerStub{err: mappingErr})
+		registry.Register(TokenTypeTransactionToken, &testIssuerStub{exchErr: exchErr})
 		svc := NewTokenService("trust.example.com", nil, registry, nil)
 
-		_, err := svc.IssueTokens(ctx, &IssueRequest{
+		results, err := svc.IssueTokens(ctx, &IssueRequest{
 			Subject:    &trust.Result{Subject: "user-1", Claims: claims.Claims{"impersonated": true}},
 			TokenTypes: []TokenType{TokenTypeTransactionToken},
 		})
-		if err == nil {
-			t.Fatal("expected error")
+		if err != nil {
+			t.Fatalf("unexpected top-level error: %v", err)
 		}
-		if OAuthErrorCode(err) != OAuthInvalidRequest {
-			t.Errorf("OAuthErrorCode: got %q", OAuthErrorCode(err))
+		r := results[TokenTypeTransactionToken]
+		if r.Error == nil {
+			t.Fatal("expected ExchangeError")
 		}
-		if AbortReason(err) != AbortReasonInvalidSubject {
-			t.Errorf("AbortReason: got %q", AbortReason(err))
+		if r.Error.OAuthError != OAuthInvalidRequest {
+			t.Errorf("OAuthErrorCode: got %q", r.Error.OAuthError)
 		}
-		if !errors.Is(err, ErrClaimMapping) {
-			t.Errorf("expected ErrClaimMapping, got %v", err)
+		if r.Error.Reason != AbortReasonInvalidSubject {
+			t.Errorf("AbortReason: got %q", r.Error.Reason)
 		}
 	})
 
@@ -195,20 +196,20 @@ func TestTokenService_MapperPolicyRejection(t *testing.T) {
 		registry.Register(TokenTypeTransactionToken, &testIssuerStub{token: token})
 		svc := NewTokenService("trust.example.com", nil, registry, nil)
 
-		tokens, err := svc.IssueTokens(ctx, &IssueRequest{
+		results, err := svc.IssueTokens(ctx, &IssueRequest{
 			Subject:    &trust.Result{Subject: "user-1"},
 			TokenTypes: []TokenType{TokenTypeTransactionToken},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if tokens[TokenTypeTransactionToken].Value != "ok" {
-			t.Errorf("unexpected token: %+v", tokens)
+		if results[TokenTypeTransactionToken].Token.Value != "ok" {
+			t.Errorf("unexpected token: %+v", results)
 		}
 	})
 
-	t.Run("one_mapper_aborts_among_multiple_issuers", func(t *testing.T) {
-		mappingErr := &ClaimMappingError{
+	t.Run("one_issuer_denies_among_multiple_issuers", func(t *testing.T) {
+		exchErr := &ExchangeError{
 			Message:    "claim 'idp' is required",
 			OAuthError: OAuthInvalidRequest,
 			Reason:     AbortReasonInvalidSubject,
@@ -217,36 +218,45 @@ func TestTokenService_MapperPolicyRejection(t *testing.T) {
 		registry.Register(TokenTypeTransactionToken, &testIssuerStub{
 			token: &Token{Value: "txn", Type: string(TokenTypeTransactionToken)},
 		})
-		registry.Register(TokenTypeAccessToken, &testIssuerStub{err: mappingErr})
+		registry.Register(TokenTypeAccessToken, &testIssuerStub{exchErr: exchErr})
 		svc := NewTokenService("trust.example.com", nil, registry, nil)
 
-		_, err := svc.IssueTokens(ctx, &IssueRequest{
+		results, err := svc.IssueTokens(ctx, &IssueRequest{
 			Subject:    &trust.Result{Subject: "user-1"},
 			TokenTypes: []TokenType{TokenTypeTransactionToken, TokenTypeAccessToken},
 		})
-		if err == nil {
-			t.Fatal("expected error when second issuer aborts")
+		if err != nil {
+			t.Fatalf("unexpected top-level error: %v", err)
 		}
-		if OAuthErrorCode(err) != OAuthInvalidRequest {
-			t.Errorf("OAuthErrorCode: got %q", OAuthErrorCode(err))
+		txnResult := results[TokenTypeTransactionToken]
+		if txnResult.Token == nil {
+			t.Error("expected transaction token to succeed")
 		}
-		if AbortReason(err) != AbortReasonInvalidSubject {
-			t.Errorf("AbortReason: got %q", AbortReason(err))
+		accessResult := results[TokenTypeAccessToken]
+		if accessResult.Error == nil {
+			t.Fatal("expected ExchangeError for access token")
+		}
+		if accessResult.Error.OAuthError != OAuthInvalidRequest {
+			t.Errorf("OAuthErrorCode: got %q", accessResult.Error.OAuthError)
 		}
 	})
 }
 
 // testIssuerStub is a simple stub issuer for testing
 type testIssuerStub struct {
-	token *Token
-	err   error
+	token    *Token
+	err      error
+	exchErr  *ExchangeError
 }
 
-func (i *testIssuerStub) Issue(ctx context.Context, issueCtx *IssueContext) (*Token, error) {
+func (i *testIssuerStub) Issue(ctx context.Context, issueCtx *IssueContext) (ExchangeResult, error) {
 	if i.err != nil {
-		return nil, i.err
+		return ExchangeResult{}, i.err
 	}
-	return i.token, nil
+	if i.exchErr != nil {
+		return ExchangeResult{Error: i.exchErr}, nil
+	}
+	return ExchangeResult{Token: i.token}, nil
 }
 
 func (i *testIssuerStub) PublicKeys(ctx context.Context) ([]PublicKey, error) {
