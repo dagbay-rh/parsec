@@ -817,7 +817,7 @@ func TestCELMapper_Map(t *testing.T) {
 func TestCELMapper_Fail(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("fail returns ClaimMappingError", func(t *testing.T) {
+	t.Run("fail returns MappingFailure", func(t *testing.T) {
 		m, err := NewCELMapper(`false ? {"ok": true} : fail("unsupported_token_type")`)
 		if err != nil {
 			t.Fatalf("failed to create mapper: %v", err)
@@ -828,22 +828,17 @@ func TestCELMapper_Fail(t *testing.T) {
 			t.Fatal("expected error, got nil")
 		}
 
-		if !errors.Is(mapErr, service.ErrClaimMapping) {
-			t.Fatalf("expected errors.Is(err, ErrClaimMapping), got: %v", mapErr)
+		var failErr *service.MappingFailure
+		if !errors.As(mapErr, &failErr) {
+			t.Fatalf("expected errors.As to unwrap MappingFailure, got: %T", mapErr)
+		}
+		if failErr.Message != "unsupported_token_type" {
+			t.Errorf("expected message %q, got %q", "unsupported_token_type", failErr.Message)
 		}
 
-		var mappingErr *service.ClaimMappingError
-		if !errors.As(mapErr, &mappingErr) {
-			t.Fatalf("expected errors.As to unwrap ClaimMappingError, got: %T", mapErr)
-		}
-		if mappingErr.Message != "unsupported_token_type" {
-			t.Errorf("expected message %q, got %q", "unsupported_token_type", mappingErr.Message)
-		}
-		if mappingErr.OAuthError != "" {
-			t.Errorf("expected empty OAuthError for fail(), got %q", mappingErr.OAuthError)
-		}
-		if mappingErr.Reason != "" {
-			t.Errorf("expected empty Reason for fail(), got %q", mappingErr.Reason)
+		var exchErr *service.ExchangeError
+		if errors.As(mapErr, &exchErr) {
+			t.Fatal("fail() must not unwrap as ExchangeError")
 		}
 	})
 

@@ -19,7 +19,7 @@ import (
 
 func TestIssueTokensGRPCError(t *testing.T) {
 	t.Run("invalid_request", func(t *testing.T) {
-		err := issueTokensGRPCError(&service.ClaimMappingError{
+		err := issueTokensGRPCError(&service.ExchangeError{
 			Message:    "impersonated tokens are not accepted",
 			OAuthError: service.OAuthInvalidRequest,
 			Reason:     service.AbortReasonInvalidSubject,
@@ -44,7 +44,7 @@ func TestIssueTokensGRPCError(t *testing.T) {
 	})
 
 	t.Run("invalid_target", func(t *testing.T) {
-		err := issueTokensGRPCError(&service.ClaimMappingError{
+		err := issueTokensGRPCError(&service.ExchangeError{
 			Message:    "bad audience",
 			OAuthError: service.OAuthInvalidTarget,
 			Reason:     service.AbortReasonInvalidAudience,
@@ -63,7 +63,7 @@ func TestIssueTokensGRPCError(t *testing.T) {
 	})
 
 	t.Run("fail_is_internal", func(t *testing.T) {
-		err := issueTokensGRPCError(&service.ClaimMappingError{
+		err := issueTokensGRPCError(&service.MappingFailure{
 			Message: "mapping exploded",
 		})
 		st, ok := status.FromError(err)
@@ -72,6 +72,9 @@ func TestIssueTokensGRPCError(t *testing.T) {
 		}
 		if st.Code() != codes.Internal {
 			t.Errorf("code: got %v, want Internal", st.Code())
+		}
+		if st.Message() != "failed to issue token: mapping exploded" {
+			t.Errorf("message: got %q", st.Message())
 		}
 		for _, d := range st.Details() {
 			if _, ok := d.(*errdetails.ErrorInfo); ok {
@@ -94,7 +97,7 @@ func TestIssueTokensGRPCError(t *testing.T) {
 
 func TestAuthzIssueDenialCode(t *testing.T) {
 	t.Run("invalid_request_not_internal", func(t *testing.T) {
-		code, msg := authzIssueDenialCode(&service.ClaimMappingError{
+		code, msg := authzIssueDenialCode(&service.ExchangeError{
 			Message:    "claim 'idp' is required",
 			OAuthError: service.OAuthInvalidRequest,
 			Reason:     service.AbortReasonInvalidSubject,
@@ -108,7 +111,7 @@ func TestAuthzIssueDenialCode(t *testing.T) {
 	})
 
 	t.Run("fail_is_internal", func(t *testing.T) {
-		code, msg := authzIssueDenialCode(&service.ClaimMappingError{
+		code, msg := authzIssueDenialCode(&service.MappingFailure{
 			Message: "unsupported_token_type",
 		})
 		if code != codes.Internal {
@@ -135,7 +138,7 @@ func TestOAuthHTTPErrorHandler(t *testing.T) {
 	marshaler := &runtime.JSONPb{}
 
 	t.Run("writes_oauth_json", func(t *testing.T) {
-		err := issueTokensGRPCError(&service.ClaimMappingError{
+		err := issueTokensGRPCError(&service.ExchangeError{
 			Message:    "impersonated tokens are not accepted",
 			OAuthError: service.OAuthInvalidRequest,
 			Reason:     service.AbortReasonInvalidSubject,

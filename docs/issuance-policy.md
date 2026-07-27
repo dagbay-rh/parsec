@@ -90,15 +90,16 @@ still terminating in a Layer A code:
 
 ### `fail(message)`
 
-Reserved for **mapping / system failures**. `Map` returns `error` (not a Deny
-decision) → transports treat it as **Internal** (not an OAuth client error
-body).
+Reserved for **mapping / system failures**. Returns `*MappingFailure` from
+`Map` as `error` (not a Deny decision) → transports treat it as **Internal**
+(not an OAuth client error body).
 
 ## Decision flow
 
 ```
 CEL Layer A/B abort helper
-  → abortError{MappingDecision} (distinct from fail)
+  → service.DenyOAuth / DenyReason → MappingDecision
+  → abortError{MappingDecision} (distinct from MappingFailure)
   → celhelpers.AbortDecision(err) extracts decision
   → MappingResult{Decision: Deny{OAuthError, Reason, Message}}
   → MappingResult.Merge (first non-Allow wins; clears claims on deny)
@@ -109,7 +110,7 @@ CEL Layer A/B abort helper
   → logs/metrics: mapping.oauth_error, mapping.abort_reason
 
 CEL fail() / unexpected failure
-  → error (not an abortError) → Internal / 500
+  → *MappingFailure (not an abortError) → Internal / 500
 ```
 
 ## Example: 3scale-parity guards

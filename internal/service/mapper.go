@@ -178,7 +178,7 @@ func (r MappingResult) Merge(other MappingResult) MappingResult {
 
 // ExchangeError represents a known token-exchange denial: the request was
 // understood but issuance was refused for a policy/protocol reason expressible
-// as an OAuth error. Unexpected failures remain plain errors.
+// as an OAuth error. Unexpected failures use MappingFailure (or plain errors).
 type ExchangeError struct {
 	Message    string         // error_description
 	OAuthError OAuthErrorCode // wire "error"
@@ -193,6 +193,17 @@ func (e *ExchangeError) Is(target error) bool {
 	return target == ErrClaimMapping
 }
 
+// MappingFailure is an unexpected claim-mapping/system failure (CEL fail(),
+// eval bugs surfaced as typed failures). It is distinct from ExchangeError:
+// transports treat it as Internal, never as an OAuth client error body.
+type MappingFailure struct {
+	Message string
+}
+
+func (e *MappingFailure) Error() string {
+	return e.Message
+}
+
 // ExchangeResult is the explicit outcome of Issuer.Issue.
 // Exactly one of Token or Error is non-nil.
 type ExchangeResult struct {
@@ -205,7 +216,7 @@ type ExchangeResult struct {
 type ClaimMappingError = ExchangeError
 
 // ExtractOAuthErrorCode returns the OAuth wire error code from err when it
-// wraps an ExchangeError, or "" otherwise (including fail()-style errors).
+// wraps an ExchangeError, or "" otherwise (including MappingFailure / fail()).
 func ExtractOAuthErrorCode(err error) OAuthErrorCode {
 	var ee *ExchangeError
 	if errors.As(err, &ee) {
@@ -225,11 +236,15 @@ func ExtractAbortReason(err error) AbortReason {
 }
 
 // MappingMessage returns the human-readable message from err when it wraps an
-// ExchangeError, or "" otherwise.
+// ExchangeError or MappingFailure, or "" otherwise.
 func MappingMessage(err error) string {
 	var ee *ExchangeError
 	if errors.As(err, &ee) {
 		return ee.Message
+	}
+	var mf *MappingFailure
+	if errors.As(err, &mf) {
+		return mf.Message
 	}
 	return ""
 }

@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync/atomic"
 	"testing"
 
@@ -144,4 +146,57 @@ func TestToClaims_MergesAllowMappers(t *testing.T) {
 	if got["a"] != 1 || got["b"] != 2 {
 		t.Fatalf("claims: %+v", got)
 	}
+}
+
+func TestMappingFailure(t *testing.T) {
+	t.Parallel()
+
+	fail := &MappingFailure{Message: "mapping exploded"}
+	wrapped := fmt.Errorf("failed to evaluate: %w", fail)
+
+	if ExtractOAuthErrorCode(wrapped) != "" {
+		t.Fatal("MappingFailure must not look like an OAuth ExchangeError")
+	}
+	if ExtractAbortReason(wrapped) != "" {
+		t.Fatal("MappingFailure must not carry an abort reason")
+	}
+	if got := MappingMessage(wrapped); got != "mapping exploded" {
+		t.Fatalf("MappingMessage: got %q", got)
+	}
+
+	var mf *MappingFailure
+	if !errors.As(wrapped, &mf) {
+		t.Fatal("expected errors.As MappingFailure")
+	}
+	var ee *ExchangeError
+	if errors.As(wrapped, &ee) {
+		t.Fatal("MappingFailure must not unwrap as ExchangeError")
+	}
+}
+
+func TestDenyConstructors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("DenyOAuth", func(t *testing.T) {
+		got := DenyOAuth(OAuthInvalidTarget, "bad aud")
+		if got.Decision.Action != MappingDeny {
+			t.Fatalf("action: %+v", got.Decision)
+		}
+		if got.Decision.OAuthError != OAuthInvalidTarget || got.Decision.Reason != "" || got.Decision.Message != "bad aud" {
+			t.Fatalf("decision: %+v", got.Decision)
+		}
+		if len(got.Claims) != 0 {
+			t.Fatalf("DenyOAuth should have no claims, got %+v", got.Claims)
+		}
+	})
+
+	t.Run("DenyReason_maps_audience", func(t *testing.T) {
+		got := DenyReason(AbortReasonInvalidAudience, "bad aud")
+		if got.Decision.OAuthError != OAuthInvalidTarget {
+			t.Fatalf("OAuthError: got %q, want invalid_target", got.Decision.OAuthError)
+		}
+		if got.Decision.Reason != AbortReasonInvalidAudience {
+			t.Fatalf("Reason: got %q", got.Decision.Reason)
+		}
+	})
 }

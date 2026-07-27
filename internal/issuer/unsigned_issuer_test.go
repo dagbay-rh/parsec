@@ -189,16 +189,17 @@ func TestUnsignedIssuer_Issue_MapperFailureDenied(t *testing.T) {
 		t.Fatal("expected Issue() to return error for mapper failure, got nil")
 	}
 
-	if !errors.Is(issueErr, service.ErrClaimMapping) {
-		t.Fatalf("expected errors.Is(err, ErrClaimMapping), got: %v", issueErr)
+	var failErr *service.MappingFailure
+	if !errors.As(issueErr, &failErr) {
+		t.Fatalf("expected errors.As to unwrap MappingFailure, got: %T", issueErr)
+	}
+	if failErr.Message != "unsupported_token_type" {
+		t.Errorf("expected message %q, got %q", "unsupported_token_type", failErr.Message)
 	}
 
 	var exchErr *service.ExchangeError
-	if !errors.As(issueErr, &exchErr) {
-		t.Fatalf("expected errors.As to unwrap ExchangeError, got: %T", issueErr)
-	}
-	if exchErr.Message != "unsupported_token_type" {
-		t.Errorf("expected message %q, got %q", "unsupported_token_type", exchErr.Message)
+	if errors.As(issueErr, &exchErr) {
+		t.Fatal("fail() must not unwrap as ExchangeError")
 	}
 }
 

@@ -17,9 +17,9 @@ import (
 const oauthErrorDomain = "oauth"
 
 // issueTokensGRPCError maps a TokenService.IssueTokens error to a gRPC status.
-// ClaimMappingError with an OAuthError becomes InvalidArgument plus ErrorInfo
-// details carrying the OAuth wire code (and optional abort reason). Empty
-// OAuthError (fail()) and all other errors become Internal.
+// ExchangeError becomes InvalidArgument plus ErrorInfo details carrying the
+// OAuth wire code (and optional abort reason). MappingFailure (fail()) and
+// all other errors become Internal.
 func issueTokensGRPCError(err error) error {
 	oauthCode := service.ExtractOAuthErrorCode(err)
 	if oauthCode == "" {
@@ -53,8 +53,8 @@ func issueTokensGRPCError(err error) error {
 }
 
 // authzIssueDenialCode returns the ext_authz gRPC code and denial message for
-// an IssueTokens error. OAuth client errors map to InvalidArgument; others
-// remain Internal.
+// an IssueTokens / ExchangeError. OAuth client errors map to InvalidArgument;
+// MappingFailure and other errors remain Internal.
 func authzIssueDenialCode(err error) (codes.Code, string) {
 	oauthCode := service.ExtractOAuthErrorCode(err)
 	if oauthCode == "" {
