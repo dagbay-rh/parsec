@@ -244,9 +244,9 @@ func TestTokenService_MapperPolicyRejection(t *testing.T) {
 
 // testIssuerStub is a simple stub issuer for testing
 type testIssuerStub struct {
-	token    *Token
-	err      error
-	exchErr  *ExchangeError
+	token   *Token
+	err     error
+	exchErr *ExchangeError
 }
 
 func (i *testIssuerStub) Issue(ctx context.Context, issueCtx *IssueContext) (ExchangeResult, error) {
