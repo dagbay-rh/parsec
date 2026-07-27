@@ -109,19 +109,19 @@ func DenyResult(oauthError, reason, message string) MappingResult {
 //
 // Rules:
 //   - If r is already non-Allow, r is returned unchanged (first non-allow wins).
-//   - If other is non-Allow, r's claims are kept and other's Decision is taken.
+//   - If other is non-Allow, return a result with other's Decision and no claims
+//     (partial allow claims must not linger on a deny).
 //   - If both Allow, claims are merged (other overwrites on key conflict).
 func (r MappingResult) Merge(other MappingResult) MappingResult {
 	if !r.Decision.IsAllow() {
 		return r
 	}
 	if !other.Decision.IsAllow() {
-		out := r
-		out.Decision = other.Decision
-		if out.Decision.Action == "" {
-			out.Decision.Action = MappingDeny
+		d := other.Decision
+		if d.Action == "" {
+			d.Action = MappingDeny
 		}
-		return out
+		return MappingResult{Decision: d}
 	}
 
 	out := r

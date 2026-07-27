@@ -48,7 +48,7 @@ func TestMappingResult_Merge(t *testing.T) {
 		}
 	})
 
-	t.Run("allow_then_deny_keeps_prior_claims", func(t *testing.T) {
+	t.Run("allow_then_deny_clears_claims", func(t *testing.T) {
 		t.Parallel()
 		allow := AllowResult(claims.Claims{"kept": true})
 		deny := DenyResult(OAuthInvalidTarget, AbortReasonInvalidAudience, "bad aud")
@@ -59,8 +59,8 @@ func TestMappingResult_Merge(t *testing.T) {
 		if got.Decision.OAuthError != OAuthInvalidTarget {
 			t.Fatalf("OAuthError: got %q", got.Decision.OAuthError)
 		}
-		if got.Claims["kept"] != true {
-			t.Fatalf("expected prior allow claims retained, got %+v", got.Claims)
+		if len(got.Claims) != 0 {
+			t.Fatalf("expected no claims on deny merge, got %+v", got.Claims)
 		}
 	})
 }
