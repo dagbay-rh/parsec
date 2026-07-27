@@ -107,7 +107,9 @@ func oauthAbortFunctions() []cel.EnvOption {
 		{"invalidSubject", func(m string) service.MappingResult { return service.DenyReason(service.AbortReasonInvalidSubject, m) }},
 		{"invalidActor", func(m string) service.MappingResult { return service.DenyReason(service.AbortReasonInvalidActor, m) }},
 		{"invalidAudience", func(m string) service.MappingResult { return service.DenyReason(service.AbortReasonInvalidAudience, m) }},
-		{"unsupportedTokenType", func(m string) service.MappingResult { return service.DenyReason(service.AbortReasonUnsupportedTokenType, m) }},
+		{"unsupportedTokenType", func(m string) service.MappingResult {
+			return service.DenyReason(service.AbortReasonUnsupportedTokenType, m)
+		}},
 	}
 
 	opts := make([]cel.EnvOption, 0, len(specs))
