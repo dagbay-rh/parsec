@@ -95,8 +95,8 @@ func (ts *TokenService) IssueTokens(ctx context.Context, req *IssueRequest) (map
 			return nil, fmt.Errorf("failed to issue %s: %w", tokenType, err)
 		}
 
-		if result.Error != nil {
-			p.TokenTypeIssuanceFailed(tokenType, result.Error)
+		if result.ExchangeErr != nil {
+			p.TokenTypeIssuanceDenied(tokenType, result.ExchangeErr)
 		} else {
 			p.TokenTypeIssuanceSucceeded(tokenType, result.Token)
 		}

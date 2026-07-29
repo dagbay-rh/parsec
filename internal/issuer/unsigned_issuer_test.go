@@ -42,8 +42,8 @@ func TestUnsignedIssuer_Issue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Issue() failed: %v", err)
 	}
-	if result.Error != nil {
-		t.Fatalf("unexpected ExchangeError: %v", result.Error)
+	if result.ExchangeErr != nil {
+		t.Fatalf("unexpected ExchangeError: %v", result.ExchangeErr)
 	}
 	token := result.Token
 

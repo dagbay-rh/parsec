@@ -2,17 +2,10 @@ package service
 
 import (
 	"context"
-	"errors"
 
 	"github.com/project-kessel/parsec/internal/claims"
 	"github.com/project-kessel/parsec/internal/request"
 	"github.com/project-kessel/parsec/internal/trust"
-)
-
-var (
-	// ErrClaimMapping is a sentinel for backward compatibility.
-	// Deprecated: use ExchangeError directly.
-	ErrClaimMapping = errors.New("claim mapping failed")
 )
 
 // OAuthErrorCode is a wire "error" value for token exchange
@@ -74,12 +67,10 @@ const (
 )
 
 // MappingDecision is an expected mapper/policy outcome.
-// Deny carries OAuth wire fields; Allow leaves them empty.
+// Deny embeds an *ExchangeError carrying OAuth wire fields; Allow leaves it nil.
 type MappingDecision struct {
-	Action     MappingAction
-	OAuthError OAuthErrorCode // wire "error" when Action == Deny
-	Reason     AbortReason    // machine reason (Layer B); observability
-	Message    string         // error_description
+	Action MappingAction
+	*ExchangeError
 }
 
 // IsAllow reports whether the decision permits continuing mapper merge /
@@ -88,17 +79,13 @@ func (d MappingDecision) IsAllow() bool {
 	return d.Action == MappingAllow || d.Action == ""
 }
 
-// AsExchangeError adapts a Deny decision to an ExchangeError.
-// Returns nil when the decision is Allow.
+// AsExchangeError returns the embedded ExchangeError for Deny decisions,
+// or nil for Allow.
 func (d MappingDecision) AsExchangeError() *ExchangeError {
 	if d.IsAllow() {
 		return nil
 	}
-	return &ExchangeError{
-		Message:    d.Message,
-		OAuthError: d.OAuthError,
-		Reason:     d.Reason,
-	}
+	return d.ExchangeError
 }
 
 // MappingResult is the structured return value of ClaimMapper.Map.
@@ -131,10 +118,12 @@ func DenyReason(reason AbortReason, message string) MappingResult {
 func denyResult(oauthError OAuthErrorCode, reason AbortReason, message string) MappingResult {
 	return MappingResult{
 		Decision: MappingDecision{
-			Action:     MappingDeny,
-			OAuthError: oauthError,
-			Reason:     reason,
-			Message:    message,
+			Action: MappingDeny,
+			ExchangeError: &ExchangeError{
+				OAuthError: oauthError,
+				Reason:     reason,
+				Message:    message,
+			},
 		},
 	}
 }
@@ -189,10 +178,6 @@ func (e *ExchangeError) Error() string {
 	return e.Message
 }
 
-func (e *ExchangeError) Is(target error) bool {
-	return target == ErrClaimMapping
-}
-
 // MappingFailure is an unexpected claim-mapping/system failure (CEL fail(),
 // eval bugs surfaced as typed failures). It is distinct from ExchangeError:
 // transports treat it as Internal, never as an OAuth client error body.
@@ -205,48 +190,10 @@ func (e *MappingFailure) Error() string {
 }
 
 // ExchangeResult is the explicit outcome of Issuer.Issue.
-// Exactly one of Token or Error is non-nil.
+// Exactly one of Token or ExchangeErr is non-nil.
 type ExchangeResult struct {
-	Token *Token
-	Error *ExchangeError
-}
-
-// ClaimMappingError is an alias for backward compatibility.
-// Deprecated: use ExchangeError.
-type ClaimMappingError = ExchangeError
-
-// ExtractOAuthErrorCode returns the OAuth wire error code from err when it
-// wraps an ExchangeError, or "" otherwise (including MappingFailure / fail()).
-func ExtractOAuthErrorCode(err error) OAuthErrorCode {
-	var ee *ExchangeError
-	if errors.As(err, &ee) {
-		return ee.OAuthError
-	}
-	return ""
-}
-
-// ExtractAbortReason returns the machine-readable abort reason from err when
-// it wraps an ExchangeError, or "" otherwise.
-func ExtractAbortReason(err error) AbortReason {
-	var ee *ExchangeError
-	if errors.As(err, &ee) {
-		return ee.Reason
-	}
-	return ""
-}
-
-// MappingMessage returns the human-readable message from err when it wraps an
-// ExchangeError or MappingFailure, or "" otherwise.
-func MappingMessage(err error) string {
-	var ee *ExchangeError
-	if errors.As(err, &ee) {
-		return ee.Message
-	}
-	var mf *MappingFailure
-	if errors.As(err, &mf) {
-		return mf.Message
-	}
-	return ""
+	Token       *Token
+	ExchangeErr *ExchangeError
 }
 
 // ClaimMapper transforms inputs into claims for the token.

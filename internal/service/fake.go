@@ -183,6 +183,10 @@ func (p *FakeProbe) TokenTypeIssuanceFailed(tokenType TokenType, err error) {
 	p.recordCall("TokenTypeIssuanceFailed", tokenType, err)
 }
 
+func (p *FakeProbe) TokenTypeIssuanceDenied(tokenType TokenType, exchErr *ExchangeError) {
+	p.recordCall("TokenTypeIssuanceDenied", tokenType, exchErr)
+}
+
 func (p *FakeProbe) IssuerNotFound(tokenType TokenType, err error) {
 	p.recordCall("IssuerNotFound", tokenType, err)
 }

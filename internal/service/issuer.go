@@ -91,8 +91,8 @@ type PublicKey struct {
 // token formatting.
 type Issuer interface {
 	// Issue produces a token or a known exchange denial.
-	// ExchangeResult.Token is set on success; ExchangeResult.Error is set when
-	// issuance was refused for a policy/protocol reason (OAuth error).
+	// ExchangeResult.Token is set on success; ExchangeResult.ExchangeErr is
+	// set when issuance was refused for a policy/protocol reason (OAuth error).
 	// The top-level error is reserved for unexpected failures.
 	Issue(ctx context.Context, issueCtx *IssueContext) (ExchangeResult, error)
 

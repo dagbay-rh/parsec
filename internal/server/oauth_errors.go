@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -16,34 +15,25 @@ import (
 
 const oauthErrorDomain = "oauth"
 
-// issueTokensGRPCError maps a TokenService.IssueTokens error to a gRPC status.
-// ExchangeError becomes InvalidArgument plus ErrorInfo details carrying the
-// OAuth wire code (and optional abort reason). MappingFailure (fail()) and
-// all other errors become Internal.
-func issueTokensGRPCError(err error) error {
-	oauthCode := service.ExtractOAuthErrorCode(err)
-	if oauthCode == "" {
-		if msg := service.MappingMessage(err); msg != "" {
-			return status.Errorf(codes.Internal, "failed to issue token: %s", msg)
-		}
-		return status.Errorf(codes.Internal, "failed to issue token: %v", err)
-	}
-
-	msg := service.MappingMessage(err)
+// exchangeErrToGRPC maps an ExchangeError (known OAuth denial) to a gRPC
+// status with ErrorInfo carrying the OAuth wire code. Used by the exchange
+// endpoint when ExchangeResult.ExchangeErr is non-nil.
+func exchangeErrToGRPC(exchErr *service.ExchangeError) error {
+	msg := exchErr.Message
 	if msg == "" {
-		msg = string(oauthCode)
+		msg = string(exchErr.OAuthError)
 	}
 
 	st := status.New(codes.InvalidArgument, msg)
 	info := &errdetails.ErrorInfo{
-		Reason: string(oauthCode),
+		Reason: string(exchErr.OAuthError),
 		Domain: oauthErrorDomain,
 		Metadata: map[string]string{
 			"error_description": msg,
 		},
 	}
-	if reason := service.ExtractAbortReason(err); reason != "" {
-		info.Metadata["abort_reason"] = string(reason)
+	if exchErr.Reason != "" {
+		info.Metadata["abort_reason"] = string(exchErr.Reason)
 	}
 	detailed, detailErr := st.WithDetails(info)
 	if detailErr != nil {
@@ -52,22 +42,10 @@ func issueTokensGRPCError(err error) error {
 	return detailed.Err()
 }
 
-// authzIssueDenialCode returns the ext_authz gRPC code and denial message for
-// an IssueTokens / ExchangeError. OAuth client errors map to InvalidArgument;
-// MappingFailure and other errors remain Internal.
-func authzIssueDenialCode(err error) (codes.Code, string) {
-	oauthCode := service.ExtractOAuthErrorCode(err)
-	if oauthCode == "" {
-		if msg := service.MappingMessage(err); msg != "" {
-			return codes.Internal, "failed to issue tokens: " + msg
-		}
-		return codes.Internal, fmt.Sprintf("failed to issue tokens: %v", err)
-	}
-	msg := service.MappingMessage(err)
-	if msg == "" {
-		msg = string(oauthCode)
-	}
-	return codes.InvalidArgument, msg
+// internalGRPCError maps an unexpected error to a gRPC Internal status.
+// Used by the exchange endpoint when IssueTokens returns a top-level error.
+func internalGRPCError(err error) error {
+	return status.Errorf(codes.Internal, "failed to issue token: %v", err)
 }
 
 // oauthHTTPErrorHandler writes RFC 6749 §5.2 / RFC 8693 error JSON for OAuth

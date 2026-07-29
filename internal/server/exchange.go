@@ -149,15 +149,15 @@ func (s *ExchangeServer) Exchange(ctx context.Context, req *parsecv1.ExchangeReq
 		Scope:             req.Scope,
 	})
 	if err != nil {
-		return nil, issueTokensGRPCError(err)
+		return nil, internalGRPCError(err)
 	}
 
 	r, ok := results[requestedTokenType]
 	if !ok {
 		return nil, fmt.Errorf("token service did not return requested token type %s", requestedTokenType)
 	}
-	if r.Error != nil {
-		return nil, issueTokensGRPCError(r.Error)
+	if r.ExchangeErr != nil {
+		return nil, exchangeErrToGRPC(r.ExchangeErr)
 	}
 
 	// 9. Return response

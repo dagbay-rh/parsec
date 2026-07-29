@@ -141,16 +141,23 @@ func (p *loggingTokenIssuanceProbe) TokenTypeIssuanceSucceeded(tokenType service
 }
 
 func (p *loggingTokenIssuanceProbe) TokenTypeIssuanceFailed(tokenType service.TokenType, err error) {
-	event := p.logger.Error().
+	p.logger.Error().
 		Str("token_type", string(tokenType)).
-		Err(err)
-	if code := service.ExtractOAuthErrorCode(err); code != "" {
-		event = event.Str("mapping.oauth_error", string(code))
+		Err(err).
+		Msg("Token issuance failed")
+}
+
+func (p *loggingTokenIssuanceProbe) TokenTypeIssuanceDenied(tokenType service.TokenType, exchErr *service.ExchangeError) {
+	event := p.logger.Warn().
+		Str("token_type", string(tokenType)).
+		Str("message", exchErr.Message)
+	if exchErr.OAuthError != "" {
+		event = event.Str("mapping.oauth_error", string(exchErr.OAuthError))
 	}
-	if reason := service.ExtractAbortReason(err); reason != "" {
-		event = event.Str("mapping.abort_reason", string(reason))
+	if exchErr.Reason != "" {
+		event = event.Str("mapping.abort_reason", string(exchErr.Reason))
 	}
-	event.Msg("Token issuance failed")
+	event.Msg("Token issuance denied")
 }
 
 func (p *loggingTokenIssuanceProbe) IssuerNotFound(tokenType service.TokenType, err error) {

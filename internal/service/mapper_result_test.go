@@ -154,19 +154,12 @@ func TestMappingFailure(t *testing.T) {
 	fail := &MappingFailure{Message: "mapping exploded"}
 	wrapped := fmt.Errorf("failed to evaluate: %w", fail)
 
-	if ExtractOAuthErrorCode(wrapped) != "" {
-		t.Fatal("MappingFailure must not look like an OAuth ExchangeError")
-	}
-	if ExtractAbortReason(wrapped) != "" {
-		t.Fatal("MappingFailure must not carry an abort reason")
-	}
-	if got := MappingMessage(wrapped); got != "mapping exploded" {
-		t.Fatalf("MappingMessage: got %q", got)
-	}
-
 	var mf *MappingFailure
 	if !errors.As(wrapped, &mf) {
 		t.Fatal("expected errors.As MappingFailure")
+	}
+	if mf.Message != "mapping exploded" {
+		t.Fatalf("Message: got %q", mf.Message)
 	}
 	var ee *ExchangeError
 	if errors.As(wrapped, &ee) {

@@ -65,6 +65,18 @@ func TestTokenIssuanceMetrics(t *testing.T) {
 			wantStatus: `status="error"`,
 		},
 		{
+			name: "issuance denied",
+			action: func(p service.TokenIssuanceProbe) {
+				p.TokenTypeIssuanceDenied("jwt", &service.ExchangeError{
+					OAuthError: service.OAuthInvalidRequest,
+					Reason:     service.AbortReasonInvalidSubject,
+					Message:    "impersonated",
+				})
+			},
+			wantResult: `result="issuance_denied"`,
+			wantStatus: `status="error"`,
+		},
+		{
 			name:       "issuer not found",
 			action:     func(p service.TokenIssuanceProbe) { p.IssuerNotFound("jwt", errors.New("missing")) },
 			wantResult: `result="issuer_not_found"`,

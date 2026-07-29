@@ -35,8 +35,16 @@ func TestAbortDecision_MatchesDenyConstructors(t *testing.T) {
 			if !ok {
 				t.Fatal("expected AbortDecision ok")
 			}
-			if got != tc.want {
-				t.Fatalf("decision: got %+v, want %+v", got, tc.want)
+			if got.Action != tc.want.Action {
+				t.Fatalf("Action: got %q, want %q", got.Action, tc.want.Action)
+			}
+			if got.ExchangeError == nil || tc.want.ExchangeError == nil {
+				t.Fatalf("ExchangeError nil: got=%v, want=%v", got.ExchangeError, tc.want.ExchangeError)
+			}
+			if got.OAuthError != tc.want.OAuthError || got.Reason != tc.want.Reason || got.Message != tc.want.Message {
+				t.Fatalf("decision fields: got {%q, %q, %q}, want {%q, %q, %q}",
+					got.OAuthError, got.Reason, got.Message,
+					tc.want.OAuthError, tc.want.Reason, tc.want.Message)
 			}
 		})
 	}

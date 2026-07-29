@@ -8,6 +8,7 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	authv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc/codes"
 
@@ -182,15 +183,18 @@ func (s *AuthzServer) issueResponse(
 		Scope:             decision.Scope,
 	})
 	if err != nil {
-		code, msg := authzIssueDenialCode(err)
-		return s.denyResponse(code, msg), nil
+		return s.denyResponseWithHTTPStatus(codes.Internal,
+			typev3.StatusCode_InternalServerError,
+			fmt.Sprintf("failed to issue tokens: %v", err)), nil
 	}
 
 	// Any token-type denial denies the entire ext_authz request.
-	for _, r := range results {
-		if r.Error != nil {
-			code, msg := authzIssueDenialCode(r.Error)
-			return s.denyResponse(code, msg), nil
+	// Iterate in request order for deterministic error selection.
+	for _, spec := range decision.TokenTypes {
+		if r, ok := results[spec.Type]; ok && r.ExchangeErr != nil {
+			return s.denyResponseWithHTTPStatus(codes.PermissionDenied,
+				typev3.StatusCode_Forbidden,
+				r.ExchangeErr.Message), nil
 		}
 	}
 
@@ -306,7 +310,9 @@ func (s *AuthzServer) buildRequestAttributes(req *authv3.CheckRequest) *request.
 	}
 }
 
-// denyResponse creates a denial response
+// denyResponse creates a denial response with the default HTTP status for the
+// given gRPC code (Envoy defaults DeniedHttpResponse to 403 when Status is
+// unset).
 func (s *AuthzServer) denyResponse(code codes.Code, message string) *authv3.CheckResponse {
 	return &authv3.CheckResponse{
 		Status: &status.Status{
@@ -316,6 +322,24 @@ func (s *AuthzServer) denyResponse(code codes.Code, message string) *authv3.Chec
 		HttpResponse: &authv3.CheckResponse_DeniedResponse{
 			DeniedResponse: &authv3.DeniedHttpResponse{
 				Body: message,
+			},
+		},
+	}
+}
+
+// denyResponseWithHTTPStatus creates a denial response with an explicit HTTP
+// status on the DeniedHttpResponse so Envoy returns the intended code to the
+// downstream client.
+func (s *AuthzServer) denyResponseWithHTTPStatus(code codes.Code, httpStatus typev3.StatusCode, message string) *authv3.CheckResponse {
+	return &authv3.CheckResponse{
+		Status: &status.Status{
+			Code:    int32(code),
+			Message: message,
+		},
+		HttpResponse: &authv3.CheckResponse_DeniedResponse{
+			DeniedResponse: &authv3.DeniedHttpResponse{
+				Status: &typev3.HttpStatus{Code: httpStatus},
+				Body:   message,
 			},
 		},
 	}

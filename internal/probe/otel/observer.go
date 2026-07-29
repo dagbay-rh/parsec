@@ -21,6 +21,7 @@ var (
 	resultSuccess = attribute.String("result", "success")
 
 	resultIssuanceFailed = attribute.String("result", "issuance_failed")
+	resultIssuanceDenied = attribute.String("result", "issuance_denied")
 	resultIssuerNotFound = attribute.String("result", "issuer_not_found")
 
 	resultActorValidationFailed             = attribute.String("result", "actor_validation_failed")
@@ -128,14 +129,18 @@ type tokenIssuanceProbe struct {
 	abortReason attribute.KeyValue
 }
 
-func (p *tokenIssuanceProbe) TokenTypeIssuanceFailed(_ service.TokenType, err error) {
+func (p *tokenIssuanceProbe) TokenTypeIssuanceFailed(_ service.TokenType, _ error) {
 	p.status = errorStatusAttr
 	p.result = resultIssuanceFailed
-	if code := service.ExtractOAuthErrorCode(err); code != "" {
-		p.oauthError = attribute.String("mapping.oauth_error", string(code))
+}
+func (p *tokenIssuanceProbe) TokenTypeIssuanceDenied(_ service.TokenType, exchErr *service.ExchangeError) {
+	p.status = errorStatusAttr
+	p.result = resultIssuanceDenied
+	if exchErr.OAuthError != "" {
+		p.oauthError = attribute.String("mapping.oauth_error", string(exchErr.OAuthError))
 	}
-	if reason := service.ExtractAbortReason(err); reason != "" {
-		p.abortReason = attribute.String("mapping.abort_reason", string(reason))
+	if exchErr.Reason != "" {
+		p.abortReason = attribute.String("mapping.abort_reason", string(exchErr.Reason))
 	}
 }
 func (p *tokenIssuanceProbe) IssuerNotFound(_ service.TokenType, _ error) {

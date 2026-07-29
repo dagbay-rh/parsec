@@ -1373,14 +1373,14 @@ func TestAuthz_IssueResponse_MapperAbort(t *testing.T) {
 		},
 	}
 
-	t.Run("invalid_request_not_internal", func(t *testing.T) {
+	t.Run("exchange_err_is_permission_denied", func(t *testing.T) {
 		srv := newAuthzWithMapper(t, `invalidSubject("impersonated tokens are not accepted")`)
 		resp, err := srv.Check(ctx, checkReq)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if resp.Status.Code != int32(codes.InvalidArgument) {
-			t.Errorf("code: got %d, want InvalidArgument (%d)", resp.Status.Code, codes.InvalidArgument)
+		if resp.Status.Code != int32(codes.PermissionDenied) {
+			t.Errorf("code: got %d, want PermissionDenied (%d)", resp.Status.Code, codes.PermissionDenied)
 		}
 		if !strings.Contains(resp.Status.Message, "impersonated tokens are not accepted") {
 			t.Errorf("message: got %q", resp.Status.Message)

@@ -17,9 +17,9 @@ import (
 	"github.com/project-kessel/parsec/internal/service"
 )
 
-func TestIssueTokensGRPCError(t *testing.T) {
+func TestExchangeErrToGRPC(t *testing.T) {
 	t.Run("invalid_request", func(t *testing.T) {
-		err := issueTokensGRPCError(&service.ExchangeError{
+		err := exchangeErrToGRPC(&service.ExchangeError{
 			Message:    "impersonated tokens are not accepted",
 			OAuthError: service.OAuthInvalidRequest,
 			Reason:     service.AbortReasonInvalidSubject,
@@ -44,7 +44,7 @@ func TestIssueTokensGRPCError(t *testing.T) {
 	})
 
 	t.Run("invalid_target", func(t *testing.T) {
-		err := issueTokensGRPCError(&service.ExchangeError{
+		err := exchangeErrToGRPC(&service.ExchangeError{
 			Message:    "bad audience",
 			OAuthError: service.OAuthInvalidTarget,
 			Reason:     service.AbortReasonInvalidAudience,
@@ -62,73 +62,47 @@ func TestIssueTokensGRPCError(t *testing.T) {
 		}
 	})
 
-	t.Run("fail_is_internal", func(t *testing.T) {
-		err := issueTokensGRPCError(&service.MappingFailure{
-			Message: "mapping exploded",
+	t.Run("no_abort_reason_when_empty", func(t *testing.T) {
+		err := exchangeErrToGRPC(&service.ExchangeError{
+			Message:    "bad request",
+			OAuthError: service.OAuthInvalidRequest,
 		})
 		st, ok := status.FromError(err)
 		if !ok {
 			t.Fatalf("expected gRPC status, got %T", err)
 		}
-		if st.Code() != codes.Internal {
-			t.Errorf("code: got %v, want Internal", st.Code())
-		}
-		if st.Message() != "failed to issue token: mapping exploded" {
-			t.Errorf("message: got %q", st.Message())
-		}
-		for _, d := range st.Details() {
-			if _, ok := d.(*errdetails.ErrorInfo); ok {
-				t.Fatal("fail() should not attach OAuth ErrorInfo")
-			}
-		}
-	})
-
-	t.Run("other_errors_internal", func(t *testing.T) {
-		err := issueTokensGRPCError(errors.New("signing failed"))
-		st, ok := status.FromError(err)
-		if !ok {
-			t.Fatalf("expected gRPC status, got %T", err)
-		}
-		if st.Code() != codes.Internal {
-			t.Errorf("code: got %v, want Internal", st.Code())
+		info := oauthErrorInfo(t, st)
+		if _, hasReason := info.Metadata["abort_reason"]; hasReason {
+			t.Error("Layer A (no reason) should not set abort_reason metadata")
 		}
 	})
 }
 
-func TestAuthzIssueDenialCode(t *testing.T) {
-	t.Run("invalid_request_not_internal", func(t *testing.T) {
-		code, msg := authzIssueDenialCode(&service.ExchangeError{
-			Message:    "claim 'idp' is required",
-			OAuthError: service.OAuthInvalidRequest,
-			Reason:     service.AbortReasonInvalidSubject,
-		})
-		if code != codes.InvalidArgument {
-			t.Errorf("code: got %v, want InvalidArgument", code)
+func TestInternalGRPCError(t *testing.T) {
+	t.Run("wraps_error_as_internal", func(t *testing.T) {
+		err := internalGRPCError(errors.New("signing failed"))
+		st, ok := status.FromError(err)
+		if !ok {
+			t.Fatalf("expected gRPC status, got %T", err)
 		}
-		if msg != "claim 'idp' is required" {
-			t.Errorf("msg: got %q", msg)
+		if st.Code() != codes.Internal {
+			t.Errorf("code: got %v, want Internal", st.Code())
 		}
-	})
-
-	t.Run("fail_is_internal", func(t *testing.T) {
-		code, msg := authzIssueDenialCode(&service.MappingFailure{
-			Message: "unsupported_token_type",
-		})
-		if code != codes.Internal {
-			t.Errorf("code: got %v, want Internal", code)
-		}
-		if msg != "failed to issue tokens: unsupported_token_type" {
-			t.Errorf("msg: got %q", msg)
+		if st.Message() != "failed to issue token: signing failed" {
+			t.Errorf("message: got %q", st.Message())
 		}
 	})
 
-	t.Run("other_errors_internal", func(t *testing.T) {
-		code, msg := authzIssueDenialCode(errors.New("signing failed"))
-		if code != codes.Internal {
-			t.Errorf("code: got %v, want Internal", code)
+	t.Run("no_oauth_error_info", func(t *testing.T) {
+		err := internalGRPCError(errors.New("boom"))
+		st, ok := status.FromError(err)
+		if !ok {
+			t.Fatalf("expected gRPC status, got %T", err)
 		}
-		if msg != "failed to issue tokens: signing failed" {
-			t.Errorf("msg: got %q", msg)
+		for _, d := range st.Details() {
+			if _, ok := d.(*errdetails.ErrorInfo); ok {
+				t.Fatal("internal errors should not attach OAuth ErrorInfo")
+			}
 		}
 	})
 }
@@ -138,7 +112,7 @@ func TestOAuthHTTPErrorHandler(t *testing.T) {
 	marshaler := &runtime.JSONPb{}
 
 	t.Run("writes_oauth_json", func(t *testing.T) {
-		err := issueTokensGRPCError(&service.ExchangeError{
+		err := exchangeErrToGRPC(&service.ExchangeError{
 			Message:    "impersonated tokens are not accepted",
 			OAuthError: service.OAuthInvalidRequest,
 			Reason:     service.AbortReasonInvalidSubject,

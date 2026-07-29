@@ -56,7 +56,7 @@ func (i *UnsignedIssuer) Issue(ctx context.Context, issueCtx *service.IssueConte
 		return service.ExchangeResult{}, fmt.Errorf("failed to map claims: %w", err)
 	}
 	if exchErr != nil {
-		return service.ExchangeResult{Error: exchErr}, nil
+		return service.ExchangeResult{ExchangeErr: exchErr}, nil
 	}
 
 	claimsJSON, err := json.Marshal(mappedClaims)

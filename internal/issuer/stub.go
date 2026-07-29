@@ -62,7 +62,7 @@ func (i *StubIssuer) Issue(ctx context.Context, issueCtx *service.IssueContext) 
 		return service.ExchangeResult{}, fmt.Errorf("failed to map transaction context: %w", err)
 	}
 	if exchErr != nil {
-		return service.ExchangeResult{Error: exchErr}, nil
+		return service.ExchangeResult{ExchangeErr: exchErr}, nil
 	}
 
 	requestContext, exchErr, err := issueCtx.ToClaims(ctx, i.requestContextMappers)
@@ -70,7 +70,7 @@ func (i *StubIssuer) Issue(ctx context.Context, issueCtx *service.IssueContext) 
 		return service.ExchangeResult{}, fmt.Errorf("failed to map request context: %w", err)
 	}
 	if exchErr != nil {
-		return service.ExchangeResult{Error: exchErr}, nil
+		return service.ExchangeResult{ExchangeErr: exchErr}, nil
 	}
 
 	now := i.clock.Now()

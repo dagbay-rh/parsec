@@ -156,6 +156,41 @@ func TestTokenService_IssueTokens_Observability(t *testing.T) {
 		)
 	})
 
+	t.Run("exchange error denial calls TokenTypeIssuanceDenied", func(t *testing.T) {
+		fakeObs := NewFakeObserver(t)
+		exchErr := &ExchangeError{
+			Message:    "impersonated tokens not accepted",
+			OAuthError: OAuthInvalidRequest,
+			Reason:     AbortReasonInvalidSubject,
+		}
+		issuer := &testIssuerStub{exchErr: exchErr}
+
+		registry := NewSimpleRegistry()
+		registry.Register(TokenTypeTransactionToken, issuer)
+
+		service := NewTokenService("trust.example.com", nil, registry, fakeObs)
+
+		req := &IssueRequest{
+			Subject:    &trust.Result{Subject: "user-123"},
+			TokenTypes: []TokenType{TokenTypeTransactionToken},
+		}
+
+		results, err := service.IssueTokens(ctx, req)
+		if err != nil {
+			t.Fatalf("unexpected top-level error: %v", err)
+		}
+		if results[TokenTypeTransactionToken].ExchangeErr == nil {
+			t.Fatal("expected ExchangeError")
+		}
+
+		p := fakeObs.AssertSingleProbe("TokenIssuanceStarted", nil)
+		p.AssertProbeSequence(
+			ProbeCall("TokenTypeIssuanceStarted", TokenTypeTransactionToken),
+			ProbeCall("TokenTypeIssuanceDenied", TokenTypeTransactionToken, exchErr),
+			"End",
+		)
+	})
+
 }
 
 func TestTokenService_MapperPolicyRejection(t *testing.T) {
@@ -179,14 +214,14 @@ func TestTokenService_MapperPolicyRejection(t *testing.T) {
 			t.Fatalf("unexpected top-level error: %v", err)
 		}
 		r := results[TokenTypeTransactionToken]
-		if r.Error == nil {
+		if r.ExchangeErr == nil {
 			t.Fatal("expected ExchangeError")
 		}
-		if r.Error.OAuthError != OAuthInvalidRequest {
-			t.Errorf("OAuthErrorCode: got %q", r.Error.OAuthError)
+		if r.ExchangeErr.OAuthError != OAuthInvalidRequest {
+			t.Errorf("OAuthErrorCode: got %q", r.ExchangeErr.OAuthError)
 		}
-		if r.Error.Reason != AbortReasonInvalidSubject {
-			t.Errorf("AbortReason: got %q", r.Error.Reason)
+		if r.ExchangeErr.Reason != AbortReasonInvalidSubject {
+			t.Errorf("AbortReason: got %q", r.ExchangeErr.Reason)
 		}
 	})
 
@@ -233,11 +268,11 @@ func TestTokenService_MapperPolicyRejection(t *testing.T) {
 			t.Error("expected transaction token to succeed")
 		}
 		accessResult := results[TokenTypeAccessToken]
-		if accessResult.Error == nil {
+		if accessResult.ExchangeErr == nil {
 			t.Fatal("expected ExchangeError for access token")
 		}
-		if accessResult.Error.OAuthError != OAuthInvalidRequest {
-			t.Errorf("OAuthErrorCode: got %q", accessResult.Error.OAuthError)
+		if accessResult.ExchangeErr.OAuthError != OAuthInvalidRequest {
+			t.Errorf("OAuthErrorCode: got %q", accessResult.ExchangeErr.OAuthError)
 		}
 	})
 }
@@ -254,7 +289,7 @@ func (i *testIssuerStub) Issue(ctx context.Context, issueCtx *IssueContext) (Exc
 		return ExchangeResult{}, i.err
 	}
 	if i.exchErr != nil {
-		return ExchangeResult{Error: i.exchErr}, nil
+		return ExchangeResult{ExchangeErr: i.exchErr}, nil
 	}
 	return ExchangeResult{Token: i.token}, nil
 }
