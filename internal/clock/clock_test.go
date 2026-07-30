@@ -17,6 +17,18 @@ func TestSystemClock_Now(t *testing.T) {
 	}
 }
 
+func TestSystemClock_Since(t *testing.T) {
+	clock := NewSystemClock()
+
+	start := time.Now()
+	time.Sleep(10 * time.Millisecond)
+	elapsed := clock.Since(start)
+
+	if elapsed < 10*time.Millisecond {
+		t.Errorf("SystemClock.Since() returned %v, expected at least 10ms", elapsed)
+	}
+}
+
 func TestFixtureClock_Now(t *testing.T) {
 	startTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 	clock := NewFixtureClock(startTime)
@@ -35,6 +47,24 @@ func TestFixtureClock_DefaultsToNow(t *testing.T) {
 	now := clock.Now()
 	if now.Before(before) || now.After(after) {
 		t.Errorf("FixtureClock with zero time should default to time.Now(), got %v", now)
+	}
+}
+
+func TestFixtureClock_Since(t *testing.T) {
+	startTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	clock := NewFixtureClock(startTime)
+
+	past := startTime.Add(-5 * time.Second)
+	elapsed := clock.Since(past)
+	if elapsed != 5*time.Second {
+		t.Errorf("expected 5s, got %v", elapsed)
+	}
+
+	// Advance and verify Since reflects new time
+	clock.Advance(10 * time.Second)
+	elapsed = clock.Since(past)
+	if elapsed != 15*time.Second {
+		t.Errorf("expected 15s after advance, got %v", elapsed)
 	}
 }
 

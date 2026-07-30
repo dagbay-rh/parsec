@@ -12,26 +12,28 @@ import (
 //
 // The returned observer's Shutdown delegates to p.Shutdown, and its
 // ConfigureHTTPMux registers the Prometheus scrape handler at the given endpoint.
-func NewObserver(p *Provider, endpoint string) (observer.Observer, error) {
+func NewObserver(p *Provider, endpoint string, opts ...ObserverOption) (observer.Observer, error) {
+	cfg := resolveObserverOptions(opts)
+	clk := cfg.clk
 	m := p.Meter(meterName)
 
-	svc, err := newServiceObserver(m)
+	svc, err := newServiceObserver(m, clk)
 	if err != nil {
 		return nil, err
 	}
-	ds, err := newDataSourceObserver(m)
+	ds, err := newDataSourceObserver(m, clk)
 	if err != nil {
 		return nil, err
 	}
-	ks, err := newKeysObserver(m)
+	ks, err := newKeysObserver(m, clk)
 	if err != nil {
 		return nil, err
 	}
-	ts, err := newTrustObserver(m)
+	ts, err := newTrustObserver(m, clk)
 	if err != nil {
 		return nil, err
 	}
-	srv, err := newServerObserver(m)
+	srv, err := newServerObserver(m, clk)
 	if err != nil {
 		return nil, err
 	}

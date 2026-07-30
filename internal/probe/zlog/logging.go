@@ -6,6 +6,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/request"
 	"github.com/project-kessel/parsec/internal/service"
 	"github.com/project-kessel/parsec/internal/trust"
@@ -21,6 +22,7 @@ type loggingObserver struct {
 	tokenIssuanceLogger zerolog.Logger
 	tokenExchangeLogger zerolog.Logger
 	authzCheckLogger    zerolog.Logger
+	clock               clock.Clock
 }
 
 // LoggingObserverConfig configures the logging observer.
@@ -43,11 +45,13 @@ func NewLoggingObserver(logger zerolog.Logger) service.ServiceObserver {
 }
 
 // NewLoggingObserverWithConfig creates a logging observer with pre-configured per-event loggers.
-func NewLoggingObserverWithConfig(cfg LoggingObserverConfig) service.ServiceObserver {
+func NewLoggingObserverWithConfig(cfg LoggingObserverConfig, opts ...Option) service.ServiceObserver {
+	resolved := resolveOptions(opts)
 	return &loggingObserver{
 		tokenIssuanceLogger: cfg.TokenIssuanceLogger,
 		tokenExchangeLogger: cfg.TokenExchangeLogger,
 		authzCheckLogger:    cfg.AuthzCheckLogger,
+		clock:               resolved.clk,
 	}
 }
 
@@ -104,7 +108,8 @@ func (o *loggingObserver) TokenIssuanceStarted(
 
 	return ctx, &loggingTokenIssuanceProbe{
 		logger:    requestLogger,
-		startTime: time.Now(),
+		startTime: o.clock.Now(),
+		clock:     o.clock,
 	}
 }
 
@@ -113,6 +118,7 @@ type loggingTokenIssuanceProbe struct {
 	service.NoOpTokenIssuanceProbe
 	logger    zerolog.Logger
 	startTime time.Time
+	clock     clock.Clock
 }
 
 func (p *loggingTokenIssuanceProbe) TokenTypeIssuanceStarted(tokenType service.TokenType) {
@@ -150,7 +156,7 @@ func (p *loggingTokenIssuanceProbe) IssuerNotFound(tokenType service.TokenType, 
 
 func (p *loggingTokenIssuanceProbe) End() {
 	p.logger.Debug().
-		Dur("duration", time.Since(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("Token issuance completed")
 }
 
@@ -167,7 +173,8 @@ func (o *loggingObserver) TokenExchangeStarted(
 
 	return ctx, &loggingTokenExchangeProbe{
 		logger:    requestLogger,
-		startTime: time.Now(),
+		startTime: o.clock.Now(),
+		clock:     o.clock,
 	}
 }
 
@@ -176,6 +183,7 @@ type loggingTokenExchangeProbe struct {
 	service.NoOpTokenExchangeProbe
 	logger    zerolog.Logger
 	startTime time.Time
+	clock     clock.Clock
 }
 
 func (p *loggingTokenExchangeProbe) ActorCredentialExtracted(cred trust.Credential, headersUsed []string) {
@@ -235,7 +243,7 @@ func (p *loggingTokenExchangeProbe) SubjectTokenValidationFailed(err error) {
 
 func (p *loggingTokenExchangeProbe) End() {
 	p.logger.Debug().
-		Dur("duration", time.Since(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("Token exchange completed")
 }
 
@@ -250,7 +258,8 @@ func (o *loggingObserver) AuthzCheckStarted(
 
 	return ctx, &loggingAuthzCheckProbe{
 		logger:    requestLogger,
-		startTime: time.Now(),
+		startTime: o.clock.Now(),
+		clock:     o.clock,
 	}
 }
 
@@ -259,6 +268,7 @@ type loggingAuthzCheckProbe struct {
 	service.NoOpAuthzCheckProbe
 	logger    zerolog.Logger
 	startTime time.Time
+	clock     clock.Clock
 }
 
 func (p *loggingAuthzCheckProbe) RequestAttributesParsed(attrs *request.RequestAttributes) {
@@ -361,6 +371,6 @@ func (p *loggingAuthzCheckProbe) PolicyEvaluationFailed(err error) {
 
 func (p *loggingAuthzCheckProbe) End() {
 	p.logger.Debug().
-		Dur("duration", time.Since(p.startTime)).
+		Dur("duration", p.clock.Since(p.startTime)).
 		Msg("Authorization check completed")
 }

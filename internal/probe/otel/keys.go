@@ -7,6 +7,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/keys"
 )
 
@@ -32,9 +33,10 @@ type keysObserver struct {
 	kmsRotateDuration    metric.Float64Histogram
 	diskRotateDuration   metric.Float64Histogram
 	memoryRotateDuration metric.Float64Histogram
+	clock                clock.Clock
 }
 
-func newKeysObserver(m metric.Meter) (*keysObserver, error) {
+func newKeysObserver(m metric.Meter, clk clock.Clock) (*keysObserver, error) {
 	rd, err := m.Float64Histogram("parsec.keys.rotation.duration",
 		metric.WithDescription("Key rotation check duration in seconds"),
 		metric.WithUnit("s"),
@@ -77,6 +79,7 @@ func newKeysObserver(m metric.Meter) (*keysObserver, error) {
 		kmsRotateDuration:    krd,
 		diskRotateDuration:   drd,
 		memoryRotateDuration: mrd,
+		clock:                clk,
 	}, nil
 }
 
@@ -84,7 +87,7 @@ func newKeysObserver(m metric.Meter) (*keysObserver, error) {
 
 func (o *keysObserver) RotationCheckStarted(ctx context.Context) (context.Context, keys.RotationCheckProbe) {
 	return ctx, &rotationCheckProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status: successStatusAttr,
 	}
 }
@@ -109,14 +112,14 @@ func (p *rotationCheckProbe) End() {
 		p.result = rotationResultNotNeeded
 	}
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.result, p.status))
-	p.obs.rotationDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.rotationDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)
 }
 
 // --- key cache update probe ---
 
 func (o *keysObserver) KeyCacheUpdateStarted(ctx context.Context) (context.Context, keys.KeyCacheUpdateProbe) {
 	return ctx, &keyCacheUpdateProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status: successStatusAttr, result: resultSuccess,
 	}
 }
@@ -156,14 +159,14 @@ func (p *keyCacheUpdateProbe) MetadataFailed(_ string, _ error) {
 }
 func (p *keyCacheUpdateProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.result, p.status))
-	p.obs.cacheUpdateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.cacheUpdateDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)
 }
 
 // --- KMS rotate probe ---
 
 func (o *keysObserver) KMSRotateStarted(ctx context.Context, _, _, keyName string) (context.Context, keys.KMSRotateProbe) {
 	return ctx, &kmsRotateProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status:  successStatusAttr,
 		keyName: attribute.String("key_name", keyName),
 	}
@@ -187,14 +190,14 @@ func (p *kmsRotateProbe) AliasUpdateFailed(_ error)              { p.status = er
 func (p *kmsRotateProbe) OldKeyDeletionFailed(_ string, _ error) { p.status = errorStatusAttr }
 func (p *kmsRotateProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.keyName, p.status))
-	p.obs.kmsRotateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.kmsRotateDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)
 }
 
 // --- disk rotate probe ---
 
 func (o *keysObserver) DiskRotateStarted(ctx context.Context, _, _, keyName string) (context.Context, keys.DiskRotateProbe) {
 	return ctx, &diskRotateProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status:  successStatusAttr,
 		keyName: attribute.String("key_name", keyName),
 	}
@@ -216,14 +219,14 @@ func (p *diskRotateProbe) KeyGenerationFailed(_ error) { p.status = errorStatusA
 func (p *diskRotateProbe) KeyWriteFailed(_ error)      { p.status = errorStatusAttr }
 func (p *diskRotateProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.keyName, p.status))
-	p.obs.diskRotateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.diskRotateDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)
 }
 
 // --- memory rotate probe ---
 
 func (o *keysObserver) MemoryRotateStarted(ctx context.Context) (context.Context, keys.MemoryRotateProbe) {
 	return ctx, &memoryRotateProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status: successStatusAttr,
 	}
 }
@@ -239,7 +242,7 @@ type memoryRotateProbe struct {
 func (p *memoryRotateProbe) KeyGenerationFailed(_ error) { p.status = errorStatusAttr }
 func (p *memoryRotateProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.status))
-	p.obs.memoryRotateDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.memoryRotateDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)
 }
 
 var (

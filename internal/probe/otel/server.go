@@ -7,6 +7,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/server"
 )
 
@@ -21,9 +22,10 @@ type serverObserver struct {
 	initPopDuration      metric.Float64Histogram
 	cacheRefreshDuration metric.Float64Histogram
 	serveFailedTotal     metric.Int64Counter
+	clock                clock.Clock
 }
 
-func newServerObserver(m metric.Meter) (*serverObserver, error) {
+func newServerObserver(m metric.Meter, clk clock.Clock) (*serverObserver, error) {
 	ipd, err := m.Float64Histogram("parsec.server.jwks.init.duration",
 		metric.WithDescription("JWKS initial population duration in seconds"),
 		metric.WithUnit("s"),
@@ -49,6 +51,7 @@ func newServerObserver(m metric.Meter) (*serverObserver, error) {
 		initPopDuration:      ipd,
 		cacheRefreshDuration: crd,
 		serveFailedTotal:     sft,
+		clock:                clk,
 	}, nil
 }
 
@@ -56,7 +59,7 @@ func newServerObserver(m metric.Meter) (*serverObserver, error) {
 
 func (o *serverObserver) InitPopulationStarted(ctx context.Context) (context.Context, server.InitPopulationProbe) {
 	return ctx, &initPopulationProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status: successStatusAttr,
 	}
 }
@@ -72,14 +75,14 @@ type initPopulationProbe struct {
 func (p *initPopulationProbe) InitialCachePopulationFailed(_ error) { p.status = errorStatusAttr }
 func (p *initPopulationProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.status))
-	p.obs.initPopDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.initPopDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)
 }
 
 // --- cache refresh probe ---
 
 func (o *serverObserver) CacheRefreshStarted(ctx context.Context) (context.Context, server.CacheRefreshProbe) {
 	return ctx, &cacheRefreshProbe{
-		obs: o, ctx: ctx, startTime: time.Now(),
+		obs: o, ctx: ctx, startTime: o.clock.Now(),
 		status: successStatusAttr,
 	}
 }
@@ -96,7 +99,7 @@ func (p *cacheRefreshProbe) CacheRefreshFailed(_ error)            { p.status = 
 func (p *cacheRefreshProbe) KeyConversionFailed(_ string, _ error) { p.status = errorStatusAttr }
 func (p *cacheRefreshProbe) End() {
 	attrs := metric.WithAttributeSet(attribute.NewSet(p.status))
-	p.obs.cacheRefreshDuration.Record(p.ctx, time.Since(p.startTime).Seconds(), attrs)
+	p.obs.cacheRefreshDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)
 }
 
 // --- serve failed (fire-and-forget, counter only) ---

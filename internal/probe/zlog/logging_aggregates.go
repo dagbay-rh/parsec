@@ -18,10 +18,10 @@ type LoggingDataSourceObserver struct {
 	lua   *LoggingLuaDataSourceObserver
 }
 
-func NewLoggingDataSourceObserver(cacheLogger, luaLogger zerolog.Logger) *LoggingDataSourceObserver {
+func NewLoggingDataSourceObserver(cacheLogger, luaLogger zerolog.Logger, opts ...Option) *LoggingDataSourceObserver {
 	return &LoggingDataSourceObserver{
-		cache: NewLoggingDataSourceCacheObserver(cacheLogger),
-		lua:   NewLoggingLuaDataSourceObserver(luaLogger),
+		cache: NewLoggingDataSourceCacheObserver(cacheLogger, opts...),
+		lua:   NewLoggingLuaDataSourceObserver(luaLogger, opts...),
 	}
 }
 
@@ -45,12 +45,12 @@ type LoggingKeysObserver struct {
 	memory   *LoggingInMemoryProviderObserver
 }
 
-func NewLoggingKeysObserver(rotationLogger, providerLogger zerolog.Logger) *LoggingKeysObserver {
+func NewLoggingKeysObserver(rotationLogger, providerLogger zerolog.Logger, opts ...Option) *LoggingKeysObserver {
 	return &LoggingKeysObserver{
-		rotation: NewLoggingKeyRotationObserver(rotationLogger),
-		kms:      NewLoggingAWSKMSProviderObserver(providerLogger),
-		disk:     NewLoggingDiskProviderObserver(providerLogger),
-		memory:   NewLoggingInMemoryProviderObserver(providerLogger),
+		rotation: NewLoggingKeyRotationObserver(rotationLogger, opts...),
+		kms:      NewLoggingAWSKMSProviderObserver(providerLogger, opts...),
+		disk:     NewLoggingDiskProviderObserver(providerLogger, opts...),
+		memory:   NewLoggingInMemoryProviderObserver(providerLogger, opts...),
 	}
 }
 
@@ -84,10 +84,10 @@ type LoggingServerObserver struct {
 	lifecycle *LoggingServerLifecycleObserver
 }
 
-func NewLoggingServerObserver(jwksLogger, lifecycleLogger zerolog.Logger) *LoggingServerObserver {
+func NewLoggingServerObserver(jwksLogger, lifecycleLogger zerolog.Logger, opts ...Option) *LoggingServerObserver {
 	return &LoggingServerObserver{
-		jwks:      NewLoggingJWKSObserver(jwksLogger),
-		lifecycle: NewLoggingServerLifecycleObserver(lifecycleLogger),
+		jwks:      NewLoggingJWKSObserver(jwksLogger, opts...),
+		lifecycle: NewLoggingServerLifecycleObserver(lifecycleLogger, opts...),
 	}
 }
 
