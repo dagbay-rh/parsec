@@ -9,6 +9,7 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	authv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 
@@ -1385,6 +1386,13 @@ func TestAuthz_IssueResponse_MapperAbort(t *testing.T) {
 		if !strings.Contains(resp.Status.Message, "impersonated tokens are not accepted") {
 			t.Errorf("message: got %q", resp.Status.Message)
 		}
+		denied := resp.GetDeniedResponse()
+		if denied == nil {
+			t.Fatal("expected DeniedHttpResponse")
+		}
+		if denied.GetStatus().GetCode() != typev3.StatusCode_Forbidden {
+			t.Errorf("HTTP status: got %d, want Forbidden (%d)", denied.GetStatus().GetCode(), typev3.StatusCode_Forbidden)
+		}
 	})
 
 	t.Run("fail_is_internal", func(t *testing.T) {
@@ -1395,6 +1403,13 @@ func TestAuthz_IssueResponse_MapperAbort(t *testing.T) {
 		}
 		if resp.Status.Code != int32(codes.Internal) {
 			t.Errorf("code: got %d, want Internal (%d)", resp.Status.Code, codes.Internal)
+		}
+		denied := resp.GetDeniedResponse()
+		if denied == nil {
+			t.Fatal("expected DeniedHttpResponse")
+		}
+		if denied.GetStatus().GetCode() != typev3.StatusCode_InternalServerError {
+			t.Errorf("HTTP status: got %d, want InternalServerError (%d)", denied.GetStatus().GetCode(), typev3.StatusCode_InternalServerError)
 		}
 	})
 }

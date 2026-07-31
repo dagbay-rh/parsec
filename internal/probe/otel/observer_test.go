@@ -47,22 +47,27 @@ func TestNewObserver_SatisfiesObserverInterface(t *testing.T) {
 
 func TestTokenIssuanceMetrics(t *testing.T) {
 	tests := []struct {
-		name       string
-		action     func(probe service.TokenIssuanceProbe)
-		wantResult string
-		wantStatus string
+		name            string
+		action          func(probe service.TokenIssuanceProbe)
+		wantResult      string
+		wantStatus      string
+		wantOAuthError  string
+		wantAbortReason string
+		wantNoOAuth     bool
 	}{
 		{
-			name:       "success",
-			action:     func(service.TokenIssuanceProbe) {},
-			wantResult: `result="success"`,
-			wantStatus: `status="success"`,
+			name:        "success",
+			action:      func(service.TokenIssuanceProbe) {},
+			wantResult:  `result="success"`,
+			wantStatus:  `status="success"`,
+			wantNoOAuth: true,
 		},
 		{
-			name:       "issuance failed",
-			action:     func(p service.TokenIssuanceProbe) { p.TokenTypeIssuanceFailed("jwt", errors.New("sign error")) },
-			wantResult: `result="issuance_failed"`,
-			wantStatus: `status="error"`,
+			name:        "issuance failed",
+			action:      func(p service.TokenIssuanceProbe) { p.TokenTypeIssuanceFailed("jwt", errors.New("sign error")) },
+			wantResult:  `result="issuance_failed"`,
+			wantStatus:  `status="error"`,
+			wantNoOAuth: true,
 		},
 		{
 			name: "issuance denied",
@@ -73,14 +78,17 @@ func TestTokenIssuanceMetrics(t *testing.T) {
 					Message:    "impersonated",
 				})
 			},
-			wantResult: `result="issuance_denied"`,
-			wantStatus: `status="error"`,
+			wantResult:      `result="issuance_denied"`,
+			wantStatus:      `status="error"`,
+			wantOAuthError:  `mapping_oauth_error="invalid_request"`,
+			wantAbortReason: `mapping_abort_reason="invalid_subject"`,
 		},
 		{
-			name:       "issuer not found",
-			action:     func(p service.TokenIssuanceProbe) { p.IssuerNotFound("jwt", errors.New("missing")) },
-			wantResult: `result="issuer_not_found"`,
-			wantStatus: `status="error"`,
+			name:        "issuer not found",
+			action:      func(p service.TokenIssuanceProbe) { p.IssuerNotFound("jwt", errors.New("missing")) },
+			wantResult:  `result="issuer_not_found"`,
+			wantStatus:  `status="error"`,
+			wantNoOAuth: true,
 		},
 	}
 
@@ -98,6 +106,17 @@ func TestTokenIssuanceMetrics(t *testing.T) {
 			assert.Contains(t, body, "parsec_token_issuance_duration_seconds")
 			assert.Contains(t, body, tt.wantResult)
 			assert.Contains(t, body, tt.wantStatus)
+
+			if tt.wantOAuthError != "" {
+				assert.Contains(t, body, tt.wantOAuthError)
+			}
+			if tt.wantAbortReason != "" {
+				assert.Contains(t, body, tt.wantAbortReason)
+			}
+			if tt.wantNoOAuth {
+				assert.NotContains(t, body, "mapping_oauth_error")
+				assert.NotContains(t, body, "mapping_abort_reason")
+			}
 		})
 	}
 }

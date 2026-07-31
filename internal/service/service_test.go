@@ -193,7 +193,11 @@ func TestTokenService_IssueTokens_Observability(t *testing.T) {
 
 }
 
-func TestTokenService_MapperPolicyRejection(t *testing.T) {
+// TestTokenService_ExchangeErrorPropagation verifies the service layer
+// correctly propagates ExchangeError results from issuers. Real CEL-mapper
+// integration coverage lives in internal/server/authz_test.go
+// (TestAuthz_IssueResponse_MapperAbort).
+func TestTokenService_ExchangeErrorPropagation(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("invalid_subject", func(t *testing.T) {
