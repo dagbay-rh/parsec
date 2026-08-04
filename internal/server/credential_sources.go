@@ -12,6 +12,7 @@ const (
 	CredentialSourceTypeBearer    = "authorization_bearer_opaque"
 	CredentialSourceTypeCookie    = "cookie_bearer_opaque"
 	CredentialSourceTypeBasicAuth = "authorization_basic_auth"
+	CredentialSourceTypeForwardedClientCert = "forwarded_client_cert_auth"
 )
 
 // CredentialSource extracts a credential from a transport-neutral context.

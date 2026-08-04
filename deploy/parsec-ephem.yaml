@@ -287,6 +287,26 @@ objects:
                 value: "true"
               - name: PARSEC_CONFIG
                 value: "/etc/parsec/parsec.yaml"
+              - name: SSL_CERT_FILE
+                value: "/etc/pki/tls/certs/openshift-service-ca.crt"
+              - name: PARSEC_BOP_CONFIG_SECRET
+                valueFrom:
+                  secretKeyRef:
+                    name: ${BOP_CONFIG_SECRET}
+                    key: certauth-secret
+                    optional: true
+              - name: PARSEC_BOP_CLIENT_ID
+                valueFrom:
+                  secretKeyRef:
+                    name: ${BOP_CLIENT_SECRET}
+                    key: client_id
+                    optional: true
+              - name: PARSEC_BOP_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: ${BOP_CLIENT_SECRET}
+                    key: token
+                    optional: true
             volumeMounts:
               - name: config-volume
                 mountPath: "/etc/parsec/parsec.yaml"
@@ -294,10 +314,18 @@ objects:
               - name: config-volume
                 mountPath: "/etc/parsec/scripts/redhat_identity.cel"
                 subPath: redhat_identity.cel
+              - name: openshift-ca-bundle
+                mountPath: "/etc/pki/tls/certs/openshift-service-ca.crt"
+                subPath: service-ca.crt
+                readOnly: true
             volumes:
               - name: config-volume
                 configMap:
                   name: parsec-config
+              - name: openshift-ca-bundle
+                configMap:
+                  name: openshift-service-ca.crt
+                  optional: true
           webServices:
             public:
               enabled: true
@@ -320,6 +348,12 @@ parameters:
   - description: Number of replicas
     name: REPLICAS
     value: "1"
+  - description: Name of the K8s secret containing the BOP certauth proxy proof secret
+    name: BOP_CONFIG_SECRET
+    value: backoffice-proxy-config
+  - description: Name of the K8s secret containing BOP client-id and token
+    name: BOP_CLIENT_SECRET
+    value: parsec
   - description: Memory request for Parsec service
     name: PARSEC_REQUESTS_MEMORY
     value: '128Mi'

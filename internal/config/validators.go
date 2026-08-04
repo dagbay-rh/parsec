@@ -346,7 +346,9 @@ func parseCredentialType(s string) (trust.CredentialType, error) {
 		return trust.CredentialTypeOIDC, nil
 	case "basic_auth":
 		return trust.CredentialTypeBasicAuth, nil
+	case "forwarded_client_cert":
+		return trust.CredentialTypeForwardedClientCert, nil
 	default:
-		return "", fmt.Errorf("unknown credential type: %s (supported: bearer, jwt, json, mtls, oidc, basic_auth)", s)
+		return "", fmt.Errorf("unknown credential type: %s (supported: bearer, jwt, json, mtls, oidc, basic_auth, forwarded_client_cert)", s)
 	}
 }

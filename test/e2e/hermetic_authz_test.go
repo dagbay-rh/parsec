@@ -139,6 +139,120 @@ func TestHermeticAuthzCheck(t *testing.T) {
 	registryAuthSubtests(t, authzServer)
 }
 
+// TestHermeticAuthzCheckCertAuth demonstrates end-to-end testing of cert-auth
+// via the ext_authz Authorization.Check RPC using hermetic fixtures.
+//
+// Cert auth validates certificate credentials forwarded as x-rh-certauth-cn
+// and x-rh-certauth-issuer headers by a TLS-terminating proxy (e.g., Akamai).
+// The Lua validator calls BOP (Back Office Proxy) to resolve the certificate
+// identity into account_number, org_id, and cert_type.
+func TestHermeticAuthzCheckCertAuth(t *testing.T) {
+	// ============================================================
+	// 1. Setup Fixtures
+	// ============================================================
+
+	fixedTime := time.Date(2024, 6, 15, 10, 0, 0, 0, time.UTC)
+	clk := clock.NewFixtureClock(fixedTime)
+
+	bopURL := "https://example.bop.api.redhat.com/v1/auth"
+
+	bopFixture := httpfixture.NewRuleBasedProvider([]httpfixture.HTTPFixtureRule{
+		{
+			Request: httpfixture.FixtureRequest{
+				Method:  "GET",
+				URL:     bopURL,
+				URLType: "exact",
+			},
+			Response: httpfixture.Fixture{
+				StatusCode: 200,
+				Headers:    map[string]string{"Content-Type": "application/json"},
+				Body:       `{"account_number":"12345","org_id":"org-abc","type":"satellite"}`,
+			},
+		},
+	})
+
+	httpClient := &http.Client{
+		Transport: httpfixture.NewTransport(httpfixture.TransportConfig{
+			Provider: bopFixture,
+			Strict:   true,
+			Clock:    clk,
+		}),
+	}
+
+	// ============================================================
+	// 2. Load Production Scripts and Build Components
+	// ============================================================
+
+	luaScript, err := os.ReadFile("../../configs/scripts/forwarded_client_cert_auth.lua")
+	if err != nil {
+		t.Fatalf("failed to read forwarded_client_cert_auth.lua: %v", err)
+	}
+
+	celScript, err := os.ReadFile("../../configs/scripts/redhat_identity.cel")
+	if err != nil {
+		t.Fatalf("failed to read redhat_identity.cel: %v", err)
+	}
+
+	t.Setenv("PARSEC_BOP_CERTAUTH_SECRET", "test-secret")
+	t.Setenv("PARSEC_BOP_CLIENT_ID", "test-client-id")
+	t.Setenv("PARSEC_BOP_TOKEN", "test-token")
+
+	luaValidator, err := trust.NewLuaValidator(
+		"cert-auth",
+		string(luaScript),
+		[]trust.CredentialType{trust.CredentialTypeForwardedClientCert},
+		trust.WithLuaHTTPClient(httpClient),
+		trust.WithLuaConfigSource(luaservices.NewMapConfigSource(map[string]any{
+			"bop_url":            bopURL,
+			"trust_domain":       "cert.example.com",
+			"bop_certauth_secret_env": "PARSEC_BOP_CERTAUTH_SECRET",
+			"bop_client_id_env":   "PARSEC_BOP_CLIENT_ID",
+			"bop_token_env":       "PARSEC_BOP_TOKEN",
+		})),
+	)
+	if err != nil {
+		t.Fatalf("failed to create Lua validator: %v", err)
+	}
+
+	trustStore := trust.NewStubStore()
+	trustStore.AddValidator(luaValidator)
+
+	celMapper, err := mapper.NewCELMapper(string(celScript), mapper.WithClock(clk))
+	if err != nil {
+		t.Fatalf("failed to create CEL mapper: %v", err)
+	}
+
+	txnIssuer := issuer.NewUnsignedIssuer(issuer.UnsignedIssuerConfig{
+		TokenType:    string(service.TokenTypeTransactionToken),
+		ClaimMappers: []service.ClaimMapper{celMapper},
+		Clock:        clk,
+	})
+
+	issuerRegistry := service.NewSimpleRegistry()
+	issuerRegistry.Register(service.TokenTypeTransactionToken, txnIssuer)
+
+	dsRegistry := service.NewDataSourceRegistry()
+	tokenService := service.NewTokenService("cert.example.com", dsRegistry, issuerRegistry, nil)
+
+	certAuthSrc, err := server.NewForwardedClientCertCredentialSource("cert-auth")
+	if err != nil {
+		t.Fatalf("failed to create forwarded client cert credential source: %v", err)
+	}
+	credSources := server.NewCredentialSources(certAuthSrc)
+
+	// ============================================================
+	// 3. Create the Authz Server
+	// ============================================================
+
+	authzServer := server.NewAuthzServer(trustStore, tokenService, nil, credSources, nil)
+
+	// ============================================================
+	// 4. Test Cases
+	// ============================================================
+
+	certAuthSubtests(t, authzServer)
+}
+
 func assertOKResponse(t *testing.T, resp *authv3.CheckResponse) {
 	t.Helper()
 	if resp.Status.Code != int32(codes.OK) {

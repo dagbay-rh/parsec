@@ -29,6 +29,7 @@ type ClientSpec struct {
 	Timeout             time.Duration
 	CertSource          CertSource          // nil = share default transport
 	TransportMiddleware TransportMiddleware // nil = no wrapping
+	InsecureSkipVerify  bool                // skip TLS certificate verification
 }
 
 // Registry builds, stores, and provides named HTTP clients.
@@ -87,21 +88,27 @@ func (r *Registry) build(spec ClientSpec) (*http.Client, error) {
 	if r.fixtureTransport != nil {
 		// Hermetic mode: fixture transport overrides everything
 		base = r.fixtureTransport
-	} else if spec.CertSource != nil {
-		// mTLS: clone the default transport so we keep standard behavior
-		// (proxy handling, HTTP/2, idle connection reuse, timeouts) and
-		// only add the client-certificate callback.
-		mtlsTransport := http.DefaultTransport.(*http.Transport).Clone()
-		mtlsTransport.TLSClientConfig = &tls.Config{
-			GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+	} else if spec.CertSource != nil || spec.InsecureSkipVerify {
+		// Clone the default transport so we keep standard behavior
+		// (proxy handling, HTTP/2, idle connection reuse, timeouts)
+		// and customize TLS settings.
+		customTransport := http.DefaultTransport.(*http.Transport).Clone()
+		if customTransport.TLSClientConfig == nil {
+			customTransport.TLSClientConfig = &tls.Config{}
+		}
+		if spec.CertSource != nil {
+			customTransport.TLSClientConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
 				cert, err := spec.CertSource.Certificate()
 				if err != nil {
 					return nil, err
 				}
 				return &cert, nil
-			},
+			}
 		}
-		base = mtlsTransport
+		if spec.InsecureSkipVerify {
+			customTransport.TLSClientConfig.InsecureSkipVerify = true
+		}
+		base = customTransport
 	} else {
 		base = http.DefaultTransport
 	}

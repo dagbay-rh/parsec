@@ -115,6 +115,8 @@ func resolveClientSpec(cfg HTTPClientSpec) (httpclient.ClientSpec, error) {
 		spec.TransportMiddleware = mw
 	}
 
+	spec.InsecureSkipVerify = cfg.TLSSkipVerify
+
 	return spec, nil
 }
 

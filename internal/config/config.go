@@ -80,7 +80,7 @@ type CredentialSourceConfig struct {
 	// Name uniquely identifies this credential source (multiple sources may share a type)
 	Name string `koanf:"name"`
 
-	// Type is the source kind: bearer, cookie
+	// Type is the source kind: bearer, cookie, forwarded_client_cert_auth
 	Type string `koanf:"type"`
 
 	// CookieName is the cookie to read (cookie type)
@@ -224,6 +224,9 @@ type HTTPClientSpec struct {
 	// ClientCertSource configures the client certificate source for mTLS. Optional.
 	// When set, this client gets its own transport rather than sharing the default.
 	ClientCertSource *CertSourceConfig `koanf:"client_cert_source"`
+
+	// TLSSkipVerify disables TLS certificate verification. For local testing only.
+	TLSSkipVerify bool `koanf:"tls_skip_verify"`
 }
 
 // HTTPClientConfig is a named HTTP client entry for the top-level registry.
