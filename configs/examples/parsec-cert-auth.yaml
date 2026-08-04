@@ -1,0 +1,100 @@
+# parsec Configuration - Cert Auth Testing
+#
+# For manually testing cert auth (certificate authentication) against BOP.
+#
+# Prerequisites:
+#   - BOP credentials set via PARSEC_BOP_CERTAUTH_SECRET, PARSEC_BOP_CLIENT_ID, PARSEC_BOP_TOKEN env vars
+#
+# Usage:
+#   ./bin/parsec serve --config ./configs/examples/parsec-cert-auth.yaml
+#
+#   grpcurl -plaintext \
+#     -d '{
+#       "attributes": {
+#         "request": {
+#           "http": {
+#             "method": "GET",
+#             "path": "/api/anything",
+#             "headers": {
+#               "x-rh-certauth-cn": "/CN=test-system-123",
+#               "x-rh-certauth-issuer": "/C=US/ST=North Carolina/O=Red Hat, Inc./OU=Red Hat Network/CN=Red Hat Candlepin Authority"
+#             }
+#           }
+#         }
+#       }
+#     }' \
+#     localhost:9090 envoy.service.auth.v3.Authorization/Check
+
+server:
+  grpc_port: 9090
+  http_port: 8080
+
+observability:
+  type: logging
+  log_level: debug
+  log_format: json
+
+trust_domain: "parsec.example.com"
+
+exchange_server:
+  claims_filter:
+    type: stub
+
+# Named HTTP clients
+http_clients:
+  - name: backoffice-proxy
+    timeout: "30s"
+    tls_skip_verify: true
+
+# Credential sources — cert auth first, then bearer fallback
+credential_sources:
+  - name: cert-auth
+    type: forwarded_client_cert_auth
+  - name: authorization-bearer
+    type: authorization_bearer_opaque
+
+trust_store:
+  type: stub_store
+  validators:
+    - name: cert-auth
+      type: lua_validator
+      script_file: ./configs/scripts/forwarded_client_cert_auth.lua
+      credential_types: ["forwarded_client_cert"]
+      http_client: backoffice-proxy
+      config:
+        bop_url: "https://backoffice-proxy.apps.ext.spoke.preprod.us-west-2.aws.paas.redhat.com/v1/auth"
+        trust_domain: "cert.redhat.com"
+        bop_certauth_secret_env: "PARSEC_BOP_CERTAUTH_SECRET"
+        bop_client_id_env: "PARSEC_BOP_CLIENT_ID"
+        bop_token_env: "PARSEC_BOP_TOKEN"
+      caching:
+        type: in_memory
+        ttl: "5m"
+
+data_sources: []
+
+issuers:
+  - token_type: "urn:ietf:params:oauth:token-type:txn_token"
+    type: stub
+    issuer_url: "https://parsec.example.com"
+    ttl: 5m
+    transaction_context:
+      - type: cel
+        name: redhat-identity-mapper
+        script_file: ./configs/scripts/redhat_identity.cel
+    request_context:
+      - type: request_attributes
+
+  - token_type: "urn:redhat:params:oauth:token-type:rh-identity"
+    type: unsigned
+    claim_mappers:
+      - type: cel
+        name: redhat-identity-mapper
+        script_file: ./configs/scripts/redhat_identity.cel
+
+authz_server:
+  token_types:
+    - type: "urn:ietf:params:oauth:token-type:txn_token"
+      header_name: "Transaction-Token"
+    - type: "urn:redhat:params:oauth:token-type:rh-identity"
+      header_name: "x-rh-identity"
