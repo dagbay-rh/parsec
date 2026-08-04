@@ -18,13 +18,12 @@
 //
 // Based on: https://github.com/RedHatInsights/insights-3scale
 
-has(subject.issuer) && subject.issuer.contains("container-registry-authorizer") && subject.issuer.contains("api.redhat.com") ? {
 // Policy: impersonated tokens (3scale reject_impersonated)
 // Guard has(subject.claims) first — empty claim maps omit the claims key in CEL.
 has(subject.claims) && has(subject.claims.impersonated) && subject.claims.impersonated == true
   ? invalidSubject("impersonated tokens are not accepted")
 : (
-has(subject.issuer) && subject.issuer.contains("container-registry-authorizer.stage.api.redhat.com") ? {
+has(subject.issuer) && subject.issuer.contains("container-registry-authorizer") && subject.issuer.contains("api.redhat.com") ? {
   "identity": {
     "auth_type": "registry-auth",
     "org_id": has(subject.claims) && has(subject.claims.org_id) ? subject.claims.org_id : null,
@@ -84,7 +83,11 @@ isServiceAccountToken(subject.claims) ? {
         "last_name": has(subject.claims.family_name) ? subject.claims.family_name : "",
         "is_active": true,
         "is_org_admin": hasRole(subject.claims, "admin:org:all"),
-        "is_internal": subject.claims.idp == datasource("identity-policy").internal_idp_target,
+        "is_internal": subject.claims.idp == datasource("identity-policy").internal_idp_target ?
+                       true :
+                       has(subject.claims.is_internal) ? subject.claims.is_internal :
+                       datasource("identity-policy").role_fallback_enabled ? hasRole(subject.claims, "redhat:employees") :
+                       false,
         "locale": has(subject.claims.locale) ? subject.claims.locale : "",
         "user_id": has(subject.claims.user_id) ? safeToString(subject.claims.user_id) : ""
       },
@@ -177,5 +180,6 @@ isServiceAccountToken(subject.claims) ? {
       } : unsupportedTokenType("unsupported_token_type")
     )
   )
+)
 )
 )
