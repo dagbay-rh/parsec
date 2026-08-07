@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	parsecv1 "github.com/project-kessel/parsec/api/gen/parsec/v1"
 	"github.com/project-kessel/parsec/internal/claims"
 	"github.com/project-kessel/parsec/internal/request"
@@ -154,10 +157,13 @@ func (s *ExchangeServer) Exchange(ctx context.Context, req *parsecv1.ExchangeReq
 
 	r, ok := results[requestedTokenType]
 	if !ok {
-		return nil, fmt.Errorf("token service did not return requested token type %s", requestedTokenType)
+		return nil, status.Errorf(codes.Internal, "token service did not return requested token type %s", requestedTokenType)
 	}
 	if r.ExchangeErr != nil {
 		return nil, exchangeErrToGRPC(r.ExchangeErr)
+	}
+	if r.Token == nil {
+		return nil, status.Errorf(codes.Internal, "token service returned no token for type %s", requestedTokenType)
 	}
 
 	// 9. Return response

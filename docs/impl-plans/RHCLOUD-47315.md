@@ -1,7 +1,7 @@
 # RHCLOUD-47315: Reject impersonated tokens and enforce IdP claim presence in JWT validation
 
 **JIRA**: https://redhat.atlassian.net/browse/RHCLOUD-47315
-**Status**: In Review — v2.6 landed; **v2.7 remaining on same PR** (status mapping + nil-token hardening)
+**Status**: In Review — v2.7 complete on PR #169 (status mapping + nil-token hardening)
 **Author**: AI Assistant
 **Date**: 2026-07-08 (v1), 2026-07-14 (v2), 2026-07-16 (v2.1–v2.4), 2026-07-20 (v2.5), 2026-07-27 (v2.6), 2026-08-07 (v2.7)
 
@@ -461,9 +461,9 @@ v2.4 landed Layer A/B + transport mapping via `ClaimMappingError`. **v2.5
 refactors that to `MappingResult`/`MappingDecision` before merge** (Alec).
 Policy-guard CEL content stays; the Go delivery mechanism changes.
 
-**v2.7 (this iterate)**: Alec’s PR review flagged status-mapping / Envoy /
-nil-token gaps. Keep them on **this same PR** — they are small transport
-fixes in code paths already under review, not a second abstraction change.
+**v2.7 (done on this PR)**: Alec’s PR review flagged status-mapping / Envoy /
+nil-token gaps. Kept on **this same PR** — small transport fixes in code
+paths already under review, not a second abstraction change.
 (An earlier plan draft considered a PR split; Adam: one PR is enough.)
 
 ### Structured MappingResult + policy guards (v2.6 — done)
@@ -589,7 +589,7 @@ Document:
 
 ---
 
-### ext_authz status mapping + issuance contract hardening (v2.7 — pending)
+### ext_authz status mapping + issuance contract hardening (v2.7 — done)
 
 _Remaining work on PR #169 from Alec’s review. Addresses correctness /
 CVE-shaped gaps without expanding the MappingResult abstraction further._
@@ -660,7 +660,7 @@ override only that row — do not blanket-403.
 
 **Package**: `internal/server`
 **Files**: `oauth_errors.go` (or new `authz_denials.go`), `authz.go`, tests
-**Status**: Pending
+**Status**: Done
 
 1. Add `exchangeErrToAuthzDenial(exchErr) (codes.Code, typev3.StatusCode, body string)`
    beside `exchangeErrToGRPC` so exchange and ext_authz share one OAuth→code table
@@ -683,7 +683,7 @@ override only that row — do not blanket-403.
 
 **Package**: `internal/server` (callers); optionally `internal/service` (contract)
 **Files**: `authz.go`, `exchange.go`, tests; optionally `service.go` assert
-**Status**: Pending
+**Status**: Done
 
 In `issueResponse`, after the `ExchangeErr` scan and before `okResponse`:
 
@@ -720,7 +720,7 @@ so every transport inherits the fail-closed behavior.
 
 **Package**: `internal/server`, `docs/`
 **Files**: `authz_test.go`, `exchange_test.go`, `docs/issuance-policy.md`
-**Status**: Pending
+**Status**: Done
 
 1. Update `invalid_request_not_internal` (currently asserts Forbidden) →
    expect `InvalidArgument` + HTTP 400.
@@ -736,7 +736,7 @@ so every transport inherits the fail-closed behavior.
 
 **Package**: `internal/probe/otel`
 **Files**: `observer.go`
-**Status**: Pending (nit — can land with #22 or as drive-by)
+**Status**: Done (predefined 11 known attrs; #22 still open for dropping dims)
 
 Alec nit: replace per-call `attribute.String("mapping.oauth_error", …)` /
 `mapping.abort_reason` allocations with package-level prebuilt
@@ -862,11 +862,11 @@ hides protocol-useful distinctions already expressed as OAuth codes.
 - [x] Error semantics: expected client denials are Decisions (OAuth codes);
   mapping/system failures use `fail()` / `error` (Internal) so infra bugs
   are not returned as `invalid_request`.
-- [ ] **v2.7**: Fail closed on issuance contract violations — never return
+- [x] **v2.7**: Fail closed on issuance contract violations — never return
   ext_authz OK (or exchange success) when a requested token is missing/nil.
   Programmer-error paths → Internal / 500 early, not a silent pass-through
   that lies outside the gateway contract (CVE-shaped).
-- [ ] **v2.7**: Explicit Envoy HTTP status on every denial — do not rely on
+- [x] **v2.7**: Explicit Envoy HTTP status on every denial — do not rely on
   Envoy’s default 403 when gRPC code intends 401/400/500.
 
 ## Maintainability
@@ -1026,8 +1026,8 @@ issuers:
 - [x] Downstream app-interface script update called out as a follow-up
 - [x] Each step is a reviewable, self-contained unit
 - [x] Plan can be executed top-to-bottom without ambiguity
-- [ ] **v2.7**: Steps 9–11 complete on PR #169 before claiming status-mapping /
-  nil-token work done
+- [x] **v2.7**: Steps 9–12 complete on PR #169 (status mapping + fail-closed
+  nil token + OTel attribute predefs)
 
 ## Risks & Open Questions
 
@@ -1048,7 +1048,7 @@ issuers:
 | 13 | 401 vs 403 for policy denials (HTTP-named helpers). | **Superseded** | Primary vocabulary is OAuth `error`. See #16. AuthzCheckDeny stays 403 (appropriate). |
 | 14 | Couples CEL surface to HTTP vocabulary. | **Superseded** | CEL surface is OAuth codes (+ reasons); HTTP/gRPC derived. |
 | 15 | Should `fail()` be renamed to `internalError()` for symmetry? | Open | Prefer keep `fail()` for backward compatibility. |
-| 16 | ext_authz HTTP for OAuth denials — current code uses **403**; RFC/exchange use **400**; 3scale used **401**. Envoy defaults unset Denied status to 403. | **In progress (v2.7)** | Default: OAuth client errors → `InvalidArgument` + **400** (parity with exchange). `invalid_client`/`unauthorized_client` → 401. AuthzCheckDeny stays 403. Product may override `invalid_request` → 401 later; do not blanket-403. |
+| 16 | ext_authz HTTP for OAuth denials — current code uses **403**; RFC/exchange use **400**; 3scale used **401**. Envoy defaults unset Denied status to 403. | **Resolved (v2.7)** | Default: OAuth client errors → `InvalidArgument` + **400** (parity with exchange). `invalid_client`/`unauthorized_client` → 401. AuthzCheckDeny stays 403. Product may override `invalid_request` → 401 later; do not blanket-403. |
 | 17 | Alec example `invalidSubject → invalid_target` vs RFC 8693 subject → `invalid_request`. | Open | Plan uses RFC mapping (`invalidSubject` → `invalid_request`). Confirm with Alec. |
 | 18 | Exact Layer A/B function inventory (which OAuth codes / reasons to ship in v1). | Open | Plan lists a full Layer A set + initial Layer B set; trim if review wants a smaller first cut. |
 | 19 | **NEW (v2.5)**: Should `Issuer.Issue` / `TokenService` return `MappingDecision`? | **Resolved (v2.6)** | Alec (PR #169): yes, widen now. `Issue` → `(ExchangeResult, error)`; `IssueTokens` → `(map[TokenType]ExchangeResult, error)`. Rename `ClaimMappingError` → `ExchangeError`. |
@@ -1057,9 +1057,9 @@ issuers:
 | 22 | **NEW (2026-07-23)**: New metric dimensions `mapping.oauth_error` / `mapping.abort_reason` vs distinct `result` values. | Open | Alec (PR #169): lean toward **`result` values**, not new dimensions; no decision framework yet. Plan prefers dropping those attrs from OTel histograms; keep richer detail in logs. Small code follow-up on the PR. |
 | 23 | **NEW (v2.6)**: Name: `ExchangeResult` vs `IssueResult`. | Open | Prefer Alec’s `ExchangeResult`. |
 | 24 | **NEW (v2.6)**: Layer A/B mapping table in `service` vs new package. | Resolved | In `service` next to `DenyOAuth` / `DenyReason` (Alec pointed at `service`). |
-| 25 | **NEW (v2.7)**: Nil/missing token after IssueTokens success path → OK without token header (authz) or panic (exchange). | **In progress (v2.7)** | Fail closed: Internal + 500. Optional `TokenService` assert Token XOR ExchangeErr. |
-| 26 | **NEW (v2.7)**: Rest of authz pipeline omits `DeniedHttpResponse.Status` (Envoy → 403 for Unauthenticated/Internal). | **In progress (v2.7)** | Every denial sets explicit HTTP status (Step 9). |
-| 27 | **NEW (v2.7)**: Alec nit — predefine known OAuth/reason OTel attributes (11 total). | Open | Only if #22 keeps dimensions; else moot. |
+| 25 | **NEW (v2.7)**: Nil/missing token after IssueTokens success path → OK without token header (authz) or panic (exchange). | **Resolved (v2.7)** | Fail closed: Internal + 500 in authz `issueResponse` and exchange. |
+| 26 | **NEW (v2.7)**: Rest of authz pipeline omits `DeniedHttpResponse.Status` (Envoy → 403 for Unauthenticated/Internal). | **Resolved (v2.7)** | `denyResponse` always sets explicit HTTP via `httpStatusForCode`. |
+| 27 | **NEW (v2.7)**: Alec nit — predefine known OAuth/reason OTel attributes (11 total). | **Resolved (v2.7)** | Predefined in `internal/probe/otel/observer.go`. Moot if #22 later drops dimensions. |
 
 ## Review Log
 
@@ -1073,4 +1073,4 @@ issuers:
 | 2026-07-20 | Alec | Use a structured result (like `AuthzCheckPolicy` / `AuthzCheckDecision`), not `error`, for expected OAuth outcomes. `error` only for unexpected failures. Return claims + Decision from mappers. Start without changing `Issuer.Issue`; translate Deny to token-exchange responses and revisit threading Decision through Issue. Multi-mapper: ordered merges as today, also merge decisions; first non-Allow wins + early termination; put that in `MappingResult.Merge`, not only in `ToClaims`. | **v2.5**: Redesign around `MappingResult`/`MappingDecision`/`Merge`; CEL Layer A/B → Deny; `fail` → error; Issuer unchanged initially (#19); open #20–#21 for merge edge cases. Implementation steps reset to Pending for the refactor. |
 | 2026-07-23 | Alec | PR #169 skim: seemed right. Unsure new metric dimensions are necessary; leans toward different **`result` values** instead of adding dimensions to reuse existing buckets. Correlated dims may be cheap, but no good decision framework yet for dimension-vs-result. | **Plan iterate**: Observability section + open **#22** — prefer `result` enum for metrics; keep oauth/reason detail in logs; small OTel probe follow-up on the PR. |
 | 2026-07-24 | Alec | PR #169 inline review (5 threads): (1) Widen `Issue`/`IssueTokens` with explicit `ExchangeResult`; rename `ClaimMappingError` → `ExchangeError`. (2) Clear claims on Deny merge. (3) Move Layer A/B OAuth knowledge from CEL to `service` (`DenyOAuth`/`DenyReason`). (4) Distinct abort error type vs `fail()`; `AbortDecision(err)`. (5) ext_authz: any token-type denial denies whole request. | **v2.6**: Widen Issue/IssueTokens (#19 resolved); clear claims on deny (#20 resolved); `DenyOAuth`/`DenyReason` + reason→code map in service; distinct CEL abort type; `ExchangeResult`/`ExchangeError`. |
-| 2026-08-07 | Alec | PR review (overall decent): (1) Rest of authz pipeline needs proper HTTP error status mappings. (2) Review status codes per scenario & OAuth codes — is 403 appropriate? How does that interact with Envoy policies? (3) Issuance programmer-error paths can return OK with no token — fail closed with Internal early (CVE territory). Nit: predefine known OAuth/reason OTel attributes. | **v2.7**: Steps 9–12 on **same PR #169** (Adam: no need to split) — centralize OAuth→gRPC→HTTP mapping; explicit Denied HTTP on all authz denials; nil/missing token → Internal; optional OTel attribute predefs (#22/#27). Open #25–#27; #16 in progress. |
+| 2026-08-07 | Alec | PR review (overall decent): (1) Rest of authz pipeline needs proper HTTP error status mappings. (2) Review status codes per scenario & OAuth codes — is 403 appropriate? How does that interact with Envoy policies? (3) Issuance programmer-error paths can return OK with no token — fail closed with Internal early (CVE territory). Nit: predefine known OAuth/reason OTel attributes. | **v2.7**: Steps 9–12 on **same PR #169** (Adam: no need to split) — centralize OAuth→gRPC→HTTP mapping; explicit Denied HTTP on all authz denials; nil/missing token → Internal; OTel attribute predefs (#27). Open #25–#27 resolved; #16 resolved. |

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
@@ -62,6 +63,20 @@ func TestExchangeErrToGRPC(t *testing.T) {
 		}
 	})
 
+	t.Run("invalid_client_is_unauthenticated", func(t *testing.T) {
+		err := exchangeErrToGRPC(&service.ExchangeError{
+			Message:    "bad client",
+			OAuthError: service.OAuthInvalidClient,
+		})
+		st, ok := status.FromError(err)
+		if !ok {
+			t.Fatalf("expected gRPC status, got %T", err)
+		}
+		if st.Code() != codes.Unauthenticated {
+			t.Errorf("code: got %v, want Unauthenticated", st.Code())
+		}
+	})
+
 	t.Run("no_abort_reason_when_empty", func(t *testing.T) {
 		err := exchangeErrToGRPC(&service.ExchangeError{
 			Message:    "bad request",
@@ -76,6 +91,100 @@ func TestExchangeErrToGRPC(t *testing.T) {
 			t.Error("Layer A (no reason) should not set abort_reason metadata")
 		}
 	})
+}
+
+func TestExchangeErrToAuthzDenial(t *testing.T) {
+	tests := []struct {
+		name     string
+		oauth    service.OAuthErrorCode
+		wantGRPC codes.Code
+		wantHTTP typev3.StatusCode
+		wantMsg  string
+		message  string
+	}{
+		{
+			name:     "invalid_request",
+			oauth:    service.OAuthInvalidRequest,
+			message:  "impersonated",
+			wantGRPC: codes.InvalidArgument,
+			wantHTTP: typev3.StatusCode_BadRequest,
+			wantMsg:  "impersonated",
+		},
+		{
+			name:     "invalid_target",
+			oauth:    service.OAuthInvalidTarget,
+			message:  "bad aud",
+			wantGRPC: codes.InvalidArgument,
+			wantHTTP: typev3.StatusCode_BadRequest,
+			wantMsg:  "bad aud",
+		},
+		{
+			name:     "invalid_grant",
+			oauth:    service.OAuthInvalidGrant,
+			message:  "bad grant",
+			wantGRPC: codes.InvalidArgument,
+			wantHTTP: typev3.StatusCode_BadRequest,
+			wantMsg:  "bad grant",
+		},
+		{
+			name:     "invalid_scope",
+			oauth:    service.OAuthInvalidScope,
+			message:  "bad scope",
+			wantGRPC: codes.InvalidArgument,
+			wantHTTP: typev3.StatusCode_BadRequest,
+			wantMsg:  "bad scope",
+		},
+		{
+			name:     "unsupported_grant_type",
+			oauth:    service.OAuthUnsupportedGrantType,
+			message:  "bad grant type",
+			wantGRPC: codes.InvalidArgument,
+			wantHTTP: typev3.StatusCode_BadRequest,
+			wantMsg:  "bad grant type",
+		},
+		{
+			name:     "invalid_client",
+			oauth:    service.OAuthInvalidClient,
+			message:  "bad client",
+			wantGRPC: codes.Unauthenticated,
+			wantHTTP: typev3.StatusCode_Unauthorized,
+			wantMsg:  "bad client",
+		},
+		{
+			name:     "unauthorized_client",
+			oauth:    service.OAuthUnauthorizedClient,
+			message:  "not authorized",
+			wantGRPC: codes.Unauthenticated,
+			wantHTTP: typev3.StatusCode_Unauthorized,
+			wantMsg:  "not authorized",
+		},
+		{
+			name:     "empty_message_falls_back_to_code",
+			oauth:    service.OAuthInvalidRequest,
+			message:  "",
+			wantGRPC: codes.InvalidArgument,
+			wantHTTP: typev3.StatusCode_BadRequest,
+			wantMsg:  string(service.OAuthInvalidRequest),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			grpcCode, httpStatus, msg := exchangeErrToAuthzDenial(&service.ExchangeError{
+				OAuthError: tt.oauth,
+				Message:    tt.message,
+			})
+			if grpcCode != tt.wantGRPC {
+				t.Errorf("gRPC: got %v, want %v", grpcCode, tt.wantGRPC)
+			}
+			if httpStatus != tt.wantHTTP {
+				t.Errorf("HTTP: got %v, want %v", httpStatus, tt.wantHTTP)
+			}
+			if msg != tt.wantMsg {
+				t.Errorf("message: got %q, want %q", msg, tt.wantMsg)
+			}
+		})
+	}
 }
 
 func TestInternalGRPCError(t *testing.T) {
@@ -133,6 +242,20 @@ func TestOAuthHTTPErrorHandler(t *testing.T) {
 		}
 		if body["error_description"] != "impersonated tokens are not accepted" {
 			t.Errorf("error_description: got %q", body["error_description"])
+		}
+	})
+
+	t.Run("invalid_client_writes_401", func(t *testing.T) {
+		err := exchangeErrToGRPC(&service.ExchangeError{
+			Message:    "unknown client",
+			OAuthError: service.OAuthInvalidClient,
+		})
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/token", nil)
+		oauthHTTPErrorHandler(context.Background(), mux, marshaler, rec, req, err)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("status: got %d, want 401", rec.Code)
 		}
 	})
 

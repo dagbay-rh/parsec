@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
@@ -15,6 +16,29 @@ import (
 
 const oauthErrorDomain = "oauth"
 
+// oauthDenialStatuses maps an OAuth wire code to the gRPC code and Envoy HTTP
+// status used by exchange and ext_authz. Client-auth failures are 401; other
+// OAuth client errors are 400 (RFC 8693 / exchange parity).
+func oauthDenialStatuses(code service.OAuthErrorCode) (codes.Code, typev3.StatusCode) {
+	switch code {
+	case service.OAuthInvalidClient, service.OAuthUnauthorizedClient:
+		return codes.Unauthenticated, typev3.StatusCode_Unauthorized
+	default:
+		return codes.InvalidArgument, typev3.StatusCode_BadRequest
+	}
+}
+
+// exchangeErrToAuthzDenial maps an ExchangeError to ext_authz denial fields:
+// gRPC status code, explicit DeniedHttpResponse HTTP status, and body message.
+func exchangeErrToAuthzDenial(exchErr *service.ExchangeError) (codes.Code, typev3.StatusCode, string) {
+	msg := exchErr.Message
+	if msg == "" {
+		msg = string(exchErr.OAuthError)
+	}
+	grpcCode, httpStatus := oauthDenialStatuses(exchErr.OAuthError)
+	return grpcCode, httpStatus, msg
+}
+
 // exchangeErrToGRPC maps an ExchangeError (known OAuth denial) to a gRPC
 // status with ErrorInfo carrying the OAuth wire code. Used by the exchange
 // endpoint when ExchangeResult.ExchangeErr is non-nil.
@@ -24,7 +48,8 @@ func exchangeErrToGRPC(exchErr *service.ExchangeError) error {
 		msg = string(exchErr.OAuthError)
 	}
 
-	st := status.New(codes.InvalidArgument, msg)
+	grpcCode, _ := oauthDenialStatuses(exchErr.OAuthError)
+	st := status.New(grpcCode, msg)
 	info := &errdetails.ErrorInfo{
 		Reason: string(exchErr.OAuthError),
 		Domain: oauthErrorDomain,

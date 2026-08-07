@@ -105,13 +105,34 @@ CEL Layer A/B abort helper
   → MappingResult.Merge (first non-Allow wins; clears claims on deny)
   → ToClaims returns (nil, *ExchangeError, nil)
   → Issuer.Issue returns ExchangeResult{Error: &ExchangeError{…}}
-  → Exchange: HTTP 400 + { "error", "error_description" } (via gRPC ErrorInfo)
-  → ext_authz: any type's ExchangeError → full request denial (InvalidArgument)
+  → Exchange: HTTP 400 + { "error", "error_description" } (via gRPC ErrorInfo;
+    `invalid_client` / `unauthorized_client` → 401)
+  → ext_authz: any type's ExchangeError → full request denial with explicit
+    DeniedHttpResponse status (see transport mapping below)
   → logs/metrics: mapping.oauth_error, mapping.abort_reason
 
 CEL fail() / unexpected failure
   → *MappingFailure (not an abortError) → Internal / 500
 ```
+
+## Transport mapping (exchange + ext_authz)
+
+| Scenario | gRPC code | HTTP (exchange / Envoy DeniedHttpResponse) |
+|----------|-----------|--------------------------------------------|
+| OAuth `invalid_request` / `invalid_target` / `invalid_grant` / `invalid_scope` / `unsupported_grant_type` | `InvalidArgument` | **400** |
+| OAuth `invalid_client` / `unauthorized_client` | `Unauthenticated` | **401** |
+| Credential / subject validation failed | `Unauthenticated` | **401** |
+| `AuthzCheckDeny` / trust-store filter failure | `PermissionDenied` | **403** |
+| Unexpected `error` / `fail()` / nil token | `Internal` | **500** |
+
+**Envoy pitfall**: if `DeniedHttpResponse.Status` is unset, Envoy defaults the
+downstream client status to **403** even when the gRPC code is
+`Unauthenticated` or `Internal`. Parsec always sets an explicit HTTP status on
+denials so gateway policies see the intended code.
+
+OAuth mapper denials use **400** (not 403): they are protocol / request-validity
+outcomes, same class as the exchange path. Authorization policy denies
+(`AuthzCheckDeny`) correctly stay **403**.
 
 ## Example: 3scale-parity guards
 
