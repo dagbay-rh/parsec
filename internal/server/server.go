@@ -142,6 +142,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// TCP addresses and in-memory transports like bufconn).
 	gwMux := runtime.NewServeMux(
 		runtime.WithMarshalerOption("application/x-www-form-urlencoded", NewFormMarshaler()),
+		runtime.WithErrorHandler(oauthHTTPErrorHandler),
 	)
 	opts := append(
 		[]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())},

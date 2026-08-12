@@ -3,6 +3,12 @@
 // Transforms JWT claims into a complete x-rh-identity envelope:
 //   { "identity": { ... }, "entitlements": {} }
 //
+// Policy guards (3scale parity) use Layer B CEL aborts:
+//   - impersonated tokens → invalidSubject() → OAuth invalid_request
+//   - console API tokens missing idp → invalidSubject() → OAuth invalid_request
+// Unrecognized tokens call unsupportedTokenType() (also invalid_request).
+// Reserve fail() for true mapping/system failures (Internal), not policy.
+//
 // Supports:
 //   - Registry Auth tokens (issuer is "container-registry-authorizer(.stage).api.redhat.com")
 //   - Service Account tokens (preferred_username starts with "service-account-")
@@ -10,11 +16,13 @@
 //   - RHSM API tokens (audience contains "rhsm-api")
 //   - Customer Portal tokens (audience contains "customer-portal")
 //
-// Unrecognized tokens call fail(), which causes UnsignedIssuer to return
-// a ClaimMappingError → ext_authz DENY.
-//
 // Based on: https://github.com/RedHatInsights/insights-3scale
 
+// Policy: impersonated tokens (3scale reject_impersonated)
+// Guard has(subject.claims) first — empty claim maps omit the claims key in CEL.
+has(subject.claims) && has(subject.claims.impersonated) && subject.claims.impersonated == true
+  ? invalidSubject("impersonated tokens are not accepted")
+: (
 has(subject.issuer) && subject.issuer.contains("bop") ? {
   "identity": {
     "auth_type": "cert-auth",
@@ -75,7 +83,10 @@ isServiceAccountToken(subject.claims) ? {
   },
   "entitlements": {}
 } : (
-  isConsoleApiToken(subject.claims) ? {
+  // Policy: require IdP claim for console API tokens (3scale APICAST_ENFORCE_IDP_AUTH)
+  has(subject.claims) && isConsoleApiToken(subject.claims) && !has(subject.claims.idp)
+    ? invalidSubject("claim 'idp' is required")
+  : has(subject.claims) && isConsoleApiToken(subject.claims) ? {
     "identity": {
       "auth_type": "jwt-auth",
       "account_number": has(subject.claims.organization) && has(subject.claims.organization.account_number) ?
@@ -90,7 +101,8 @@ isServiceAccountToken(subject.claims) ? {
         "last_name": has(subject.claims.family_name) ? subject.claims.family_name : "",
         "is_active": true,
         "is_org_admin": hasRole(subject.claims, "admin:org:all"),
-        "is_internal": has(subject.claims.idp) ? (subject.claims.idp == datasource("identity-policy").internal_idp_target) :
+        "is_internal": subject.claims.idp == datasource("identity-policy").internal_idp_target ?
+                       true :
                        has(subject.claims.is_internal) ? subject.claims.is_internal :
                        datasource("identity-policy").role_fallback_enabled ? hasRole(subject.claims, "redhat:employees") :
                        false,
@@ -183,9 +195,10 @@ isServiceAccountToken(subject.claims) ? {
           }
         },
         "entitlements": {}
-      } : fail("unsupported_token_type")
+      } : unsupportedTokenType("unsupported_token_type")
     )
   )
+)
 )
 )
 )

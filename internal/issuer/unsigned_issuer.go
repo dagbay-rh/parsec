@@ -48,33 +48,30 @@ func NewUnsignedIssuer(cfg UnsignedIssuerConfig) *UnsignedIssuer {
 	}
 }
 
-// Issue implements the Issuer interface
-// Returns a token containing base64-encoded JSON of the mapped claims
-func (i *UnsignedIssuer) Issue(ctx context.Context, issueCtx *service.IssueContext) (*service.Token, error) {
-	// Apply claim mappers
-	mappedClaims, err := issueCtx.ToClaims(ctx, i.claimMappers)
+// Issue implements the Issuer interface.
+// Returns a token containing base64-encoded JSON of the mapped claims.
+func (i *UnsignedIssuer) Issue(ctx context.Context, issueCtx *service.IssueContext) (service.ExchangeResult, error) {
+	mappedClaims, exchErr, err := issueCtx.ToClaims(ctx, i.claimMappers)
 	if err != nil {
-		return nil, fmt.Errorf("failed to map claims: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to map claims: %w", err)
+	}
+	if exchErr != nil {
+		return service.ExchangeResult{ExchangeErr: exchErr}, nil
 	}
 
-	// Serialize mapped claims to JSON
 	claimsJSON, err := json.Marshal(mappedClaims)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal claims: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to marshal claims: %w", err)
 	}
 
-	// Base64-encode the JSON
 	encodedToken := base64.StdEncoding.EncodeToString(claimsJSON)
 
-	// Use a far-future expiration time to indicate the token never expires
-	neverExpires := never
-
-	return &service.Token{
+	return service.ExchangeResult{Token: &service.Token{
 		Value:     encodedToken,
 		Type:      i.tokenType,
-		ExpiresAt: neverExpires,
+		ExpiresAt: never,
 		IssuedAt:  i.clock.Now(),
-	}, nil
+	}}, nil
 }
 
 // PublicKeys implements the Issuer interface

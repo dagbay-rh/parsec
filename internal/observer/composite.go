@@ -647,6 +647,12 @@ func (m *compositeTokenIssuanceProbe) TokenTypeIssuanceFailed(tokenType service.
 	}
 }
 
+func (m *compositeTokenIssuanceProbe) TokenTypeIssuanceDenied(tokenType service.TokenType, exchErr *service.ExchangeError) {
+	for _, p := range m.probes {
+		p.TokenTypeIssuanceDenied(tokenType, exchErr)
+	}
+}
+
 func (m *compositeTokenIssuanceProbe) IssuerNotFound(tokenType service.TokenType, err error) {
 	for _, p := range m.probes {
 		p.IssuerNotFound(tokenType, err)

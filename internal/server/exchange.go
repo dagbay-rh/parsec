@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	parsecv1 "github.com/project-kessel/parsec/api/gen/parsec/v1"
 	"github.com/project-kessel/parsec/internal/claims"
 	"github.com/project-kessel/parsec/internal/request"
@@ -141,7 +144,7 @@ func (s *ExchangeServer) Exchange(ctx context.Context, req *parsecv1.ExchangeReq
 	}
 
 	// 8. Issue the token via TokenService
-	tokens, err := s.tokenService.IssueTokens(ctx, &service.IssueRequest{
+	results, err := s.tokenService.IssueTokens(ctx, &service.IssueRequest{
 		Subject:           result,
 		Actor:             actor,
 		RequestAttributes: reqAttrs,
@@ -149,20 +152,26 @@ func (s *ExchangeServer) Exchange(ctx context.Context, req *parsecv1.ExchangeReq
 		Scope:             req.Scope,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to issue token: %w", err)
+		return nil, internalGRPCError(err)
 	}
 
-	token, ok := tokens[requestedTokenType]
+	r, ok := results[requestedTokenType]
 	if !ok {
-		return nil, fmt.Errorf("token service did not return requested token type %s", requestedTokenType)
+		return nil, status.Errorf(codes.Internal, "token service did not return requested token type %s", requestedTokenType)
+	}
+	if r.ExchangeErr != nil {
+		return nil, exchangeErrToGRPC(r.ExchangeErr)
+	}
+	if r.Token == nil {
+		return nil, status.Errorf(codes.Internal, "token service returned no token for type %s", requestedTokenType)
 	}
 
 	// 9. Return response
 	return &parsecv1.ExchangeResponse{
-		AccessToken:     token.Value,
+		AccessToken:     r.Token.Value,
 		IssuedTokenType: string(requestedTokenType),
 		TokenType:       "Bearer",
-		ExpiresIn:       int64(token.ExpiresAt.Sub(token.IssuedAt).Seconds()),
+		ExpiresIn:       int64(r.Token.ExpiresAt.Sub(r.Token.IssuedAt).Seconds()),
 		Scope:           req.Scope,
 	}, nil
 }

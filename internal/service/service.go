@@ -62,15 +62,14 @@ type IssueRequest struct {
 	Scope string
 }
 
-// IssueTokens orchestrates the complete token issuance process
-// Returns a map of token type to issued token
-func (ts *TokenService) IssueTokens(ctx context.Context, req *IssueRequest) (map[TokenType]*Token, error) {
-	// Create request-scoped probe that captures execution context
+// IssueTokens orchestrates the complete token issuance process.
+// Returns per-type ExchangeResults: each contains either a Token (success) or
+// an ExchangeError (known denial). Top-level error is for unexpected failures
+// only (issuer not found, signing failures, etc.).
+func (ts *TokenService) IssueTokens(ctx context.Context, req *IssueRequest) (map[TokenType]ExchangeResult, error) {
 	ctx, p := ts.observer.TokenIssuanceStarted(ctx, req.Subject, req.Actor, req.Scope, req.TokenTypes)
 	defer p.End()
 
-	// Build issue context with base information needed for all issuers
-	// Audience is always the trust domain per transaction token spec
 	issueCtx := &IssueContext{
 		Subject:            req.Subject,
 		Actor:              req.Actor,
@@ -80,8 +79,7 @@ func (ts *TokenService) IssueTokens(ctx context.Context, req *IssueRequest) (map
 		DataSourceRegistry: ts.dataSources,
 	}
 
-	// Issue tokens for each requested type
-	tokens := make(map[TokenType]*Token)
+	results := make(map[TokenType]ExchangeResult)
 	for _, tokenType := range req.TokenTypes {
 		p.TokenTypeIssuanceStarted(tokenType)
 
@@ -91,15 +89,19 @@ func (ts *TokenService) IssueTokens(ctx context.Context, req *IssueRequest) (map
 			return nil, fmt.Errorf("no issuer for token type %s: %w", tokenType, err)
 		}
 
-		token, err := iss.Issue(ctx, issueCtx)
+		result, err := iss.Issue(ctx, issueCtx)
 		if err != nil {
 			p.TokenTypeIssuanceFailed(tokenType, err)
 			return nil, fmt.Errorf("failed to issue %s: %w", tokenType, err)
 		}
 
-		p.TokenTypeIssuanceSucceeded(tokenType, token)
-		tokens[tokenType] = token
+		if result.ExchangeErr != nil {
+			p.TokenTypeIssuanceDenied(tokenType, result.ExchangeErr)
+		} else {
+			p.TokenTypeIssuanceSucceeded(tokenType, result.Token)
+		}
+		results[tokenType] = result
 	}
 
-	return tokens, nil
+	return results, nil
 }

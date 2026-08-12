@@ -478,6 +478,7 @@ func jwtIdentitySubtests(t *testing.T, authzServer *server.AuthzServer, jwks *ht
 			"given_name":         "Dual",
 			"family_name":        "User",
 			"locale":             "en_US",
+			"idp":                "https://sso.redhat.com/auth/realms/redhat-external",
 			"aud":                []string{"rhsm-api"},
 			"organization": map[string]interface{}{
 				"id":             "org-dual",
