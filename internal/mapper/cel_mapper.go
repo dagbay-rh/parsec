@@ -19,13 +19,17 @@ import (
 // The CEL expression has access to the following variables and functions:
 //   - datasource(name) - function to fetch data from a named data source
 //   - now_ms() - current Unix time in milliseconds
-//   - fail(message) - reject the input with a structured error
+//   - fail(message) - reject as an internal/mapping failure (no OAuth error)
+//   - Layer A OAuth aborts: invalidRequest, invalidTarget, invalidGrant, …
+//   - Layer B reason helpers: invalidSubject, invalidActor, invalidAudience,
+//     unsupportedTokenType
 //   - subject - the subject identity information as a map
 //   - actor - the actor identity information as a map
 //   - request - the request attributes as a map
 //
 // The expression should evaluate to a map that will be used as the claims,
-// or call fail() to abort mapping with a structured error.
+// call a Layer A/B abort helper (Deny decision, err nil), or call fail() for
+// an unexpected mapping/system failure (error).
 //
 // Example CEL expressions:
 //
@@ -35,8 +39,13 @@ import (
 //	// Fetch from data source
 //	{"roles": datasource("user_roles").roles}
 //
-//	// Reject unrecognised input
-//	condition ? {"user": subject.subject} : fail("unsupported_token_type")
+//	// Policy guard (Layer B) then map
+//	!has(subject.claims.idp)
+//	  ? invalidSubject("claim 'idp' is required")
+//	  : {"user": subject.subject}
+//
+//	// Reject unrecognised input (Layer B → invalid_request)
+//	condition ? {"user": subject.subject} : unsupportedTokenType("unsupported_token_type")
 //
 //	// Complex expressions
 //	{
@@ -103,10 +112,12 @@ func NewCELMapper(script string, opts ...CELMapperOption) (*CELMapper, error) {
 	}, nil
 }
 
-// Map evaluates the CEL expression and returns the resulting claims
-func (m *CELMapper) Map(ctx context.Context, input *service.MapperInput) (claims.Claims, error) {
+// Map evaluates the CEL expression and returns a MappingResult.
+// Layer A/B OAuth abort helpers become Deny decisions with err == nil.
+// fail() and other evaluation failures return error (unexpected).
+func (m *CELMapper) Map(ctx context.Context, input *service.MapperInput) (service.MappingResult, error) {
 	if input == nil {
-		return nil, fmt.Errorf("mapper input cannot be nil")
+		return service.MappingResult{}, fmt.Errorf("mapper input cannot be nil")
 	}
 
 	// Create CEL environment with the datasource registry for this invocation
@@ -118,43 +129,43 @@ func (m *CELMapper) Map(ctx context.Context, input *service.MapperInput) (claims
 		celhelpers.RedHatHelpersLibrary(),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
+		return service.MappingResult{}, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
 	// Create program from the pre-compiled AST with the runtime environment
 	// This allows us to inject different datasources per invocation
 	program, err := env.Program(m.ast)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create CEL program: %w", err)
+		return service.MappingResult{}, fmt.Errorf("failed to create CEL program: %w", err)
 	}
 
 	// Create activation with variables for this invocation
 	activation := m.createActivation(ctx, input)
 
 	// Evaluate the program with the activation.
-	// When a CEL function (fail) returns a types.Err, program.Eval
+	// When a CEL abort helper (or fail) returns a types.Err, program.Eval
 	// surfaces it through the Go error return.
 	result, _, err := program.Eval(activation)
 	if err != nil {
-		if me := celhelpers.UnwrapMappingError(err); me != nil {
-			return nil, me
+		if decision, ok := celhelpers.AbortDecision(err); ok {
+			return service.MappingResult{Decision: decision}, nil
 		}
-		return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)
+		return service.MappingResult{}, fmt.Errorf("failed to evaluate CEL expression: %w", err)
 	}
 
 	// Convert CEL result to native Go value
 	resultValue := celhelpers.ConvertCELValue(result)
 	if resultValue == nil {
-		return nil, nil
+		return service.AllowResult(nil), nil
 	}
 
 	// Result should be a map
 	resultMap, ok := resultValue.(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("CEL expression must evaluate to a map, got: %T", resultValue)
+		return service.MappingResult{}, fmt.Errorf("CEL expression must evaluate to a map, got: %T", resultValue)
 	}
 
-	return claims.Claims(resultMap), nil
+	return service.AllowResult(claims.Claims(resultMap)), nil
 }
 
 // Script returns the CEL script used by this mapper

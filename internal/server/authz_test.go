@@ -9,9 +9,12 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	authv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/project-kessel/parsec/internal/issuer"
+	"github.com/project-kessel/parsec/internal/mapper"
 	"github.com/project-kessel/parsec/internal/service"
 	"github.com/project-kessel/parsec/internal/trust"
 )
@@ -1334,4 +1337,207 @@ type stubPolicy struct {
 
 func (p *stubPolicy) Decide(_ context.Context, _ AuthzCheckPolicyInput) (AuthzCheckDecision, error) {
 	return p.decision, nil
+}
+
+func TestAuthz_IssueResponse_MapperAbort(t *testing.T) {
+	ctx := context.Background()
+
+	newAuthzWithMapper := func(t *testing.T, script string) *AuthzServer {
+		t.Helper()
+		celMapper, err := mapper.NewCELMapper(script)
+		if err != nil {
+			t.Fatalf("create mapper: %v", err)
+		}
+		trustStore := trust.NewStubStore()
+		trustStore.AddValidator(trust.NewStubValidator(trust.CredentialTypeBearer))
+		registry := service.NewSimpleRegistry()
+		registry.Register(service.TokenTypeTransactionToken, issuer.NewStubIssuer(issuer.StubIssuerConfig{
+			IssuerURL:                 "https://parsec.test",
+			TTL:                       time.Minute,
+			TransactionContextMappers: []service.ClaimMapper{celMapper},
+		}))
+		tokenService := service.NewTokenService("parsec.test", service.NewDataSourceRegistry(), registry, nil)
+		return NewAuthzServer(trustStore, tokenService, nil, DefaultCredentialSources(), nil)
+	}
+
+	checkReq := &authv3.CheckRequest{
+		Attributes: &authv3.AttributeContext{
+			Request: &authv3.AttributeContext_Request{
+				Http: &authv3.AttributeContext_HttpRequest{
+					Method: "GET",
+					Path:   "/api/resource",
+					Headers: map[string]string{
+						"authorization": "Bearer test-token",
+					},
+				},
+			},
+		},
+	}
+
+	t.Run("invalid_request_not_internal", func(t *testing.T) {
+		srv := newAuthzWithMapper(t, `invalidSubject("impersonated tokens are not accepted")`)
+		resp, err := srv.Check(ctx, checkReq)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Status.Code != int32(codes.InvalidArgument) {
+			t.Errorf("code: got %d, want InvalidArgument (%d)", resp.Status.Code, codes.InvalidArgument)
+		}
+		if !strings.Contains(resp.Status.Message, "impersonated tokens are not accepted") {
+			t.Errorf("message: got %q", resp.Status.Message)
+		}
+		denied := resp.GetDeniedResponse()
+		if denied == nil {
+			t.Fatal("expected DeniedHttpResponse")
+		}
+		if denied.GetStatus().GetCode() != typev3.StatusCode_BadRequest {
+			t.Errorf("HTTP status: got %d, want BadRequest (%d)", denied.GetStatus().GetCode(), typev3.StatusCode_BadRequest)
+		}
+	})
+
+	t.Run("fail_is_internal", func(t *testing.T) {
+		srv := newAuthzWithMapper(t, `fail("mapping exploded")`)
+		resp, err := srv.Check(ctx, checkReq)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Status.Code != int32(codes.Internal) {
+			t.Errorf("code: got %d, want Internal (%d)", resp.Status.Code, codes.Internal)
+		}
+		denied := resp.GetDeniedResponse()
+		if denied == nil {
+			t.Fatal("expected DeniedHttpResponse")
+		}
+		if denied.GetStatus().GetCode() != typev3.StatusCode_InternalServerError {
+			t.Errorf("HTTP status: got %d, want InternalServerError (%d)", denied.GetStatus().GetCode(), typev3.StatusCode_InternalServerError)
+		}
+	})
+
+	t.Run("nil_token_is_internal", func(t *testing.T) {
+		trustStore := trust.NewStubStore()
+		trustStore.AddValidator(trust.NewStubValidator(trust.CredentialTypeBearer))
+		registry := service.NewSimpleRegistry()
+		registry.Register(service.TokenTypeTransactionToken, &nilTokenIssuer{})
+		tokenService := service.NewTokenService("parsec.test", service.NewDataSourceRegistry(), registry, nil)
+		srv := NewAuthzServer(trustStore, tokenService, nil, DefaultCredentialSources(), nil)
+
+		resp, err := srv.Check(ctx, checkReq)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Status.Code != int32(codes.Internal) {
+			t.Errorf("code: got %d, want Internal (%d)", resp.Status.Code, codes.Internal)
+		}
+		if resp.Status.Code == int32(codes.OK) {
+			t.Fatal("nil token must not return OK")
+		}
+		denied := resp.GetDeniedResponse()
+		if denied == nil {
+			t.Fatal("expected DeniedHttpResponse")
+		}
+		if denied.GetStatus().GetCode() != typev3.StatusCode_InternalServerError {
+			t.Errorf("HTTP status: got %d, want InternalServerError (%d)", denied.GetStatus().GetCode(), typev3.StatusCode_InternalServerError)
+		}
+		if !strings.Contains(resp.Status.Message, "no token") {
+			t.Errorf("message: got %q", resp.Status.Message)
+		}
+	})
+}
+
+// nilTokenIssuer returns a successful ExchangeResult with a nil Token — the
+// programmer-error path that must fail closed at the transport layer.
+type nilTokenIssuer struct{}
+
+func (nilTokenIssuer) Issue(context.Context, *service.IssueContext) (service.ExchangeResult, error) {
+	return service.ExchangeResult{}, nil
+}
+
+func (nilTokenIssuer) PublicKeys(context.Context) ([]service.PublicKey, error) {
+	return nil, nil
+}
+
+func TestAuthz_DenialHTTPStatus(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("validation_unauthenticated_401", func(t *testing.T) {
+		trustStore := trust.NewStubStore()
+		v := trust.NewStubValidator(trust.CredentialTypeBearer)
+		v.WithError(trust.ErrInvalidToken)
+		trustStore.AddValidator(v)
+
+		registry := service.NewSimpleRegistry()
+		registry.Register(service.TokenTypeTransactionToken, issuer.NewStubIssuer(issuer.StubIssuerConfig{
+			IssuerURL: "https://parsec.test",
+			TTL:       time.Minute,
+		}))
+		tokenService := service.NewTokenService("parsec.test", service.NewDataSourceRegistry(), registry, nil)
+		srv := NewAuthzServer(trustStore, tokenService, nil, DefaultCredentialSources(), nil)
+
+		resp, err := srv.Check(ctx, &authv3.CheckRequest{
+			Attributes: &authv3.AttributeContext{
+				Request: &authv3.AttributeContext_Request{
+					Http: &authv3.AttributeContext_HttpRequest{
+						Method:  "GET",
+						Path:    "/api/resource",
+						Headers: map[string]string{"authorization": "Bearer bad"},
+					},
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Status.Code != int32(codes.Unauthenticated) {
+			t.Errorf("code: got %d, want Unauthenticated", resp.Status.Code)
+		}
+		denied := resp.GetDeniedResponse()
+		if denied == nil {
+			t.Fatal("expected DeniedHttpResponse")
+		}
+		if denied.GetStatus() == nil {
+			t.Fatal("DeniedHttpResponse.Status must be set (Envoy defaults unset to 403)")
+		}
+		if denied.GetStatus().GetCode() != typev3.StatusCode_Unauthorized {
+			t.Errorf("HTTP status: got %d, want Unauthorized (401)", denied.GetStatus().GetCode())
+		}
+	})
+
+	t.Run("policy_deny_403", func(t *testing.T) {
+		trustStore := trust.NewStubStore()
+		trustStore.AddValidator(trust.NewStubValidator(trust.CredentialTypeBearer))
+		registry := service.NewSimpleRegistry()
+		registry.Register(service.TokenTypeTransactionToken, issuer.NewStubIssuer(issuer.StubIssuerConfig{
+			IssuerURL: "https://parsec.test",
+			TTL:       time.Minute,
+		}))
+		tokenService := service.NewTokenService("parsec.test", service.NewDataSourceRegistry(), registry, nil)
+		srv := NewAuthzServer(trustStore, tokenService, &stubPolicy{
+			decision: AuthzCheckDecision{Action: AuthzCheckDeny, Reason: "not allowed"},
+		}, DefaultCredentialSources(), nil)
+
+		resp, err := srv.Check(ctx, &authv3.CheckRequest{
+			Attributes: &authv3.AttributeContext{
+				Request: &authv3.AttributeContext_Request{
+					Http: &authv3.AttributeContext_HttpRequest{
+						Method:  "GET",
+						Path:    "/api/resource",
+						Headers: map[string]string{"authorization": "Bearer test-token"},
+					},
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp.Status.Code != int32(codes.PermissionDenied) {
+			t.Errorf("code: got %d, want PermissionDenied", resp.Status.Code)
+		}
+		denied := resp.GetDeniedResponse()
+		if denied == nil {
+			t.Fatal("expected DeniedHttpResponse")
+		}
+		if denied.GetStatus().GetCode() != typev3.StatusCode_Forbidden {
+			t.Errorf("HTTP status: got %d, want Forbidden (403)", denied.GetStatus().GetCode())
+		}
+	})
 }

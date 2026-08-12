@@ -26,6 +26,7 @@ func TestNoOp_AllProbeMethodsCallable(t *testing.T) {
 		p.TokenTypeIssuanceStarted("t")
 		p.TokenTypeIssuanceSucceeded("t", nil)
 		p.TokenTypeIssuanceFailed("t", errors.New("x"))
+		p.TokenTypeIssuanceDenied("t", &service.ExchangeError{OAuthError: service.OAuthInvalidRequest, Message: "denied"})
 		p.IssuerNotFound("t", errors.New("x"))
 		p.End()
 	}

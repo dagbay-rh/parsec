@@ -32,17 +32,21 @@ type IssueContext struct {
 	DataSourceRegistry *DataSourceRegistry
 }
 
-// ToClaims applies a set of claim mappers to produce claims
-// This is a convenience method to reduce duplication in issuer implementations
-func (ic *IssueContext) ToClaims(ctx context.Context, mappers []ClaimMapper) (claims.Claims, error) {
-	// Build data source input
+// ToClaims applies a set of claim mappers to produce claims.
+// Mappers are composed in order via MappingResult.Merge (first non-Allow
+// decision wins; further mappers are not called).
+//
+// Returns:
+//   - (claims, nil, nil) on success
+//   - (nil, *ExchangeError, nil) on policy/protocol denial
+//   - (nil, nil, error) on unexpected failure (fail(), eval bugs)
+func (ic *IssueContext) ToClaims(ctx context.Context, mappers []ClaimMapper) (claims.Claims, *ExchangeError, error) {
 	dataSourceInput := &DataSourceInput{
 		Subject:           ic.Subject,
 		Actor:             ic.Actor,
 		RequestAttributes: ic.RequestAttributes,
 	}
 
-	// Build mapper input
 	mapperInput := &MapperInput{
 		Subject:            ic.Subject,
 		Actor:              ic.Actor,
@@ -51,17 +55,19 @@ func (ic *IssueContext) ToClaims(ctx context.Context, mappers []ClaimMapper) (cl
 		DataSourceInput:    dataSourceInput,
 	}
 
-	// Apply mappers
-	result := make(claims.Claims)
+	acc := AllowResult(make(claims.Claims))
 	for _, mapper := range mappers {
-		mapperClaims, err := mapper.Map(ctx, mapperInput)
+		mr, err := mapper.Map(ctx, mapperInput)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		result.Merge(mapperClaims)
+		acc = acc.Merge(mr)
+		if !acc.Decision.IsAllow() {
+			return nil, acc.Decision.AsExchangeError(), nil
+		}
 	}
 
-	return result, nil
+	return acc.Claims, nil, nil
 }
 
 // PublicKey represents a public key for token verification
@@ -80,16 +86,18 @@ type PublicKey struct {
 	Use string
 }
 
-// Issuer creates signed tokens from issue context
-// The issuer is responsible for claim mapping, cryptographic operations, and token formatting
+// Issuer creates signed tokens from issue context.
+// The issuer is responsible for claim mapping, cryptographic operations, and
+// token formatting.
 type Issuer interface {
-	// Issue creates a token from the provided context
-	// The issuer handles all claim mapping internally based on its configuration
-	Issue(ctx context.Context, issueCtx *IssueContext) (*Token, error)
+	// Issue produces a token or a known exchange denial.
+	// ExchangeResult.Token is set on success; ExchangeResult.ExchangeErr is
+	// set when issuance was refused for a policy/protocol reason (OAuth error).
+	// The top-level error is reserved for unexpected failures.
+	Issue(ctx context.Context, issueCtx *IssueContext) (ExchangeResult, error)
 
-	// PublicKeys returns the set of public keys for verifying tokens issued by this issuer
-	// Returns an empty slice for unsigned tokens (e.g., stub implementations)
-	// The keys may come from various sources: in-memory, JWKS URI, KMS, etc.
+	// PublicKeys returns the set of public keys for verifying tokens issued by
+	// this issuer. Returns an empty slice for unsigned tokens.
 	PublicKeys(ctx context.Context) ([]PublicKey, error)
 }
 

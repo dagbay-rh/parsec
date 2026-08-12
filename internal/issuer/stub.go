@@ -55,44 +55,42 @@ func NewStubIssuer(cfg StubIssuerConfig) *StubIssuer {
 	}
 }
 
-// Issue implements the Issuer interface
-func (i *StubIssuer) Issue(ctx context.Context, issueCtx *service.IssueContext) (*service.Token, error) {
-	// Apply transaction context mappers (currently unused in stub, but kept for consistency)
-	_, err := issueCtx.ToClaims(ctx, i.transactionContextMappers)
+// Issue implements the Issuer interface.
+func (i *StubIssuer) Issue(ctx context.Context, issueCtx *service.IssueContext) (service.ExchangeResult, error) {
+	_, exchErr, err := issueCtx.ToClaims(ctx, i.transactionContextMappers)
 	if err != nil {
-		return nil, fmt.Errorf("failed to map transaction context: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to map transaction context: %w", err)
+	}
+	if exchErr != nil {
+		return service.ExchangeResult{ExchangeErr: exchErr}, nil
 	}
 
-	// Apply request context mappers
-	requestContext, err := issueCtx.ToClaims(ctx, i.requestContextMappers)
+	requestContext, exchErr, err := issueCtx.ToClaims(ctx, i.requestContextMappers)
 	if err != nil {
-		return nil, fmt.Errorf("failed to map request context: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to map request context: %w", err)
+	}
+	if exchErr != nil {
+		return service.ExchangeResult{ExchangeErr: exchErr}, nil
 	}
 
 	now := i.clock.Now()
 	expiresAt := now.Add(i.ttl)
-
-	// Generate a simple token ID with microsecond precision for uniqueness
 	txnID := fmt.Sprintf("txn-%d", now.UnixNano()/1000)
-
-	// Include subject from the issue context
 	subject := issueCtx.Subject.Subject
 
-	// Encode the request context as JSON so tests can verify filtering
 	requestContextJSON, err := json.Marshal(requestContext)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request context: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to marshal request context: %w", err)
 	}
 
-	// Format: stub-txn-token.{subject}.{txnID}.{requestContextJSON}
 	tokenValue := fmt.Sprintf("stub-txn-token.%s.%s.%s", subject, txnID, string(requestContextJSON))
 
-	return &service.Token{
+	return service.ExchangeResult{Token: &service.Token{
 		Value:     tokenValue,
 		Type:      "urn:ietf:params:oauth:token-type:txn_token",
 		ExpiresAt: expiresAt,
 		IssuedAt:  now,
-	}, nil
+	}}, nil
 }
 
 // PublicKeys implements the Issuer interface

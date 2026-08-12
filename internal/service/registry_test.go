@@ -240,8 +240,8 @@ type testIssuerWithKeys struct {
 	publicKeys []PublicKey
 }
 
-func (i *testIssuerWithKeys) Issue(ctx context.Context, issueCtx *IssueContext) (*Token, error) {
-	return nil, nil
+func (i *testIssuerWithKeys) Issue(ctx context.Context, issueCtx *IssueContext) (ExchangeResult, error) {
+	return ExchangeResult{}, nil
 }
 
 func (i *testIssuerWithKeys) PublicKeys(ctx context.Context) ([]PublicKey, error) {
@@ -251,8 +251,8 @@ func (i *testIssuerWithKeys) PublicKeys(ctx context.Context) ([]PublicKey, error
 // testIssuerWithError is a test issuer that returns an error
 type testIssuerWithError struct{}
 
-func (i *testIssuerWithError) Issue(ctx context.Context, issueCtx *IssueContext) (*Token, error) {
-	return nil, nil
+func (i *testIssuerWithError) Issue(ctx context.Context, issueCtx *IssueContext) (ExchangeResult, error) {
+	return ExchangeResult{}, nil
 }
 
 func (i *testIssuerWithError) PublicKeys(ctx context.Context) ([]PublicKey, error) {

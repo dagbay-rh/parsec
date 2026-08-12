@@ -64,108 +64,101 @@ func NewTransactionTokenIssuer(cfg TransactionTokenIssuerConfig) *TransactionTok
 	}
 }
 
-// Issue implements the Issuer interface
-// Issues a signed JWT transaction token per draft-ietf-oauth-transaction-tokens
-func (i *TransactionTokenIssuer) Issue(ctx context.Context, issueCtx *service.IssueContext) (*service.Token, error) {
-	// Apply transaction context mappers
-	transactionContext, err := issueCtx.ToClaims(ctx, i.transactionContextMappers)
+// Issue implements the Issuer interface.
+// Issues a signed JWT transaction token per draft-ietf-oauth-transaction-tokens.
+func (i *TransactionTokenIssuer) Issue(ctx context.Context, issueCtx *service.IssueContext) (service.ExchangeResult, error) {
+	transactionContext, exchErr, err := issueCtx.ToClaims(ctx, i.transactionContextMappers)
 	if err != nil {
-		return nil, fmt.Errorf("failed to map transaction context: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to map transaction context: %w", err)
+	}
+	if exchErr != nil {
+		return service.ExchangeResult{ExchangeErr: exchErr}, nil
 	}
 
-	// Apply request context mappers
-	requestContext, err := issueCtx.ToClaims(ctx, i.requestContextMappers)
+	requestContext, exchErr, err := issueCtx.ToClaims(ctx, i.requestContextMappers)
 	if err != nil {
-		return nil, fmt.Errorf("failed to map request context: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to map request context: %w", err)
+	}
+	if exchErr != nil {
+		return service.ExchangeResult{ExchangeErr: exchErr}, nil
 	}
 
 	now := i.clock.Now()
 	expiresAt := now.Add(i.ttl)
-
-	// Generate UUIDv7 for transaction ID (provides temporal ordering)
 	txnID := uuid.NewString()
 
-	// Build JWT token per draft-ietf-oauth-transaction-tokens
 	token := jwt.New()
 
-	// Standard JWT claims
 	if err := token.Set(jwt.IssuerKey, i.issuerURL); err != nil {
-		return nil, fmt.Errorf("failed to set issuer: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to set issuer: %w", err)
 	}
 	if err := token.Set(jwt.SubjectKey, issueCtx.Subject.Subject); err != nil {
-		return nil, fmt.Errorf("failed to set subject: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to set subject: %w", err)
 	}
 	if err := token.Set(jwt.AudienceKey, []string{issueCtx.Audience}); err != nil {
-		return nil, fmt.Errorf("failed to set audience: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to set audience: %w", err)
 	}
 	if err := token.Set(jwt.IssuedAtKey, now.Unix()); err != nil {
-		return nil, fmt.Errorf("failed to set issued at: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to set issued at: %w", err)
 	}
 	if err := token.Set(jwt.ExpirationKey, expiresAt.Unix()); err != nil {
-		return nil, fmt.Errorf("failed to set expiration: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to set expiration: %w", err)
 	}
 	if err := token.Set(jwt.NotBeforeKey, now.Unix()); err != nil {
-		return nil, fmt.Errorf("failed to set not before: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to set not before: %w", err)
 	}
 	if err := token.Set(jwt.JwtIDKey, uuid.NewString()); err != nil {
-		return nil, fmt.Errorf("failed to set JWT ID: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to set JWT ID: %w", err)
 	}
 
-	// Transaction token specific claims
 	if err := token.Set("txn", txnID); err != nil {
-		return nil, fmt.Errorf("failed to set transaction ID: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to set transaction ID: %w", err)
 	}
 
-	// Transaction context (tctx) - authorization context for the transaction
 	if len(transactionContext) > 0 {
 		if err := token.Set("tctx", transactionContext); err != nil {
-			return nil, fmt.Errorf("failed to set transaction context: %w", err)
+			return service.ExchangeResult{}, fmt.Errorf("failed to set transaction context: %w", err)
 		}
 	}
 
-	// Request context (req_ctx) - information about the request being authorized
 	if len(requestContext) > 0 {
 		if err := token.Set("req_ctx", requestContext); err != nil {
-			return nil, fmt.Errorf("failed to set request context: %w", err)
+			return service.ExchangeResult{}, fmt.Errorf("failed to set request context: %w", err)
 		}
 	}
 
-	// Scope (if provided)
 	if issueCtx.Scope != "" {
 		if err := token.Set("scope", issueCtx.Scope); err != nil {
-			return nil, fmt.Errorf("failed to set scope: %w", err)
+			return service.ExchangeResult{}, fmt.Errorf("failed to set scope: %w", err)
 		}
 	}
 
-	// Get the current signer, key ID, and algorithm from the signer
 	signer, keyID, algorithm, err := i.signer.GetCurrentSigner(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get current signer: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to get current signer: %w", err)
 	}
 	signAlg, ok := jwa.LookupSignatureAlgorithm(string(algorithm))
 	if !ok {
-		return nil, fmt.Errorf("unsupported signature algorithm: %s", algorithm)
+		return service.ExchangeResult{}, fmt.Errorf("unsupported signature algorithm: %s", algorithm)
 	}
 
-	// Build JWS headers with the key ID
 	headers := jws.NewHeaders()
 	if err := headers.Set(jws.KeyIDKey, string(keyID)); err != nil {
-		return nil, fmt.Errorf("failed to set key ID header: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to set key ID header: %w", err)
 	}
 
-	// Sign the token with the current key
 	signedToken, err := jwt.Sign(token,
 		jwt.WithKey(signAlg, signer, jws.WithProtectedHeaders(headers)))
 	if err != nil {
-		return nil, fmt.Errorf("failed to sign token: %w", err)
+		return service.ExchangeResult{}, fmt.Errorf("failed to sign token: %w", err)
 	}
 
-	return &service.Token{
+	return service.ExchangeResult{Token: &service.Token{
 		Value:     string(signedToken),
 		Type:      "urn:ietf:params:oauth:token-type:txn_token",
 		ExpiresAt: expiresAt,
 		IssuedAt:  now,
-	}, nil
+	}}, nil
 }
 
 // PublicKeys implements the Issuer interface

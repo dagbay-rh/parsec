@@ -24,7 +24,9 @@ type DataSourceRegistry interface {
 // This provides compile-time declarations for:
 //   - datasource(name) - function to fetch data from a named data source
 //   - now_ms() - current Unix time in milliseconds (wall clock at evaluation)
-//   - fail(message) - reject the input with a ClaimMappingError
+//   - fail(message) - unexpected mapping/system failure (Map returns error)
+//   - Layer A OAuth abort helpers (invalidRequest, invalidTarget, …) → Deny decision
+//   - Layer B reason helpers (invalidSubject, invalidActor, …) → Deny decision
 //   - subject, actor, request - variables containing identity and request data
 //
 // Pass nil for registry to create a test/validation environment.
@@ -48,7 +50,7 @@ type mapperInputLib struct {
 }
 
 func (lib *mapperInputLib) CompileOptions() []cel.EnvOption {
-	return []cel.EnvOption{
+	opts := []cel.EnvOption{
 		cel.Function("datasource",
 			cel.Overload("datasource_string",
 				[]*cel.Type{cel.StringType},
@@ -76,10 +78,52 @@ func (lib *mapperInputLib) CompileOptions() []cel.EnvOption {
 		cel.Variable("actor", cel.DynType),
 		cel.Variable("request", cel.DynType),
 	}
+	opts = append(opts, oauthAbortFunctions()...)
+	return opts
 }
 
 func (lib *mapperInputLib) ProgramOptions() []cel.ProgramOption {
 	return []cel.ProgramOption{}
+}
+
+// oauthAbortFunctions registers Layer A (direct OAuth codes) and Layer B
+// (reason helpers) abort functions for claim-mapper CEL scripts.
+// OAuth knowledge lives in service.DenyOAuth / DenyReason; CEL only binds names.
+func oauthAbortFunctions() []cel.EnvOption {
+	type abortSpec struct {
+		name string
+		deny func(message string) service.MappingResult
+	}
+	specs := []abortSpec{
+		// Layer A — direct OAuth / token-exchange error codes
+		{"invalidRequest", func(m string) service.MappingResult { return service.DenyOAuth(service.OAuthInvalidRequest, m) }},
+		{"invalidTarget", func(m string) service.MappingResult { return service.DenyOAuth(service.OAuthInvalidTarget, m) }},
+		{"invalidGrant", func(m string) service.MappingResult { return service.DenyOAuth(service.OAuthInvalidGrant, m) }},
+		{"unauthorizedClient", func(m string) service.MappingResult { return service.DenyOAuth(service.OAuthUnauthorizedClient, m) }},
+		{"invalidClient", func(m string) service.MappingResult { return service.DenyOAuth(service.OAuthInvalidClient, m) }},
+		{"unsupportedGrantType", func(m string) service.MappingResult { return service.DenyOAuth(service.OAuthUnsupportedGrantType, m) }},
+		{"invalidScope", func(m string) service.MappingResult { return service.DenyOAuth(service.OAuthInvalidScope, m) }},
+		// Layer B — reason helpers (reason→code mapping lives in service)
+		{"invalidSubject", func(m string) service.MappingResult { return service.DenyReason(service.AbortReasonInvalidSubject, m) }},
+		{"invalidActor", func(m string) service.MappingResult { return service.DenyReason(service.AbortReasonInvalidActor, m) }},
+		{"invalidAudience", func(m string) service.MappingResult { return service.DenyReason(service.AbortReasonInvalidAudience, m) }},
+		{"unsupportedTokenType", func(m string) service.MappingResult {
+			return service.DenyReason(service.AbortReasonUnsupportedTokenType, m)
+		}},
+	}
+
+	opts := make([]cel.EnvOption, 0, len(specs))
+	for _, spec := range specs {
+		name, deny := spec.name, spec.deny
+		opts = append(opts, cel.Function(name,
+			cel.Overload(name+"_string",
+				[]*cel.Type{cel.StringType},
+				cel.DynType,
+				cel.UnaryBinding(mappingAbort(deny)),
+			),
+		))
+	}
+	return opts
 }
 
 // fetchDatasource implements the datasource() CEL function
@@ -139,17 +183,43 @@ func mappingFail(arg ref.Val) ref.Val {
 	if !ok {
 		return types.NewErr("fail argument must be a string")
 	}
-	return types.WrapErr(&service.ClaimMappingError{
-		Message: msg,
-	})
+	return types.WrapErr(&service.MappingFailure{Message: msg})
 }
 
-// UnwrapMappingError extracts a *service.ClaimMappingError from an error chain
-// produced by CEL evaluation. Returns nil when the error is unrelated to fail().
-func UnwrapMappingError(err error) *service.ClaimMappingError {
-	var me *service.ClaimMappingError
-	if errors.As(err, &me) {
-		return me
+// abortError carries a MappingDecision for CEL abort helpers.
+// It is distinct from fail() MappingFailure — AbortDecision extracts it.
+type abortError struct {
+	decision service.MappingDecision
+}
+
+func (e *abortError) Error() string { return e.decision.Message }
+
+func mappingAbort(deny func(message string) service.MappingResult) func(ref.Val) ref.Val {
+	return func(arg ref.Val) ref.Val {
+		msg, ok := arg.Value().(string)
+		if !ok {
+			return types.NewErr("abort argument must be a string")
+		}
+		return types.WrapErr(&abortError{decision: deny(msg).Decision})
+	}
+}
+
+// AbortDecision extracts a MappingDecision from a CEL abort error.
+// Returns false for fail()-style MappingFailure and any other unexpected errors.
+func AbortDecision(err error) (service.MappingDecision, bool) {
+	var ae *abortError
+	if errors.As(err, &ae) {
+		return ae.decision, true
+	}
+	return service.MappingDecision{}, false
+}
+
+// UnwrapMappingFailure extracts a *service.MappingFailure from a CEL eval error
+// chain (fail()). Returns nil for abort decisions and other errors.
+func UnwrapMappingFailure(err error) *service.MappingFailure {
+	var mf *service.MappingFailure
+	if errors.As(err, &mf) {
+		return mf
 	}
 	return nil
 }

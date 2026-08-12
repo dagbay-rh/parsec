@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/project-kessel/parsec/internal/claims"
 	"github.com/project-kessel/parsec/internal/trust"
 )
 
@@ -155,19 +156,146 @@ func TestTokenService_IssueTokens_Observability(t *testing.T) {
 		)
 	})
 
+	t.Run("exchange error denial calls TokenTypeIssuanceDenied", func(t *testing.T) {
+		fakeObs := NewFakeObserver(t)
+		exchErr := &ExchangeError{
+			Message:    "impersonated tokens not accepted",
+			OAuthError: OAuthInvalidRequest,
+			Reason:     AbortReasonInvalidSubject,
+		}
+		issuer := &testIssuerStub{exchErr: exchErr}
+
+		registry := NewSimpleRegistry()
+		registry.Register(TokenTypeTransactionToken, issuer)
+
+		service := NewTokenService("trust.example.com", nil, registry, fakeObs)
+
+		req := &IssueRequest{
+			Subject:    &trust.Result{Subject: "user-123"},
+			TokenTypes: []TokenType{TokenTypeTransactionToken},
+		}
+
+		results, err := service.IssueTokens(ctx, req)
+		if err != nil {
+			t.Fatalf("unexpected top-level error: %v", err)
+		}
+		if results[TokenTypeTransactionToken].ExchangeErr == nil {
+			t.Fatal("expected ExchangeError")
+		}
+
+		p := fakeObs.AssertSingleProbe("TokenIssuanceStarted", nil)
+		p.AssertProbeSequence(
+			ProbeCall("TokenTypeIssuanceStarted", TokenTypeTransactionToken),
+			ProbeCall("TokenTypeIssuanceDenied", TokenTypeTransactionToken, exchErr),
+			"End",
+		)
+	})
+
+}
+
+// TestTokenService_ExchangeErrorPropagation verifies the service layer
+// correctly propagates ExchangeError results from issuers. Real CEL-mapper
+// integration coverage lives in internal/server/authz_test.go
+// (TestAuthz_IssueResponse_MapperAbort).
+func TestTokenService_ExchangeErrorPropagation(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("invalid_subject", func(t *testing.T) {
+		exchErr := &ExchangeError{
+			Message:    "impersonated tokens are not accepted",
+			OAuthError: OAuthInvalidRequest,
+			Reason:     AbortReasonInvalidSubject,
+		}
+		registry := NewSimpleRegistry()
+		registry.Register(TokenTypeTransactionToken, &testIssuerStub{exchErr: exchErr})
+		svc := NewTokenService("trust.example.com", nil, registry, nil)
+
+		results, err := svc.IssueTokens(ctx, &IssueRequest{
+			Subject:    &trust.Result{Subject: "user-1", Claims: claims.Claims{"impersonated": true}},
+			TokenTypes: []TokenType{TokenTypeTransactionToken},
+		})
+		if err != nil {
+			t.Fatalf("unexpected top-level error: %v", err)
+		}
+		r := results[TokenTypeTransactionToken]
+		if r.ExchangeErr == nil {
+			t.Fatal("expected ExchangeError")
+		}
+		if r.ExchangeErr.OAuthError != OAuthInvalidRequest {
+			t.Errorf("OAuthErrorCode: got %q", r.ExchangeErr.OAuthError)
+		}
+		if r.ExchangeErr.Reason != AbortReasonInvalidSubject {
+			t.Errorf("AbortReason: got %q", r.ExchangeErr.Reason)
+		}
+	})
+
+	t.Run("mapper_succeeds", func(t *testing.T) {
+		token := &Token{Value: "ok", Type: string(TokenTypeTransactionToken)}
+		registry := NewSimpleRegistry()
+		registry.Register(TokenTypeTransactionToken, &testIssuerStub{token: token})
+		svc := NewTokenService("trust.example.com", nil, registry, nil)
+
+		results, err := svc.IssueTokens(ctx, &IssueRequest{
+			Subject:    &trust.Result{Subject: "user-1"},
+			TokenTypes: []TokenType{TokenTypeTransactionToken},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if results[TokenTypeTransactionToken].Token.Value != "ok" {
+			t.Errorf("unexpected token: %+v", results)
+		}
+	})
+
+	t.Run("one_issuer_denies_among_multiple_issuers", func(t *testing.T) {
+		exchErr := &ExchangeError{
+			Message:    "claim 'idp' is required",
+			OAuthError: OAuthInvalidRequest,
+			Reason:     AbortReasonInvalidSubject,
+		}
+		registry := NewSimpleRegistry()
+		registry.Register(TokenTypeTransactionToken, &testIssuerStub{
+			token: &Token{Value: "txn", Type: string(TokenTypeTransactionToken)},
+		})
+		registry.Register(TokenTypeAccessToken, &testIssuerStub{exchErr: exchErr})
+		svc := NewTokenService("trust.example.com", nil, registry, nil)
+
+		results, err := svc.IssueTokens(ctx, &IssueRequest{
+			Subject:    &trust.Result{Subject: "user-1"},
+			TokenTypes: []TokenType{TokenTypeTransactionToken, TokenTypeAccessToken},
+		})
+		if err != nil {
+			t.Fatalf("unexpected top-level error: %v", err)
+		}
+		txnResult := results[TokenTypeTransactionToken]
+		if txnResult.Token == nil {
+			t.Error("expected transaction token to succeed")
+		}
+		accessResult := results[TokenTypeAccessToken]
+		if accessResult.ExchangeErr == nil {
+			t.Fatal("expected ExchangeError for access token")
+		}
+		if accessResult.ExchangeErr.OAuthError != OAuthInvalidRequest {
+			t.Errorf("OAuthErrorCode: got %q", accessResult.ExchangeErr.OAuthError)
+		}
+	})
 }
 
 // testIssuerStub is a simple stub issuer for testing
 type testIssuerStub struct {
-	token *Token
-	err   error
+	token   *Token
+	err     error
+	exchErr *ExchangeError
 }
 
-func (i *testIssuerStub) Issue(ctx context.Context, issueCtx *IssueContext) (*Token, error) {
+func (i *testIssuerStub) Issue(ctx context.Context, issueCtx *IssueContext) (ExchangeResult, error) {
 	if i.err != nil {
-		return nil, i.err
+		return ExchangeResult{}, i.err
 	}
-	return i.token, nil
+	if i.exchErr != nil {
+		return ExchangeResult{ExchangeErr: i.exchErr}, nil
+	}
+	return ExchangeResult{Token: i.token}, nil
 }
 
 func (i *testIssuerStub) PublicKeys(ctx context.Context) ([]PublicKey, error) {

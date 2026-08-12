@@ -289,8 +289,8 @@ type testIssuerWithCallCount struct {
 	callCount  *int
 }
 
-func (i *testIssuerWithCallCount) Issue(ctx context.Context, issueCtx *service.IssueContext) (*service.Token, error) {
-	return nil, nil
+func (i *testIssuerWithCallCount) Issue(ctx context.Context, issueCtx *service.IssueContext) (service.ExchangeResult, error) {
+	return service.ExchangeResult{}, nil
 }
 
 func (i *testIssuerWithCallCount) PublicKeys(ctx context.Context) ([]service.PublicKey, error) {
@@ -304,8 +304,8 @@ type testIssuerWithMutableBehavior struct {
 	shouldFail bool
 }
 
-func (i *testIssuerWithMutableBehavior) Issue(ctx context.Context, issueCtx *service.IssueContext) (*service.Token, error) {
-	return nil, nil
+func (i *testIssuerWithMutableBehavior) Issue(ctx context.Context, issueCtx *service.IssueContext) (service.ExchangeResult, error) {
+	return service.ExchangeResult{}, nil
 }
 
 func (i *testIssuerWithMutableBehavior) PublicKeys(ctx context.Context) ([]service.PublicKey, error) {

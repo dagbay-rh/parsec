@@ -33,8 +33,14 @@ type TokenIssuanceProbe interface {
 	// TokenTypeIssuanceSucceeded is called when a token of a specific type is successfully issued.
 	TokenTypeIssuanceSucceeded(tokenType TokenType, token *Token)
 
-	// TokenTypeIssuanceFailed is called when issuance fails for a specific token type.
+	// TokenTypeIssuanceFailed is called when issuance fails unexpectedly
+	// (signing errors, system failures). Never an OAuth denial.
 	TokenTypeIssuanceFailed(tokenType TokenType, err error)
+
+	// TokenTypeIssuanceDenied is called when issuance is refused for a known
+	// policy/protocol reason (OAuth error). This is an expected outcome, not
+	// an unexpected failure.
+	TokenTypeIssuanceDenied(tokenType TokenType, exchErr *ExchangeError)
 
 	// IssuerNotFound is called when no issuer is registered for a requested token type.
 	IssuerNotFound(tokenType TokenType, err error)
@@ -160,11 +166,12 @@ type ServiceObserver interface {
 // Embed this in concrete probe types for forward compatibility.
 type NoOpTokenIssuanceProbe struct{}
 
-func (NoOpTokenIssuanceProbe) TokenTypeIssuanceStarted(TokenType)           {}
-func (NoOpTokenIssuanceProbe) TokenTypeIssuanceSucceeded(TokenType, *Token) {}
-func (NoOpTokenIssuanceProbe) TokenTypeIssuanceFailed(TokenType, error)     {}
-func (NoOpTokenIssuanceProbe) IssuerNotFound(TokenType, error)              {}
-func (NoOpTokenIssuanceProbe) End()                                         {}
+func (NoOpTokenIssuanceProbe) TokenTypeIssuanceStarted(TokenType)                {}
+func (NoOpTokenIssuanceProbe) TokenTypeIssuanceSucceeded(TokenType, *Token)      {}
+func (NoOpTokenIssuanceProbe) TokenTypeIssuanceFailed(TokenType, error)          {}
+func (NoOpTokenIssuanceProbe) TokenTypeIssuanceDenied(TokenType, *ExchangeError) {}
+func (NoOpTokenIssuanceProbe) IssuerNotFound(TokenType, error)                   {}
+func (NoOpTokenIssuanceProbe) End()                                              {}
 
 // NoOpTokenExchangeProbe is a no-op implementation of TokenExchangeProbe.
 // Embed this in concrete probe types for forward compatibility.

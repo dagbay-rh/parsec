@@ -110,8 +110,8 @@ func TestCELMapper_Map(t *testing.T) {
 		}
 
 		want := fixedTime.UnixMilli()
-		if result["ts"] != want {
-			t.Errorf("expected ts=%d, got %v", want, result["ts"])
+		if result.Claims["ts"] != want {
+			t.Errorf("expected ts=%d, got %v", want, result.Claims["ts"])
 		}
 	})
 
@@ -141,11 +141,11 @@ func TestCELMapper_Map(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if result["target"] != "https://idp.example.com/internal" {
-			t.Errorf("expected target from datasource, got %v", result["target"])
+		if result.Claims["target"] != "https://idp.example.com/internal" {
+			t.Errorf("expected target from datasource, got %v", result.Claims["target"])
 		}
-		if result["fallback"] != false {
-			t.Errorf("expected fallback=false from datasource, got %v", result["fallback"])
+		if result.Claims["fallback"] != false {
+			t.Errorf("expected fallback=false from datasource, got %v", result.Claims["fallback"])
 		}
 	})
 
@@ -184,8 +184,8 @@ func TestCELMapper_Map(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if result["by_idp"] != true {
-				t.Errorf("expected by_idp=true for matching idp, got %v", result["by_idp"])
+			if result.Claims["by_idp"] != true {
+				t.Errorf("expected by_idp=true for matching idp, got %v", result.Claims["by_idp"])
 			}
 		})
 
@@ -205,11 +205,11 @@ func TestCELMapper_Map(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if result["by_idp"] != false {
-				t.Errorf("expected by_idp=false for non-matching idp, got %v", result["by_idp"])
+			if result.Claims["by_idp"] != false {
+				t.Errorf("expected by_idp=false for non-matching idp, got %v", result.Claims["by_idp"])
 			}
-			if result["by_role"] != false {
-				t.Errorf("expected by_role=false when idp present, got %v", result["by_role"])
+			if result.Claims["by_role"] != false {
+				t.Errorf("expected by_role=false when idp present, got %v", result.Claims["by_role"])
 			}
 		})
 
@@ -228,8 +228,8 @@ func TestCELMapper_Map(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if result["by_role"] != true {
-				t.Errorf("expected by_role=true with employees role, got %v", result["by_role"])
+			if result.Claims["by_role"] != true {
+				t.Errorf("expected by_role=true with employees role, got %v", result.Claims["by_role"])
 			}
 		})
 
@@ -257,8 +257,8 @@ func TestCELMapper_Map(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if result["by_role"] != false {
-				t.Errorf("expected by_role=false when fallback disabled, got %v", result["by_role"])
+			if result.Claims["by_role"] != false {
+				t.Errorf("expected by_role=false when fallback disabled, got %v", result.Claims["by_role"])
 			}
 		})
 
@@ -275,14 +275,14 @@ func TestCELMapper_Map(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if result["is_internal"] != true {
-				t.Errorf("expected is_internal=true from claim, got %v", result["is_internal"])
+			if result.Claims["is_internal"] != true {
+				t.Errorf("expected is_internal=true from claim, got %v", result.Claims["is_internal"])
 			}
-			if result["by_idp"] != false {
-				t.Errorf("expected by_idp=false without idp, got %v", result["by_idp"])
+			if result.Claims["by_idp"] != false {
+				t.Errorf("expected by_idp=false without idp, got %v", result.Claims["by_idp"])
 			}
-			if result["by_role"] != false {
-				t.Errorf("expected by_role=false when is_internal claim present, got %v", result["by_role"])
+			if result.Claims["by_role"] != false {
+				t.Errorf("expected by_role=false when is_internal claim present, got %v", result.Claims["by_role"])
 			}
 		})
 
@@ -300,14 +300,14 @@ func TestCELMapper_Map(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if result["is_internal"] != false {
-				t.Errorf("expected is_internal=false when external idp takes precedence, got %v", result["is_internal"])
+			if result.Claims["is_internal"] != false {
+				t.Errorf("expected is_internal=false when external idp takes precedence, got %v", result.Claims["is_internal"])
 			}
-			if result["by_idp"] != false {
-				t.Errorf("expected by_idp=false for non-matching idp, got %v", result["by_idp"])
+			if result.Claims["by_idp"] != false {
+				t.Errorf("expected by_idp=false for non-matching idp, got %v", result.Claims["by_idp"])
 			}
-			if result["by_role"] != false {
-				t.Errorf("expected by_role=false when idp present, got %v", result["by_role"])
+			if result.Claims["by_role"] != false {
+				t.Errorf("expected by_role=false when idp present, got %v", result.Claims["by_role"])
 			}
 		})
 
@@ -327,14 +327,14 @@ func TestCELMapper_Map(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if result["is_internal"] != false {
-				t.Errorf("expected is_internal=false from claim, got %v", result["is_internal"])
+			if result.Claims["is_internal"] != false {
+				t.Errorf("expected is_internal=false from claim, got %v", result.Claims["is_internal"])
 			}
-			if result["by_idp"] != false {
-				t.Errorf("expected by_idp=false without idp, got %v", result["by_idp"])
+			if result.Claims["by_idp"] != false {
+				t.Errorf("expected by_idp=false without idp, got %v", result.Claims["by_idp"])
 			}
-			if result["by_role"] != true {
-				t.Errorf("expected by_role=true with employees role and no idp, got %v", result["by_role"])
+			if result.Claims["by_role"] != true {
+				t.Errorf("expected by_role=true with employees role and no idp, got %v", result.Claims["by_role"])
 			}
 		})
 	})
@@ -351,16 +351,19 @@ func TestCELMapper_Map(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if result == nil {
+		if result.Claims == nil {
 			t.Fatal("expected claims, got nil")
 		}
-
-		if result["user"] != "alice" {
-			t.Errorf("expected user=alice, got %v", result["user"])
+		if !result.Decision.IsAllow() {
+			t.Fatalf("expected Allow, got %+v", result.Decision)
 		}
 
-		if result["role"] != "admin" {
-			t.Errorf("expected role=admin, got %v", result["role"])
+		if result.Claims["user"] != "alice" {
+			t.Errorf("expected user=alice, got %v", result.Claims["user"])
+		}
+
+		if result.Claims["role"] != "admin" {
+			t.Errorf("expected role=admin, got %v", result.Claims["role"])
 		}
 	})
 
@@ -389,16 +392,16 @@ func TestCELMapper_Map(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if result["user"] != "user@example.com" {
-			t.Errorf("expected user=user@example.com, got %v", result["user"])
+		if result.Claims["user"] != "user@example.com" {
+			t.Errorf("expected user=user@example.com, got %v", result.Claims["user"])
 		}
 
-		if result["issuer"] != "https://idp.example.com" {
-			t.Errorf("expected issuer=https://idp.example.com, got %v", result["issuer"])
+		if result.Claims["issuer"] != "https://idp.example.com" {
+			t.Errorf("expected issuer=https://idp.example.com, got %v", result.Claims["issuer"])
 		}
 
-		if result["trust_domain"] != "example-domain" {
-			t.Errorf("expected trust_domain=example-domain, got %v", result["trust_domain"])
+		if result.Claims["trust_domain"] != "example-domain" {
+			t.Errorf("expected trust_domain=example-domain, got %v", result.Claims["trust_domain"])
 		}
 	})
 
@@ -430,13 +433,13 @@ func TestCELMapper_Map(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if result["email"] != "alice@example.com" {
-			t.Errorf("expected email=alice@example.com, got %v", result["email"])
+		if result.Claims["email"] != "alice@example.com" {
+			t.Errorf("expected email=alice@example.com, got %v", result.Claims["email"])
 		}
 
-		groups, ok := result["groups"].([]any)
+		groups, ok := result.Claims["groups"].([]any)
 		if !ok {
-			t.Fatalf("expected groups to be array, got %T", result["groups"])
+			t.Fatalf("expected groups to be array, got %T", result.Claims["groups"])
 		}
 
 		if len(groups) != 2 {
@@ -468,12 +471,12 @@ func TestCELMapper_Map(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if result["actor_id"] != "spiffe://example.com/service/api" {
-			t.Errorf("expected actor_id=spiffe://example.com/service/api, got %v", result["actor_id"])
+		if result.Claims["actor_id"] != "spiffe://example.com/service/api" {
+			t.Errorf("expected actor_id=spiffe://example.com/service/api, got %v", result.Claims["actor_id"])
 		}
 
-		if result["actor_trust_domain"] != "spiffe-domain" {
-			t.Errorf("expected actor_trust_domain=spiffe-domain, got %v", result["actor_trust_domain"])
+		if result.Claims["actor_trust_domain"] != "spiffe-domain" {
+			t.Errorf("expected actor_trust_domain=spiffe-domain, got %v", result.Claims["actor_trust_domain"])
 		}
 	})
 
@@ -502,20 +505,20 @@ func TestCELMapper_Map(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if result["method"] != "POST" {
-			t.Errorf("expected method=POST, got %v", result["method"])
+		if result.Claims["method"] != "POST" {
+			t.Errorf("expected method=POST, got %v", result.Claims["method"])
 		}
 
-		if result["path"] != "/api/resource" {
-			t.Errorf("expected path=/api/resource, got %v", result["path"])
+		if result.Claims["path"] != "/api/resource" {
+			t.Errorf("expected path=/api/resource, got %v", result.Claims["path"])
 		}
 
-		if result["ip"] != "192.168.1.1" {
-			t.Errorf("expected ip=192.168.1.1, got %v", result["ip"])
+		if result.Claims["ip"] != "192.168.1.1" {
+			t.Errorf("expected ip=192.168.1.1, got %v", result.Claims["ip"])
 		}
 
-		if result["user_agent"] != "test-client/1.0" {
-			t.Errorf("expected user_agent=test-client/1.0, got %v", result["user_agent"])
+		if result.Claims["user_agent"] != "test-client/1.0" {
+			t.Errorf("expected user_agent=test-client/1.0, got %v", result.Claims["user_agent"])
 		}
 	})
 
@@ -552,17 +555,17 @@ func TestCELMapper_Map(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		roles, ok := result["roles"].([]any)
+		roles, ok := result.Claims["roles"].([]any)
 		if !ok {
-			t.Fatalf("expected roles to be array, got %T", result["roles"])
+			t.Fatalf("expected roles to be array, got %T", result.Claims["roles"])
 		}
 
 		if len(roles) != 2 {
 			t.Errorf("expected 2 roles, got %d", len(roles))
 		}
 
-		if result["region"] != "us-west-2" {
-			t.Errorf("expected region=us-west-2, got %v", result["region"])
+		if result.Claims["region"] != "us-west-2" {
+			t.Errorf("expected region=us-west-2, got %v", result.Claims["region"])
 		}
 	})
 
@@ -592,12 +595,12 @@ func TestCELMapper_Map(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if result["env"] != "production" {
-			t.Errorf("expected env=production, got %v", result["env"])
+		if result.Claims["env"] != "production" {
+			t.Errorf("expected env=production, got %v", result.Claims["env"])
 		}
 
-		if result["level"] != "high" {
-			t.Errorf("expected level=high, got %v", result["level"])
+		if result.Claims["level"] != "high" {
+			t.Errorf("expected level=high, got %v", result.Claims["level"])
 		}
 
 		// Test dev case
@@ -616,12 +619,12 @@ func TestCELMapper_Map(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if result["env"] != "dev" {
-			t.Errorf("expected env=dev, got %v", result["env"])
+		if result.Claims["env"] != "dev" {
+			t.Errorf("expected env=dev, got %v", result.Claims["env"])
 		}
 
-		if result["level"] != "low" {
-			t.Errorf("expected level=low, got %v", result["level"])
+		if result.Claims["level"] != "low" {
+			t.Errorf("expected level=low, got %v", result.Claims["level"])
 		}
 	})
 
@@ -668,20 +671,20 @@ func TestCELMapper_Map(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if result["user"] != "alice" {
-			t.Errorf("expected user=alice, got %v", result["user"])
+		if result.Claims["user"] != "alice" {
+			t.Errorf("expected user=alice, got %v", result.Claims["user"])
 		}
 
-		if result["ip"] != "10.0.0.1" {
-			t.Errorf("expected ip=10.0.0.1, got %v", result["ip"])
+		if result.Claims["ip"] != "10.0.0.1" {
+			t.Errorf("expected ip=10.0.0.1, got %v", result.Claims["ip"])
 		}
 
-		if result["method"] != "GET" {
-			t.Errorf("expected method=GET, got %v", result["method"])
+		if result.Claims["method"] != "GET" {
+			t.Errorf("expected method=GET, got %v", result.Claims["method"])
 		}
 
-		if result["computed"] != "alice@10.0.0.1" {
-			t.Errorf("expected computed=alice@10.0.0.1, got %v", result["computed"])
+		if result.Claims["computed"] != "alice@10.0.0.1" {
+			t.Errorf("expected computed=alice@10.0.0.1, got %v", result.Claims["computed"])
 		}
 	})
 
@@ -704,16 +707,16 @@ func TestCELMapper_Map(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if result["has_subject"] != false {
-			t.Errorf("expected has_subject=false, got %v", result["has_subject"])
+		if result.Claims["has_subject"] != false {
+			t.Errorf("expected has_subject=false, got %v", result.Claims["has_subject"])
 		}
 
-		if result["has_actor"] != false {
-			t.Errorf("expected has_actor=false, got %v", result["has_actor"])
+		if result.Claims["has_actor"] != false {
+			t.Errorf("expected has_actor=false, got %v", result.Claims["has_actor"])
 		}
 
-		if result["has_request"] != false {
-			t.Errorf("expected has_request=false, got %v", result["has_request"])
+		if result.Claims["has_request"] != false {
+			t.Errorf("expected has_request=false, got %v", result.Claims["has_request"])
 		}
 	})
 
@@ -744,9 +747,9 @@ func TestCELMapper_Map(t *testing.T) {
 		}
 
 		// Both should have the same value since the second call should be cached
-		if result["first"] != result["second"] {
+		if result.Claims["first"] != result.Claims["second"] {
 			t.Errorf("expected cached values to match, got first=%v, second=%v",
-				result["first"], result["second"])
+				result.Claims["first"], result.Claims["second"])
 		}
 
 		// Datasource should only be called once due to caching
@@ -801,12 +804,12 @@ func TestCELMapper_Map(t *testing.T) {
 		}
 
 		// Should return false for missing datasource
-		if result["has_datasource"] != false {
-			t.Errorf("expected has_datasource=false for missing datasource, got %v", result["has_datasource"])
+		if result.Claims["has_datasource"] != false {
+			t.Errorf("expected has_datasource=false for missing datasource, got %v", result.Claims["has_datasource"])
 		}
 
-		if result["other_field"] != "value" {
-			t.Errorf("expected other_field=value, got %v", result["other_field"])
+		if result.Claims["other_field"] != "value" {
+			t.Errorf("expected other_field=value, got %v", result.Claims["other_field"])
 		}
 	})
 }
@@ -814,7 +817,7 @@ func TestCELMapper_Map(t *testing.T) {
 func TestCELMapper_Fail(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("fail returns ClaimMappingError", func(t *testing.T) {
+	t.Run("fail returns MappingFailure", func(t *testing.T) {
 		m, err := NewCELMapper(`false ? {"ok": true} : fail("unsupported_token_type")`)
 		if err != nil {
 			t.Fatalf("failed to create mapper: %v", err)
@@ -825,16 +828,17 @@ func TestCELMapper_Fail(t *testing.T) {
 			t.Fatal("expected error, got nil")
 		}
 
-		if !errors.Is(mapErr, service.ErrClaimMapping) {
-			t.Fatalf("expected errors.Is(err, ErrClaimMapping), got: %v", mapErr)
+		var failErr *service.MappingFailure
+		if !errors.As(mapErr, &failErr) {
+			t.Fatalf("expected errors.As to unwrap MappingFailure, got: %T", mapErr)
+		}
+		if failErr.Message != "unsupported_token_type" {
+			t.Errorf("expected message %q, got %q", "unsupported_token_type", failErr.Message)
 		}
 
-		var mappingErr *service.ClaimMappingError
-		if !errors.As(mapErr, &mappingErr) {
-			t.Fatalf("expected errors.As to unwrap ClaimMappingError, got: %T", mapErr)
-		}
-		if mappingErr.Message != "unsupported_token_type" {
-			t.Errorf("expected message %q, got %q", "unsupported_token_type", mappingErr.Message)
+		var exchErr *service.ExchangeError
+		if errors.As(mapErr, &exchErr) {
+			t.Fatal("fail() must not unwrap as ExchangeError")
 		}
 	})
 
@@ -848,8 +852,8 @@ func TestCELMapper_Fail(t *testing.T) {
 		if mapErr != nil {
 			t.Fatalf("unexpected error: %v", mapErr)
 		}
-		if result["ok"] != true {
-			t.Errorf("expected ok=true, got %v", result["ok"])
+		if result.Claims["ok"] != true {
+			t.Errorf("expected ok=true, got %v", result.Claims["ok"])
 		}
 	})
 }
@@ -867,10 +871,233 @@ func TestCELMapper_ErrorClaimAllowedInOutput(t *testing.T) {
 		t.Fatalf("unexpected error: %v", mapErr)
 	}
 
-	if result["error"] != "some_value" {
-		t.Errorf("expected error claim preserved as %q, got %v", "some_value", result["error"])
+	if result.Claims["error"] != "some_value" {
+		t.Errorf("expected error claim preserved as %q, got %v", "some_value", result.Claims["error"])
 	}
-	if result["other"] != "data" {
-		t.Errorf("expected other claim preserved as %q, got %v", "data", result["other"])
+	if result.Claims["other"] != "data" {
+		t.Errorf("expected other claim preserved as %q, got %v", "data", result.Claims["other"])
+	}
+}
+
+func TestCELMapper_LayerA(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name       string
+		script     string
+		oauthError service.OAuthErrorCode
+	}{
+		{
+			name:       "invalid_request",
+			script:     `false ? {"ok": true} : invalidRequest("bad request")`,
+			oauthError: service.OAuthInvalidRequest,
+		},
+		{
+			name:       "invalid_target",
+			script:     `false ? {"ok": true} : invalidTarget("bad target")`,
+			oauthError: service.OAuthInvalidTarget,
+		},
+		{
+			name:       "invalid_grant",
+			script:     `false ? {"ok": true} : invalidGrant("bad grant")`,
+			oauthError: service.OAuthInvalidGrant,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m, err := NewCELMapper(tt.script)
+			if err != nil {
+				t.Fatalf("failed to create mapper: %v", err)
+			}
+			result, mapErr := m.Map(ctx, &service.MapperInput{})
+			if mapErr != nil {
+				t.Fatalf("Deny must not be returned as error, got: %v", mapErr)
+			}
+			if result.Decision.Action != service.MappingDeny {
+				t.Fatalf("expected Deny, got %+v", result.Decision)
+			}
+			if result.Decision.OAuthError != tt.oauthError {
+				t.Errorf("OAuthError: got %q, want %q", result.Decision.OAuthError, tt.oauthError)
+			}
+			if result.Decision.Reason != "" {
+				t.Errorf("Layer A Reason should be empty, got %q", result.Decision.Reason)
+			}
+		})
+	}
+}
+
+func TestCELMapper_LayerB(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name       string
+		script     string
+		oauthError service.OAuthErrorCode
+		reason     service.AbortReason
+	}{
+		{
+			name:       "invalid_subject",
+			script:     `false ? {"ok": true} : invalidSubject("bad subject")`,
+			oauthError: service.OAuthInvalidRequest,
+			reason:     service.AbortReasonInvalidSubject,
+		},
+		{
+			name:       "invalid_actor",
+			script:     `false ? {"ok": true} : invalidActor("bad actor")`,
+			oauthError: service.OAuthInvalidRequest,
+			reason:     service.AbortReasonInvalidActor,
+		},
+		{
+			name:       "invalid_audience",
+			script:     `false ? {"ok": true} : invalidAudience("bad audience")`,
+			oauthError: service.OAuthInvalidTarget,
+			reason:     service.AbortReasonInvalidAudience,
+		},
+		{
+			name:       "unsupported_token_type",
+			script:     `false ? {"ok": true} : unsupportedTokenType("unsupported_token_type")`,
+			oauthError: service.OAuthInvalidRequest,
+			reason:     service.AbortReasonUnsupportedTokenType,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m, err := NewCELMapper(tt.script)
+			if err != nil {
+				t.Fatalf("failed to create mapper: %v", err)
+			}
+			result, mapErr := m.Map(ctx, &service.MapperInput{})
+			if mapErr != nil {
+				t.Fatalf("Deny must not be returned as error, got: %v", mapErr)
+			}
+			if result.Decision.Action != service.MappingDeny {
+				t.Fatalf("expected Deny, got %+v", result.Decision)
+			}
+			if result.Decision.OAuthError != tt.oauthError {
+				t.Errorf("OAuthError: got %q, want %q", result.Decision.OAuthError, tt.oauthError)
+			}
+			if result.Decision.Reason != tt.reason {
+				t.Errorf("Reason: got %q, want %q", result.Decision.Reason, tt.reason)
+			}
+		})
+	}
+}
+
+func TestCELMapper_PolicyGuard(t *testing.T) {
+	ctx := context.Background()
+
+	const policyScript = `
+has(subject.claims) && has(subject.claims.impersonated) && subject.claims.impersonated == true
+  ? invalidSubject("impersonated tokens are not accepted")
+: !(has(subject.claims) && has(subject.claims.idp))
+  ? invalidSubject("claim 'idp' is required")
+: {"user": subject.subject, "idp": subject.claims.idp}
+`
+
+	m, err := NewCELMapper(policyScript)
+	if err != nil {
+		t.Fatalf("failed to create mapper: %v", err)
+	}
+
+	t.Run("rejects_impersonated_token", func(t *testing.T) {
+		result, mapErr := m.Map(ctx, &service.MapperInput{
+			Subject: &trust.Result{
+				Subject: "user-1",
+				Claims: claims.Claims{
+					"impersonated": true,
+					"idp":          "https://idp.example.com",
+				},
+			},
+		})
+		assertMappingDeny(t, result, mapErr, service.OAuthInvalidRequest, service.AbortReasonInvalidSubject, "impersonated tokens are not accepted")
+	})
+
+	t.Run("accepts_non_impersonated_token", func(t *testing.T) {
+		result, mapErr := m.Map(ctx, &service.MapperInput{
+			Subject: &trust.Result{
+				Subject: "user-1",
+				Claims:  claims.Claims{"idp": "https://idp.example.com"},
+			},
+		})
+		if mapErr != nil {
+			t.Fatalf("unexpected error: %v", mapErr)
+		}
+		if result.Claims["user"] != "user-1" {
+			t.Errorf("expected user=user-1, got %v", result.Claims["user"])
+		}
+	})
+
+	t.Run("rejects_missing_idp", func(t *testing.T) {
+		result, mapErr := m.Map(ctx, &service.MapperInput{
+			Subject: &trust.Result{
+				Subject: "user-1",
+				Claims:  claims.Claims{"email": "a@b.c"},
+			},
+		})
+		assertMappingDeny(t, result, mapErr, service.OAuthInvalidRequest, service.AbortReasonInvalidSubject, "claim 'idp' is required")
+	})
+
+	t.Run("accepts_with_idp", func(t *testing.T) {
+		result, mapErr := m.Map(ctx, &service.MapperInput{
+			Subject: &trust.Result{
+				Subject: "user-1",
+				Claims:  claims.Claims{"idp": "https://idp.example.com"},
+			},
+		})
+		if mapErr != nil {
+			t.Fatalf("unexpected error: %v", mapErr)
+		}
+		if result.Claims["idp"] != "https://idp.example.com" {
+			t.Errorf("expected idp preserved, got %v", result.Claims["idp"])
+		}
+	})
+
+	t.Run("rejects_first_failing_guard", func(t *testing.T) {
+		result, mapErr := m.Map(ctx, &service.MapperInput{
+			Subject: &trust.Result{
+				Subject: "user-1",
+				Claims: claims.Claims{
+					"impersonated": true,
+					// idp also missing — impersonation guard must win
+				},
+			},
+		})
+		assertMappingDeny(t, result, mapErr, service.OAuthInvalidRequest, service.AbortReasonInvalidSubject, "impersonated tokens are not accepted")
+	})
+
+	t.Run("passes_all_guards", func(t *testing.T) {
+		result, mapErr := m.Map(ctx, &service.MapperInput{
+			Subject: &trust.Result{
+				Subject: "user-1",
+				Claims:  claims.Claims{"idp": "https://idp.example.com", "impersonated": false},
+			},
+		})
+		if mapErr != nil {
+			t.Fatalf("unexpected error: %v", mapErr)
+		}
+		if result.Claims["user"] != "user-1" {
+			t.Errorf("expected user=user-1, got %v", result.Claims["user"])
+		}
+	})
+}
+
+func assertMappingDeny(t *testing.T, result service.MappingResult, err error, oauthError service.OAuthErrorCode, reason service.AbortReason, message string) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("Deny must not be returned as error, got: %v", err)
+	}
+	if result.Decision.Action != service.MappingDeny {
+		t.Fatalf("expected Deny, got %+v", result.Decision)
+	}
+	if result.Decision.OAuthError != oauthError {
+		t.Errorf("OAuthError: got %q, want %q", result.Decision.OAuthError, oauthError)
+	}
+	if result.Decision.Reason != reason {
+		t.Errorf("Reason: got %q, want %q", result.Decision.Reason, reason)
+	}
+	if result.Decision.Message != message {
+		t.Errorf("Message: got %q, want %q", result.Decision.Message, message)
 	}
 }

@@ -10,7 +10,10 @@ import (
 	"time"
 
 	parsecv1 "github.com/project-kessel/parsec/api/gen/parsec/v1"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/project-kessel/parsec/internal/claims"
 	"github.com/project-kessel/parsec/internal/issuer"
@@ -853,6 +856,142 @@ func TestExchangeServer_Exchange_Observability(t *testing.T) {
 			"End",
 		)
 	})
+}
+
+func TestExchange_InvalidRequest(t *testing.T) {
+	ctx := context.Background()
+
+	celMapper, err := mapper.NewCELMapper(`invalidSubject("impersonated tokens are not accepted")`)
+	if err != nil {
+		t.Fatalf("create mapper: %v", err)
+	}
+
+	trustStore := trust.NewStubStore()
+	trustStore.AddValidator(trust.NewStubValidator(trust.CredentialTypeBearer))
+
+	registry := service.NewSimpleRegistry()
+	registry.Register(service.TokenTypeTransactionToken, issuer.NewStubIssuer(issuer.StubIssuerConfig{
+		IssuerURL:                 "https://parsec.test",
+		TTL:                       time.Minute,
+		TransactionContextMappers: []service.ClaimMapper{celMapper},
+	}))
+	tokenService := service.NewTokenService("parsec.test", service.NewDataSourceRegistry(), registry, nil)
+	exchangeServer := NewExchangeServer(trustStore, tokenService, NewStubClaimsFilterRegistry(), DefaultCredentialSources(), nil)
+
+	_, err = exchangeServer.Exchange(ctx, &parsecv1.ExchangeRequest{
+		GrantType:    "urn:ietf:params:oauth:grant-type:token-exchange",
+		SubjectToken: "test-token",
+		Audience:     "parsec.test",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status, got %T: %v", err, err)
+	}
+	if st.Code() != codes.InvalidArgument {
+		t.Errorf("code: got %v, want InvalidArgument", st.Code())
+	}
+	if st.Message() != "impersonated tokens are not accepted" {
+		t.Errorf("message: got %q", st.Message())
+	}
+
+	found := false
+	for _, d := range st.Details() {
+		if info, ok := d.(*errdetails.ErrorInfo); ok && info.Domain == oauthErrorDomain {
+			found = true
+			if info.Reason != string(service.OAuthInvalidRequest) {
+				t.Errorf("OAuth error: got %q", info.Reason)
+			}
+			if info.Metadata["abort_reason"] != string(service.AbortReasonInvalidSubject) {
+				t.Errorf("abort_reason: got %q", info.Metadata["abort_reason"])
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected OAuth ErrorInfo detail")
+	}
+}
+
+func TestExchange_InvalidTarget(t *testing.T) {
+	ctx := context.Background()
+
+	celMapper, err := mapper.NewCELMapper(`invalidTarget("audience not allowed")`)
+	if err != nil {
+		t.Fatalf("create mapper: %v", err)
+	}
+
+	trustStore := trust.NewStubStore()
+	trustStore.AddValidator(trust.NewStubValidator(trust.CredentialTypeBearer))
+
+	registry := service.NewSimpleRegistry()
+	registry.Register(service.TokenTypeTransactionToken, issuer.NewStubIssuer(issuer.StubIssuerConfig{
+		IssuerURL:                 "https://parsec.test",
+		TTL:                       time.Minute,
+		TransactionContextMappers: []service.ClaimMapper{celMapper},
+	}))
+	tokenService := service.NewTokenService("parsec.test", service.NewDataSourceRegistry(), registry, nil)
+	exchangeServer := NewExchangeServer(trustStore, tokenService, NewStubClaimsFilterRegistry(), DefaultCredentialSources(), nil)
+
+	_, err = exchangeServer.Exchange(ctx, &parsecv1.ExchangeRequest{
+		GrantType:    "urn:ietf:params:oauth:grant-type:token-exchange",
+		SubjectToken: "test-token",
+		Audience:     "parsec.test",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status, got %T: %v", err, err)
+	}
+	if st.Code() != codes.InvalidArgument {
+		t.Errorf("code: got %v, want InvalidArgument", st.Code())
+	}
+	for _, d := range st.Details() {
+		if info, ok := d.(*errdetails.ErrorInfo); ok && info.Domain == oauthErrorDomain {
+			if info.Reason != string(service.OAuthInvalidTarget) {
+				t.Errorf("OAuth error: got %q, want invalid_target", info.Reason)
+			}
+			return
+		}
+	}
+	t.Fatal("expected OAuth ErrorInfo detail")
+}
+
+func TestExchange_NilToken_Internal(t *testing.T) {
+	ctx := context.Background()
+
+	trustStore := trust.NewStubStore()
+	trustStore.AddValidator(trust.NewStubValidator(trust.CredentialTypeBearer))
+
+	registry := service.NewSimpleRegistry()
+	registry.Register(service.TokenTypeTransactionToken, &nilTokenIssuer{})
+	tokenService := service.NewTokenService("parsec.test", service.NewDataSourceRegistry(), registry, nil)
+	exchangeServer := NewExchangeServer(trustStore, tokenService, NewStubClaimsFilterRegistry(), DefaultCredentialSources(), nil)
+
+	_, err := exchangeServer.Exchange(ctx, &parsecv1.ExchangeRequest{
+		GrantType:    "urn:ietf:params:oauth:grant-type:token-exchange",
+		SubjectToken: "test-token",
+		Audience:     "parsec.test",
+	})
+	if err == nil {
+		t.Fatal("expected error for nil token")
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status, got %T: %v", err, err)
+	}
+	if st.Code() != codes.Internal {
+		t.Errorf("code: got %v, want Internal", st.Code())
+	}
+	if !strings.Contains(st.Message(), "no token") {
+		t.Errorf("message: got %q", st.Message())
+	}
 }
 
 // parseTestTokenRequestContext extracts the request context from a stub token

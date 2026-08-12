@@ -38,9 +38,76 @@ This package provides CEL extensions specifically for claim mapping in Parsec:
   - Returns null if the datasource doesn't exist
   - Results are automatically cached within a single evaluation
 
-- **`fail(message)`** - Rejects the input
-  - Aborts evaluation and returns a `ClaimMappingError`
-  - Use when the mapper cannot process the input (e.g. unrecognised token type)
+- **`fail(message)`** - Unexpected mapping / system failure
+  - `ClaimMapper.Map` returns `error` (not a Deny decision)
+  - Transports map this to Internal (not an OAuth client error)
+  - Prefer Layer A/B helpers for policy denials
+
+#### Layer A — OAuth / token-exchange error codes
+
+Direct helpers for [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc6749#section-5.2) /
+[RFC 8693 §2.2.2](https://datatracker.ietf.org/doc/html/rfc8693#section-2.2.2)
+wire `error` values. These become a **Deny** `MappingDecision` on
+`MappingResult` (`error == nil` from `Map`):
+
+| CEL | Wire `error` |
+|-----|--------------|
+| `invalidRequest(message)` | `invalid_request` |
+| `invalidTarget(message)` | `invalid_target` |
+| `invalidGrant(message)` | `invalid_grant` |
+| `unauthorizedClient(message)` | `unauthorized_client` |
+| `invalidClient(message)` | `invalid_client` |
+| `unsupportedGrantType(message)` | `unsupported_grant_type` |
+| `invalidScope(message)` | `invalid_scope` |
+
+#### Layer B — reason helpers (preferred for policy guards)
+
+Also Deny decisions (`error == nil` from `Map`):
+
+| CEL | Wire `error` | Reason |
+|-----|--------------|--------|
+| `invalidSubject(message)` | `invalid_request` | `invalid_subject` |
+| `invalidActor(message)` | `invalid_request` | `invalid_actor` |
+| `invalidAudience(message)` | `invalid_target` | `invalid_audience` |
+| `unsupportedTokenType(message)` | `invalid_request` | `unsupported_token_type` |
+
+### MappingResult vs error
+
+| Outcome | `Map` return |
+|---------|----------------|
+| Claims produced | `Allow` + claims, `err == nil` |
+| Layer A/B abort | `Deny` + OAuth fields, `err == nil` |
+| `fail()` / unexpected | `err != nil` |
+
+CEL abort helpers call `service.DenyOAuth` / `service.DenyReason` and wrap the
+resulting `MappingDecision` in a distinct `abortError`. The CEL mapper extracts
+it via `AbortDecision(err)` — no need to check `OAuthError != ""`.
+`fail()` returns `*service.MappingFailure` (unexpected; Internal).
+
+Multiple mappers on an issuer are merged with `MappingResult.Merge` (first
+non-Allow wins; early termination; deny merges clear claims from prior
+allows). See [docs/issuance-policy.md](../../docs/issuance-policy.md).
+
+### Deny constructors
+
+CEL Layer A functions call `service.DenyOAuth(code, message)`.
+CEL Layer B functions call `service.DenyReason(reason, message)`, which maps
+the reason to the correct OAuth code via a shared table in `service`
+(`invalid_audience` → `invalid_target`, etc.).
+
+### ExchangeResult
+
+`Issuer.Issue` returns `(ExchangeResult, error)`. `ExchangeResult` contains
+either a `Token` (success) or an `*ExchangeError` (known denial). Unexpected
+errors use the top-level `error` return. `IssueTokens` returns per-type
+results; ext_authz treats any type's `ExchangeError` as a full request denial.
+
+### Transport mapping
+
+| Decision / error | Exchange (HTTP) | ext_authz (gRPC) |
+|------------------|-----------------|------------------|
+| `ExchangeError` (`invalid_request` / `invalid_target` / …) | 400 + `{error, error_description}` | `InvalidArgument` (any-type denial = full deny) |
+| `MappingFailure` (`fail`) / unexpected `error` | 500 (default gRPC error JSON) | `Internal` |
 
 ## Example CEL Expressions
 
@@ -61,12 +128,22 @@ subject.trust_domain == "prod"
   : {"env": "dev", "level": "low"}
 ```
 
-### Rejecting Input
+### Policy Guards (Layer B)
+
+```cel
+has(subject.claims) && has(subject.claims.impersonated) && subject.claims.impersonated == true
+  ? invalidSubject("impersonated tokens are not accepted")
+: !(has(subject.claims) && has(subject.claims.idp))
+  ? invalidSubject("claim 'idp' is required")
+: { "identity": { /* ... */ }, "entitlements": {} }
+```
+
+### Rejecting Unsupported Input
 
 ```cel
 isSupportedToken(subject.claims)
-  ? { "identity": { ... }, "entitlements": {} }
-  : fail("unsupported_token_type")
+  ? { "identity": { /* ... */ }, "entitlements": {} }
+  : unsupportedTokenType("unsupported_token_type")
 ```
 
 ### Fetching from Data Sources
@@ -124,4 +201,6 @@ Datasource results are automatically cached within a single evaluation, so calli
 - [CEL Language Specification](https://github.com/google/cel-spec)
 - [CEL-Go Documentation](https://pkg.go.dev/github.com/google/cel-go/cel)
 - [CEL-Go Codelab](https://codelabs.developers.google.com/codelabs/cel-go)
-
+- [RFC 8693 §2.2.2](https://datatracker.ietf.org/doc/html/rfc8693#section-2.2.2) — token exchange errors
+- [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc6749#section-5.2) — OAuth error response
+- [Issuance policy via CEL](../../docs/issuance-policy.md)
