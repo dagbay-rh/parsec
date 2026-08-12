@@ -127,7 +127,7 @@ func TestAuthzServer_Check(t *testing.T) {
 		}
 	})
 
-	t.Run("missing authorization header", func(t *testing.T) {
+	t.Run("missing authorization header returns Unauthenticated", func(t *testing.T) {
 		req := &authv3.CheckRequest{
 			Attributes: &authv3.AttributeContext{
 				Request: &authv3.AttributeContext_Request{
@@ -145,9 +145,9 @@ func TestAuthzServer_Check(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		// Should deny
-		if resp.Status.Code == 0 {
-			t.Error("expected denial, got OK")
+		if resp.Status.Code != int32(codes.Unauthenticated) {
+			t.Errorf("expected Unauthenticated (%d), got %d: %s",
+				codes.Unauthenticated, resp.Status.Code, resp.Status.Message)
 		}
 
 		deniedResp := resp.GetDeniedResponse()
@@ -911,9 +911,10 @@ func TestAuthzServer_Check_Observability(t *testing.T) {
 			t.Fatalf("Check failed: %v", err)
 		}
 
-		// Verify denial (anonymous subjects not allowed by default policy)
-		if resp.Status.Code == 0 {
-			t.Error("expected denial for missing credentials, got OK")
+		// Verify denial with Unauthenticated (anonymous subjects not allowed by default policy)
+		if resp.Status.Code != int32(codes.Unauthenticated) {
+			t.Errorf("expected Unauthenticated (%d), got %d: %s",
+				codes.Unauthenticated, resp.Status.Code, resp.Status.Message)
 		}
 
 		p := fakeObs.AssertSingleProbe("AuthzCheckStarted", nil)

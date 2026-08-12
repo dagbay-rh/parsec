@@ -142,7 +142,11 @@ func (s *AuthzServer) Check(ctx context.Context, req *authv3.CheckRequest) (*aut
 	switch decision.Action {
 	case AuthzCheckDeny:
 		p.PolicyDecisionDeny(decision.Reason)
-		return s.denyResponse(codes.PermissionDenied, decision.Reason), nil
+		denyCode := codes.PermissionDenied
+		if subjectPrin.Anonymous {
+			denyCode = codes.Unauthenticated
+		}
+		return s.denyResponse(denyCode, decision.Reason), nil
 
 	case AuthzCheckAllowWithoutIssue:
 		p.PolicyDecisionAllowWithoutIssue(decision.Reason)
