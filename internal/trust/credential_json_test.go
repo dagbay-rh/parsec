@@ -139,19 +139,21 @@ func TestMarshalCredentialJSON_RoundTrip(t *testing.T) {
 		{
 			name: "cert auth credential",
 			credential: &ForwardedClientCertCredential{
-				CN:     "/CN=test-system",
-				Issuer: "CN=Red Hat CA",
+				Headers: map[string]string{
+					"x-rh-certauth-cn":     "/CN=test-system",
+					"x-rh-certauth-issuer": "CN=Red Hat CA",
+				},
 			},
 			check: func(t *testing.T, got Credential) {
 				ca, ok := got.(*ForwardedClientCertCredential)
 				if !ok {
 					t.Fatalf("expected *ForwardedClientCertCredential, got %T", got)
 				}
-				if ca.CN != "/CN=test-system" {
-					t.Fatalf("CN=%q", ca.CN)
+				if ca.Headers["x-rh-certauth-cn"] != "/CN=test-system" {
+					t.Fatalf("cn=%q", ca.Headers["x-rh-certauth-cn"])
 				}
-				if ca.Issuer != "CN=Red Hat CA" {
-					t.Fatalf("Issuer=%q", ca.Issuer)
+				if ca.Headers["x-rh-certauth-issuer"] != "CN=Red Hat CA" {
+					t.Fatalf("issuer=%q", ca.Headers["x-rh-certauth-issuer"])
 				}
 			},
 		},

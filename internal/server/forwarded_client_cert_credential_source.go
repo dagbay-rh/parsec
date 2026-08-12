@@ -7,49 +7,55 @@ import (
 	"github.com/project-kessel/parsec/internal/trust"
 )
 
-const (
-	HeaderCertAuthCN     = "x-rh-certauth-cn"
-	HeaderCertAuthIssuer = "x-rh-certauth-issuer"
-)
-
 // ForwardedClientCertCredentialSource extracts certificate authentication
 // credentials from proxy-forwarded headers. A TLS-terminating proxy (e.g.,
-// Akamai CDN) validates the client certificate and forwards the subject and
-// issuer as x-rh-certauth-cn and x-rh-certauth-issuer headers.
+// Akamai CDN) validates the client certificate and forwards relevant fields
+// as headers. The set of headers to extract is configurable.
 //
-// When both headers are absent, Extract returns (nil, nil), allowing
-// coexistence with other credential sources in the same chain.
+// When none of the configured headers are present, Extract returns (nil, nil),
+// allowing coexistence with other credential sources in the same chain.
 type ForwardedClientCertCredentialSource struct {
 	SourceName string
+	Headers    []string
 }
 
 // NewForwardedClientCertCredentialSource returns a ForwardedClientCertCredentialSource
-// with the given name. The name is required.
-func NewForwardedClientCertCredentialSource(name string) (*ForwardedClientCertCredentialSource, error) {
+// with the given name and list of headers to extract.
+func NewForwardedClientCertCredentialSource(name string, headers []string) (*ForwardedClientCertCredentialSource, error) {
 	if name == "" {
 		return nil, fmt.Errorf("forwarded client cert credential source: name is required")
 	}
-	return &ForwardedClientCertCredentialSource{SourceName: name}, nil
+	if len(headers) == 0 {
+		return nil, fmt.Errorf("forwarded client cert credential source: at least one header is required")
+	}
+	return &ForwardedClientCertCredentialSource{SourceName: name, Headers: headers}, nil
 }
 
 func (s *ForwardedClientCertCredentialSource) Extract(_ context.Context, cc CredentialContext) (*CredentialExtraction, error) {
-	cn := cc.Headers[HeaderCertAuthCN]
-	issuer := cc.Headers[HeaderCertAuthIssuer]
+	extracted := make(map[string]string)
+	for _, h := range s.Headers {
+		if v := cc.Headers[h]; v != "" {
+			extracted[h] = v
+		}
+	}
 
-	if cn == "" && issuer == "" {
+	if len(extracted) == 0 {
 		return nil, nil
 	}
 
-	if cn == "" {
-		return nil, fmt.Errorf("%s header is required when %s is present", HeaderCertAuthCN, HeaderCertAuthIssuer)
-	}
-	if issuer == "" {
-		return nil, fmt.Errorf("%s header is required when %s is present", HeaderCertAuthIssuer, HeaderCertAuthCN)
+	if len(extracted) != len(s.Headers) {
+		var missing []string
+		for _, h := range s.Headers {
+			if _, ok := extracted[h]; !ok {
+				missing = append(missing, h)
+			}
+		}
+		return nil, fmt.Errorf("missing required headers: %v (all configured headers must be present when any are)", missing)
 	}
 
 	return &CredentialExtraction{
-		Credential:  &trust.ForwardedClientCertCredential{CN: cn, Issuer: issuer},
-		HeadersUsed: []string{HeaderCertAuthCN, HeaderCertAuthIssuer},
+		Credential:  &trust.ForwardedClientCertCredential{Headers: extracted},
+		HeadersUsed: s.Headers,
 		SourceName:  s.SourceName,
 	}, nil
 }

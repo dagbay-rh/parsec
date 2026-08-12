@@ -50,7 +50,7 @@ func newCredentialSource(cfg CredentialSourceConfig) (server.CredentialSource, e
 	case server.CredentialSourceTypeBasicAuth:
 		return server.NewBasicAuthCredentialSource(cfg.Name)
 	case server.CredentialSourceTypeForwardedClientCert:
-		return server.NewForwardedClientCertCredentialSource(cfg.Name)
+		return server.NewForwardedClientCertCredentialSource(cfg.Name, cfg.Headers)
 	default:
 		return nil, fmt.Errorf("unknown type %q (allowed: %s)", cfg.Type, strings.Join(credentialSourceTypes, ", "))
 	}

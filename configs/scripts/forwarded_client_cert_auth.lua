@@ -15,8 +15,8 @@ function validate(input)
   local bop_client_id = os.getenv(config.get("bop_client_id_env"))
   local bop_token = os.getenv(config.get("bop_token_env"))
 
-  local cn = input.credential.cn
-  local cert_issuer = input.credential.issuer
+  local cn = input.credential.headers["x-rh-certauth-cn"]
+  local cert_issuer = input.credential.headers["x-rh-certauth-issuer"]
 
   if cn == nil or cn == "" then
     return nil
@@ -81,8 +81,7 @@ function validate_cache_key(input)
   return {
     credential = {
       type = input.credential.type,
-      cn = input.credential.cn,
-      issuer = input.credential.issuer
+      headers = input.credential.headers
     }
   }
 end

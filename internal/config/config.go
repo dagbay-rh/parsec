@@ -85,6 +85,9 @@ type CredentialSourceConfig struct {
 
 	// CookieName is the cookie to read (cookie type)
 	CookieName string `koanf:"cookie_name"`
+
+	// Headers is the list of headers to extract (forwarded_client_cert_auth type)
+	Headers []string `koanf:"headers"`
 }
 
 // TokenTypeConfig specifies a token type to issue via ext_authz

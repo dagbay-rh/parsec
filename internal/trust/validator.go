@@ -196,8 +196,7 @@ func (c *BasicAuthCredential) Type() CredentialType {
 // ForwardedClientCertCredential represents certificate authentication
 // credentials extracted from proxy-forwarded headers after TLS termination.
 type ForwardedClientCertCredential struct {
-	CN     string `json:"cn"`
-	Issuer string `json:"issuer"`
+	Headers map[string]string `json:"headers"`
 }
 
 func (c *ForwardedClientCertCredential) Type() CredentialType {
