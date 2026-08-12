@@ -154,7 +154,7 @@ func TestHermeticAuthzCheckCertAuth(t *testing.T) {
 	fixedTime := time.Date(2024, 6, 15, 10, 0, 0, 0, time.UTC)
 	clk := clock.NewFixtureClock(fixedTime)
 
-	bopURL := "https://example.bop.api.redhat.com/v1/auth"
+	bopURL := "https://example.backoffice-proxy.api.redhat.com/v1/auth"
 
 	bopFixture := httpfixture.NewRuleBasedProvider([]httpfixture.HTTPFixtureRule{
 		{

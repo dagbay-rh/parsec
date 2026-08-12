@@ -31,7 +31,7 @@ fixtures:
   - type: http_rule
     request:
       method: GET
-      url: "https://example.bop.api.redhat.com/v1/auth"
+      url: "https://example.backoffice-proxy.api.redhat.com/v1/auth"
       url_type: exact
     response:
       status: 200
@@ -57,7 +57,7 @@ trust_store:
       script_file: ./configs/scripts/forwarded_client_cert_auth.lua
       credential_types: ["forwarded_client_cert"]
       config:
-        bop_url: "https://example.bop.api.redhat.com/v1/auth"
+        bop_url: "https://example.backoffice-proxy.api.redhat.com/v1/auth"
         trust_domain: "cert.example.com"
         bop_certauth_secret_env: "PARSEC_BOP_CERTAUTH_SECRET"
         bop_client_id_env: "PARSEC_BOP_CLIENT_ID"

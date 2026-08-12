@@ -23,7 +23,7 @@
 has(subject.claims) && has(subject.claims.impersonated) && subject.claims.impersonated == true
   ? invalidSubject("impersonated tokens are not accepted")
 : (
-has(subject.issuer) && subject.issuer.contains("bop") ? {
+has(subject.issuer) && subject.issuer.contains("backoffice-proxy") ? {
   "identity": {
     "auth_type": "cert-auth",
     "account_number": has(subject.claims) && has(subject.claims.account_number) ? subject.claims.account_number : "",
