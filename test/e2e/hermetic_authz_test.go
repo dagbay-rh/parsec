@@ -235,7 +235,7 @@ func TestHermeticAuthzCheckCertAuth(t *testing.T) {
 	dsRegistry := service.NewDataSourceRegistry()
 	tokenService := service.NewTokenService("cert.example.com", dsRegistry, issuerRegistry, nil)
 
-	certAuthSrc, err := server.NewForwardedClientCertCredentialSource("cert-auth", []string{"x-rh-certauth-cn", "x-rh-certauth-issuer"})
+	certAuthSrc, err := server.NewForwardedClientCertCredentialSource("cert-auth", "x-rh-certauth-cn", "x-rh-certauth-issuer")
 	if err != nil {
 		t.Fatalf("failed to create forwarded client cert credential source: %v", err)
 	}

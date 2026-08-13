@@ -50,9 +50,8 @@ http_clients:
 credential_sources:
   - name: cert-auth
     type: forwarded_client_cert_auth
-    headers:
-      - "x-rh-certauth-cn"
-      - "x-rh-certauth-issuer"
+    subject_header: "x-rh-certauth-cn"
+    issuer_header: "x-rh-certauth-issuer"
   - name: authorization-bearer
     type: authorization_bearer_opaque
 

@@ -11,6 +11,7 @@ var credentialSourceTypes = []string{
 	server.CredentialSourceTypeBearer,
 	server.CredentialSourceTypeCookie,
 	server.CredentialSourceTypeBasicAuth,
+	server.CredentialSourceTypeHeader,
 	server.CredentialSourceTypeForwardedClientCert,
 }
 
@@ -49,8 +50,10 @@ func newCredentialSource(cfg CredentialSourceConfig) (server.CredentialSource, e
 		return server.NewCookieCredentialSource(cfg.Name, cfg.CookieName)
 	case server.CredentialSourceTypeBasicAuth:
 		return server.NewBasicAuthCredentialSource(cfg.Name)
+	case server.CredentialSourceTypeHeader:
+		return server.NewHeaderCredentialSource(cfg.Name, cfg.Headers)
 	case server.CredentialSourceTypeForwardedClientCert:
-		return server.NewForwardedClientCertCredentialSource(cfg.Name, cfg.Headers)
+		return server.NewForwardedClientCertCredentialSource(cfg.Name, cfg.SubjectHeader, cfg.IssuerHeader)
 	default:
 		return nil, fmt.Errorf("unknown type %q (allowed: %s)", cfg.Type, strings.Join(credentialSourceTypes, ", "))
 	}

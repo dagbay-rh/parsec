@@ -8,8 +8,7 @@ import (
 )
 
 func TestForwardedClientCertCredentialSource_Extract(t *testing.T) {
-	headers := []string{"x-rh-certauth-cn", "x-rh-certauth-issuer"}
-	src, err := NewForwardedClientCertCredentialSource("cert-auth", headers)
+	src, err := NewForwardedClientCertCredentialSource("cert-auth", "x-rh-certauth-cn", "x-rh-certauth-issuer")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -34,11 +33,11 @@ func TestForwardedClientCertCredentialSource_Extract(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected *ForwardedClientCertCredential, got %T", ext.Credential)
 		}
-		if cred.Headers["x-rh-certauth-cn"] != "/CN=test-system" {
-			t.Errorf("expected cn '/CN=test-system', got %q", cred.Headers["x-rh-certauth-cn"])
+		if cred.Subject != "/CN=test-system" {
+			t.Errorf("expected subject '/CN=test-system', got %q", cred.Subject)
 		}
-		if cred.Headers["x-rh-certauth-issuer"] != "CN=Red Hat CA" {
-			t.Errorf("expected issuer 'CN=Red Hat CA', got %q", cred.Headers["x-rh-certauth-issuer"])
+		if cred.Issuer != "CN=Red Hat CA" {
+			t.Errorf("expected issuer 'CN=Red Hat CA', got %q", cred.Issuer)
 		}
 		if ext.SourceName != "cert-auth" {
 			t.Errorf("expected SourceName 'cert-auth', got %q", ext.SourceName)
@@ -62,7 +61,7 @@ func TestForwardedClientCertCredentialSource_Extract(t *testing.T) {
 		}
 	})
 
-	t.Run("cn present but issuer missing returns error", func(t *testing.T) {
+	t.Run("subject present but issuer missing returns error", func(t *testing.T) {
 		cc := CredentialContext{
 			Headers: map[string]string{
 				"x-rh-certauth-cn": "/CN=test",
@@ -75,7 +74,7 @@ func TestForwardedClientCertCredentialSource_Extract(t *testing.T) {
 		}
 	})
 
-	t.Run("issuer present but cn missing returns error", func(t *testing.T) {
+	t.Run("issuer present but subject missing returns error", func(t *testing.T) {
 		cc := CredentialContext{
 			Headers: map[string]string{
 				"x-rh-certauth-issuer": "CN=Red Hat CA",
@@ -106,15 +105,22 @@ func TestForwardedClientCertCredentialSource_Extract(t *testing.T) {
 }
 
 func TestNewForwardedClientCertCredentialSource_EmptyName(t *testing.T) {
-	_, err := NewForwardedClientCertCredentialSource("", []string{"x-rh-certauth-cn"})
+	_, err := NewForwardedClientCertCredentialSource("", "x-rh-certauth-cn", "x-rh-certauth-issuer")
 	if err == nil {
 		t.Fatal("expected error for empty name, got nil")
 	}
 }
 
-func TestNewForwardedClientCertCredentialSource_EmptyHeaders(t *testing.T) {
-	_, err := NewForwardedClientCertCredentialSource("cert-auth", nil)
+func TestNewForwardedClientCertCredentialSource_EmptySubjectHeader(t *testing.T) {
+	_, err := NewForwardedClientCertCredentialSource("cert-auth", "", "x-rh-certauth-issuer")
 	if err == nil {
-		t.Fatal("expected error for empty headers, got nil")
+		t.Fatal("expected error for empty subject_header, got nil")
+	}
+}
+
+func TestNewForwardedClientCertCredentialSource_EmptyIssuerHeader(t *testing.T) {
+	_, err := NewForwardedClientCertCredentialSource("cert-auth", "x-rh-certauth-cn", "")
+	if err == nil {
+		t.Fatal("expected error for empty issuer_header, got nil")
 	}
 }

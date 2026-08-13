@@ -137,23 +137,42 @@ func TestMarshalCredentialJSON_RoundTrip(t *testing.T) {
 			},
 		},
 		{
+			name: "header credential",
+			credential: &HeaderCredential{
+				Headers: map[string]string{
+					"x-custom-a": "value-a",
+					"x-custom-b": "value-b",
+				},
+			},
+			check: func(t *testing.T, got Credential) {
+				hc, ok := got.(*HeaderCredential)
+				if !ok {
+					t.Fatalf("expected *HeaderCredential, got %T", got)
+				}
+				if hc.Headers["x-custom-a"] != "value-a" {
+					t.Fatalf("x-custom-a=%q", hc.Headers["x-custom-a"])
+				}
+				if hc.Headers["x-custom-b"] != "value-b" {
+					t.Fatalf("x-custom-b=%q", hc.Headers["x-custom-b"])
+				}
+			},
+		},
+		{
 			name: "cert auth credential",
 			credential: &ForwardedClientCertCredential{
-				Headers: map[string]string{
-					"x-rh-certauth-cn":     "/CN=test-system",
-					"x-rh-certauth-issuer": "CN=Red Hat CA",
-				},
+				Subject: "/CN=test-system",
+				Issuer:  "CN=Red Hat CA",
 			},
 			check: func(t *testing.T, got Credential) {
 				ca, ok := got.(*ForwardedClientCertCredential)
 				if !ok {
 					t.Fatalf("expected *ForwardedClientCertCredential, got %T", got)
 				}
-				if ca.Headers["x-rh-certauth-cn"] != "/CN=test-system" {
-					t.Fatalf("cn=%q", ca.Headers["x-rh-certauth-cn"])
+				if ca.Subject != "/CN=test-system" {
+					t.Fatalf("subject=%q", ca.Subject)
 				}
-				if ca.Headers["x-rh-certauth-issuer"] != "CN=Red Hat CA" {
-					t.Fatalf("issuer=%q", ca.Headers["x-rh-certauth-issuer"])
+				if ca.Issuer != "CN=Red Hat CA" {
+					t.Fatalf("issuer=%q", ca.Issuer)
 				}
 			},
 		},

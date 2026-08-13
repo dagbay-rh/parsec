@@ -9,53 +9,55 @@ import (
 
 // ForwardedClientCertCredentialSource extracts certificate authentication
 // credentials from proxy-forwarded headers. A TLS-terminating proxy (e.g.,
-// Akamai CDN) validates the client certificate and forwards relevant fields
-// as headers. The set of headers to extract is configurable.
+// Akamai CDN) validates the client certificate and forwards the subject and
+// issuer as headers. The header names are configurable.
 //
-// When none of the configured headers are present, Extract returns (nil, nil),
-// allowing coexistence with other credential sources in the same chain.
+// When neither header is present, Extract returns (nil, nil), allowing
+// coexistence with other credential sources in the same chain.
 type ForwardedClientCertCredentialSource struct {
-	SourceName string
-	Headers    []string
+	SourceName    string
+	SubjectHeader string
+	IssuerHeader  string
 }
 
-// NewForwardedClientCertCredentialSource returns a ForwardedClientCertCredentialSource
-// with the given name and list of headers to extract.
-func NewForwardedClientCertCredentialSource(name string, headers []string) (*ForwardedClientCertCredentialSource, error) {
+func NewForwardedClientCertCredentialSource(name, subjectHeader, issuerHeader string) (*ForwardedClientCertCredentialSource, error) {
 	if name == "" {
 		return nil, fmt.Errorf("forwarded client cert credential source: name is required")
 	}
-	if len(headers) == 0 {
-		return nil, fmt.Errorf("forwarded client cert credential source: at least one header is required")
+	if subjectHeader == "" {
+		return nil, fmt.Errorf("forwarded client cert credential source: subject_header is required")
 	}
-	return &ForwardedClientCertCredentialSource{SourceName: name, Headers: headers}, nil
+	if issuerHeader == "" {
+		return nil, fmt.Errorf("forwarded client cert credential source: issuer_header is required")
+	}
+	return &ForwardedClientCertCredentialSource{
+		SourceName:    name,
+		SubjectHeader: subjectHeader,
+		IssuerHeader:  issuerHeader,
+	}, nil
 }
 
 func (s *ForwardedClientCertCredentialSource) Extract(_ context.Context, cc CredentialContext) (*CredentialExtraction, error) {
-	extracted := make(map[string]string)
-	for _, h := range s.Headers {
-		if v := cc.Headers[h]; v != "" {
-			extracted[h] = v
-		}
-	}
+	subject := cc.Headers[s.SubjectHeader]
+	issuer := cc.Headers[s.IssuerHeader]
 
-	if len(extracted) == 0 {
+	if subject == "" && issuer == "" {
 		return nil, nil
 	}
 
-	if len(extracted) != len(s.Headers) {
-		var missing []string
-		for _, h := range s.Headers {
-			if _, ok := extracted[h]; !ok {
-				missing = append(missing, h)
-			}
-		}
-		return nil, fmt.Errorf("missing required headers: %v (all configured headers must be present when any are)", missing)
+	if subject == "" {
+		return nil, fmt.Errorf("missing required header: %s (both subject and issuer headers must be present)", s.SubjectHeader)
+	}
+	if issuer == "" {
+		return nil, fmt.Errorf("missing required header: %s (both subject and issuer headers must be present)", s.IssuerHeader)
 	}
 
 	return &CredentialExtraction{
-		Credential:  &trust.ForwardedClientCertCredential{Headers: extracted},
-		HeadersUsed: s.Headers,
+		Credential: &trust.ForwardedClientCertCredential{
+			Subject: subject,
+			Issuer:  issuer,
+		},
+		HeadersUsed: []string{s.SubjectHeader, s.IssuerHeader},
 		SourceName:  s.SourceName,
 	}, nil
 }

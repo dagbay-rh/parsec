@@ -80,14 +80,20 @@ type CredentialSourceConfig struct {
 	// Name uniquely identifies this credential source (multiple sources may share a type)
 	Name string `koanf:"name"`
 
-	// Type is the source kind: bearer, cookie, forwarded_client_cert_auth
+	// Type is the source kind: bearer, cookie, header, forwarded_client_cert_auth
 	Type string `koanf:"type"`
 
 	// CookieName is the cookie to read (cookie type)
 	CookieName string `koanf:"cookie_name"`
 
-	// Headers is the list of headers to extract (forwarded_client_cert_auth type)
+	// Headers is the list of headers to extract (header type)
 	Headers []string `koanf:"headers"`
+
+	// SubjectHeader is the header containing the certificate subject (forwarded_client_cert_auth type)
+	SubjectHeader string `koanf:"subject_header"`
+
+	// IssuerHeader is the header containing the certificate issuer (forwarded_client_cert_auth type)
+	IssuerHeader string `koanf:"issuer_header"`
 }
 
 // TokenTypeConfig specifies a token type to issue via ext_authz
