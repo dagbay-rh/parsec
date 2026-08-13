@@ -142,7 +142,7 @@ Successful validations are cached to avoid repeated BOP calls. Caching is split 
 
 The Lua script makes HTTP calls via a named HTTP client (`backoffice-proxy`) resolved from the `http_clients` registry. The BOP connection does not require mTLS — only TLS with proper CA verification.
 
-For local testing, `tls_skip_verify: true` can be set on the HTTP client to bypass certificate verification against BOP stage.
+The `ca_cert` option on the HTTP client appends a custom CA to the system cert pool, enabling TLS verification against internal services signed by the Red Hat IT CA.
 
 ### CEL Integration
 
@@ -181,6 +181,7 @@ The `issuer` is set to the `bop_url` config value by the Lua script on successfu
 http_clients:
   - name: backoffice-proxy
     timeout: "30s"
+    ca_cert: "/etc/parsec/secrets/it-ca-bundle/it-ca-bundle.crt"
 
 credential_sources:
   - name: cert-auth
@@ -244,6 +245,8 @@ BOP secrets are injected as environment variables from two K8s secrets:
 | `PARSEC_BOP_CERTAUTH_SECRET` | `backoffice-proxy-config` | `certauth-secret` | Proxy proof for BOP cert auth |
 | `PARSEC_BOP_CLIENT_ID` | `parsec` | `client_id` | BOP client identifier |
 | `PARSEC_BOP_TOKEN` | `parsec` | `token` | BOP API token |
+
+The Red Hat IT CA bundle is mounted from a K8s secret (`it-ca-bundle`) at `/etc/parsec/secrets/it-ca-bundle/`. The HTTP client's `ca_cert` option appends this CA to the system cert pool for TLS verification against BOP.
 
 All secret references use `optional: true` to allow the pod to start without cert auth configured.
 
