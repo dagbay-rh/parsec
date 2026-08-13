@@ -296,10 +296,10 @@ objects:
                 value: "/etc/parsec/parsec.yaml"
               - name: SSL_CERT_FILE
                 value: "/etc/pki/tls/certs/openshift-service-ca.crt"
-              - name: PARSEC_BOP_CONFIG_SECRET
+              - name: PARSEC_BOP_CERTAUTH_SECRET
                 valueFrom:
                   secretKeyRef:
-                    name: ${BOP_CONFIG_SECRET}
+                    name: ${BOP_CERTAUTH_SECRET}
                     key: certauth-secret
                     optional: true
               - name: PARSEC_BOP_CLIENT_ID
@@ -356,7 +356,7 @@ parameters:
     name: REPLICAS
     value: "1"
   - description: Name of the K8s secret containing the BOP certauth proxy proof secret
-    name: BOP_CONFIG_SECRET
+    name: BOP_CERTAUTH_SECRET
     value: backoffice-proxy-config
   - description: Name of the K8s secret containing BOP client-id and token
     name: BOP_CLIENT_SECRET
