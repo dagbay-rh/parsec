@@ -234,8 +234,9 @@ type HTTPClientSpec struct {
 	// When set, this client gets its own transport rather than sharing the default.
 	ClientCertSource *CertSourceConfig `koanf:"client_cert_source"`
 
-	// TLSSkipVerify disables TLS certificate verification. For local testing only.
-	TLSSkipVerify bool `koanf:"tls_skip_verify"`
+	// CACert is the path to a PEM-encoded CA certificate file for TLS verification.
+	// When set, this CA is appended to the system root pool for this client.
+	CACert string `koanf:"ca_cert"`
 }
 
 // HTTPClientConfig is a named HTTP client entry for the top-level registry.

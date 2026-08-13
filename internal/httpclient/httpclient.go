@@ -10,8 +10,10 @@ package httpclient
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -29,7 +31,7 @@ type ClientSpec struct {
 	Timeout             time.Duration
 	CertSource          CertSource          // nil = share default transport
 	TransportMiddleware TransportMiddleware // nil = no wrapping
-	InsecureSkipVerify  bool                // skip TLS certificate verification
+	RootCAPath          string              // PEM-encoded CA cert file to trust
 }
 
 // Registry builds, stores, and provides named HTTP clients.
@@ -88,7 +90,7 @@ func (r *Registry) build(spec ClientSpec) (*http.Client, error) {
 	if r.fixtureTransport != nil {
 		// Hermetic mode: fixture transport overrides everything
 		base = r.fixtureTransport
-	} else if spec.CertSource != nil || spec.InsecureSkipVerify {
+	} else if spec.CertSource != nil || spec.RootCAPath != "" {
 		// Clone the default transport so we keep standard behavior
 		// (proxy handling, HTTP/2, idle connection reuse, timeouts)
 		// and customize TLS settings.
@@ -105,8 +107,19 @@ func (r *Registry) build(spec ClientSpec) (*http.Client, error) {
 				return &cert, nil
 			}
 		}
-		if spec.InsecureSkipVerify {
-			customTransport.TLSClientConfig.InsecureSkipVerify = true
+		if spec.RootCAPath != "" {
+			pem, err := os.ReadFile(spec.RootCAPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read CA cert %q: %w", spec.RootCAPath, err)
+			}
+			pool, err := x509.SystemCertPool()
+			if err != nil {
+				pool = x509.NewCertPool()
+			}
+			if !pool.AppendCertsFromPEM(pem) {
+				return nil, fmt.Errorf("failed to parse CA cert from %q", spec.RootCAPath)
+			}
+			customTransport.TLSClientConfig.RootCAs = pool
 		}
 		base = customTransport
 	} else {

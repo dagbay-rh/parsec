@@ -44,7 +44,7 @@ exchange_server:
 http_clients:
   - name: backoffice-proxy
     timeout: "30s"
-    tls_skip_verify: true
+    ca_cert: "./local/it-ca-bundle.crt"
 
 # Credential sources — cert auth first, then bearer fallback
 credential_sources:
