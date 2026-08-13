@@ -7,6 +7,7 @@
 --   bop_certauth_secret_env (required) env var name containing the proxy proof secret for x-rh-insights-certauth-secret header
 --   bop_client_id_env   (required) env var name containing the BOP client ID for x-rh-clientid header
 --   bop_token_env       (required) env var name containing the BOP API token for x-rh-apitoken header
+--   bop_env             (optional) environment value for x-rh-insights-env header (e.g., "stage", "prod")
 
 function validate(input)
   local bop_url = config.get("bop_url")
@@ -14,6 +15,7 @@ function validate(input)
   local bop_certauth_secret = os.getenv(config.get("bop_certauth_secret_env"))
   local bop_client_id = os.getenv(config.get("bop_client_id_env"))
   local bop_token = os.getenv(config.get("bop_token_env"))
+  local bop_env = config.has("bop_env") and config.get("bop_env") or "stage"
 
   local cn = input.credential.headers["x-rh-certauth-cn"]
   local cert_issuer = input.credential.headers["x-rh-certauth-issuer"]
@@ -34,12 +36,10 @@ function validate(input)
   end
 
   local response, err = http.get(bop_url, {
-    -- client id and token required for any bop request
     ["x-rh-clientid"] = bop_client_id,
     ["x-rh-apitoken"] = bop_token,
-    -- cert auth secret is specifically required for cert auth in bop
     ["x-rh-insights-certauth-secret"] = bop_certauth_secret,
-    -- cn and issuer for specific request
+    ["x-rh-insights-env"] = bop_env,
     ["x-rh-certauth-cn"] = cn,
     ["x-rh-certauth-issuer"] = cert_issuer,
   })
