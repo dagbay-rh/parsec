@@ -42,8 +42,6 @@ objects:
                 value: "true"
               - name: PARSEC_CONFIG
                 value: "/etc/parsec/parsec.yaml"
-              - name: SSL_CERT_FILE
-                value: "/etc/pki/tls/certs/openshift-service-ca.crt"
               - name: PARSEC_BOP_CERTAUTH_SECRET
                 valueFrom:
                   secretKeyRef:
@@ -75,9 +73,8 @@ objects:
               - name: registry-certs
                 mountPath: "/etc/parsec/secrets/registry-certs"
                 readOnly: true
-              - name: openshift-ca-bundle
-                mountPath: "/etc/pki/tls/certs/openshift-service-ca.crt"
-                subPath: service-ca.crt
+              - name: it-ca-bundle
+                mountPath: "/etc/parsec/secrets/it-ca-bundle"
                 readOnly: true
             volumes:
               - name: config-volume
@@ -87,9 +84,9 @@ objects:
                 secret:
                   secretName: ${REGISTRY_CERTS_SECRET}
                   optional: true
-              - name: openshift-ca-bundle
-                configMap:
-                  name: openshift-service-ca.crt
+              - name: it-ca-bundle
+                secret:
+                  secretName: ${IT_CA_BUNDLE_SECRET}
                   optional: true
           webServices:
             public:
@@ -133,6 +130,9 @@ parameters:
   - description: Name of the K8s secret containing BOP client-id and token
     name: BOP_CLIENT_SECRET
     value: parsec
+  - description: Name of the K8s secret containing the Red Hat IT CA bundle
+    name: IT_CA_BUNDLE_SECRET
+    value: it-ca-bundle
   - description: Memory request for Parsec service
     name: PARSEC_REQUESTS_MEMORY
     value: '256Mi'
