@@ -319,6 +319,9 @@ objects:
               - name: config-volume
                 mountPath: "/etc/parsec/scripts/redhat_identity.cel"
                 subPath: redhat_identity.cel
+              - name: forwarded-client-cert-auth
+                mountPath: "/etc/parsec/scripts/forwarded_client_cert_auth.lua"
+                subPath: forwarded_client_cert_auth.lua
               - name: it-ca-bundle
                 mountPath: "/etc/parsec/secrets/it-ca-bundle"
                 readOnly: true
@@ -326,6 +329,10 @@ objects:
               - name: config-volume
                 configMap:
                   name: parsec-config
+              - name: forwarded-client-cert-auth
+                secret:
+                  secretName: ${FORWARDED_CLIENT_CERT_AUTH_SECRET}
+                  optional: true
               - name: it-ca-bundle
                 secret:
                   secretName: ${IT_CA_BUNDLE_SECRET}
@@ -358,6 +365,9 @@ parameters:
   - description: Name of the K8s secret containing BOP client-id and token
     name: BOP_CLIENT_SECRET
     value: parsec
+  - description: Name of the K8s secret containing the forwarded client cert auth Lua script
+    name: FORWARDED_CLIENT_CERT_AUTH_SECRET
+    value: forwarded-client-cert-auth
   - description: Name of the K8s secret containing the Red Hat IT CA bundle
     name: IT_CA_BUNDLE_SECRET
     value: it-ca-bundle
