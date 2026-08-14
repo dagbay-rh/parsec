@@ -449,6 +449,10 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 		distCache1, distCache2   atomic.Int32
 		jwks1, jwks2             atomic.Int32
 		srv1, srv2               atomic.Int32
+		http1, http2             atomic.Int32
+		httpSC1, httpSC2         atomic.Int32
+		httpErr1, httpErr2       atomic.Int32
+		httpEnd1, httpEnd2       atomic.Int32
 	)
 
 	child1 := Compose(
@@ -470,7 +474,7 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 			server.JWKSObserver
 			server.LifecycleObserver
 		}{&spyJWKSObserver{called: &jwks1}, &spySrvLifeObserver{called: &srv1}},
-		httpclient.NoOpHTTPClientObserver{},
+		&spyHTTPClientObserver{called: &http1, statusCode: &httpSC1, errored: &httpErr1, ended: &httpEnd1},
 	)
 	child2 := Compose(
 		service.NoOpServiceObserver{},
@@ -491,7 +495,7 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 			server.JWKSObserver
 			server.LifecycleObserver
 		}{&spyJWKSObserver{called: &jwks2}, &spySrvLifeObserver{called: &srv2}},
-		httpclient.NoOpHTTPClientObserver{},
+		&spyHTTPClientObserver{called: &http2, statusCode: &httpSC2, errored: &httpErr2, ended: &httpEnd2},
 	)
 
 	composite := CompositeAll([]Observer{child1, child2})
@@ -512,6 +516,12 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 	composite.CacheRefreshStarted(ctx)
 	composite.StopStarted(ctx)
 
+	// Exercise HTTP client observer fan-out including probe methods.
+	_, probe := composite.RequestStarted(ctx, "test-client", "GET", "example.com")
+	probe.StatusCode(200)
+	probe.Error(errors.New("test"))
+	probe.End()
+
 	for _, tc := range []struct {
 		name   string
 		c1, c2 *atomic.Int32
@@ -530,6 +540,10 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 		{"DistributedValidate", &distCache1, &distCache2},
 		{"JWKS", &jwks1, &jwks2},
 		{"ServerLifecycle", &srv1, &srv2},
+		{"HTTPClientRequest", &http1, &http2},
+		{"HTTPClientStatusCode", &httpSC1, &httpSC2},
+		{"HTTPClientError", &httpErr1, &httpErr2},
+		{"HTTPClientEnd", &httpEnd1, &httpEnd2},
 	} {
 		if tc.c1.Load() != 1 {
 			t.Errorf("%s: child1 expected 1 call, got %d", tc.name, tc.c1.Load())
@@ -785,3 +799,27 @@ func (s *spyServiceObserver) AuthzCheckStarted(ctx context.Context) (context.Con
 	s.authzCheckCalled.Add(1)
 	return ctx, service.NoOpAuthzCheckProbe{}
 }
+
+type spyHTTPClientObserver struct {
+	httpclient.NoOpHTTPClientObserver
+	called     *atomic.Int32
+	statusCode *atomic.Int32
+	errored    *atomic.Int32
+	ended      *atomic.Int32
+}
+
+func (s *spyHTTPClientObserver) RequestStarted(ctx context.Context, _ string, _ string, _ string) (context.Context, httpclient.RequestProbe) {
+	s.called.Add(1)
+	return ctx, &spyHTTPClientProbe{statusCode: s.statusCode, errored: s.errored, ended: s.ended}
+}
+
+type spyHTTPClientProbe struct {
+	httpclient.NoOpRequestProbe
+	statusCode *atomic.Int32
+	errored    *atomic.Int32
+	ended      *atomic.Int32
+}
+
+func (p *spyHTTPClientProbe) StatusCode(int) { p.statusCode.Add(1) }
+func (p *spyHTTPClientProbe) Error(error)    { p.errored.Add(1) }
+func (p *spyHTTPClientProbe) End()           { p.ended.Add(1) }

@@ -61,8 +61,8 @@ func resolveRegistryConfig(opts []RegistryOption) registryConfig {
 // global concerns like fixture transports are applied uniformly.
 type Registry struct {
 	clients          map[ClientName]*http.Client
-	fixtureTransport http.RoundTripper      // nil in production
-	observer         HTTPClientObserver      // nil = no instrumentation
+	fixtureTransport http.RoundTripper  // nil in production
+	observer         HTTPClientObserver // nil = no instrumentation
 }
 
 // NewRegistry creates a Registry. If fixtureTransport is non-nil, it overrides

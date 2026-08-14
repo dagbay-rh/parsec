@@ -1012,11 +1012,11 @@ func TestProbeContext_CarriesRequestContext(t *testing.T) {
 
 func TestHTTPClientRequestMetrics(t *testing.T) {
 	tests := []struct {
-		name           string
-		clientName     string
-		method         string
-		host           string
-		action         func(probe interface {
+		name       string
+		clientName string
+		method     string
+		host       string
+		action     func(probe interface {
 			StatusCode(int)
 			Error(error)
 			End()

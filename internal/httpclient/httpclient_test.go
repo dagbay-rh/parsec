@@ -372,20 +372,24 @@ var _ = tls.Certificate{}
 
 // --- observer integration tests ---
 
+type spyCtxKey struct{}
+
 type spyObserver struct {
 	NoOpHTTPClientObserver
 	clientName string
 	method     string
 	host       string
 	probe      *spyProbe
+	gotCtx     context.Context
 }
 
-func (o *spyObserver) RequestStarted(_ context.Context, clientName, method, host string) (context.Context, RequestProbe) {
+func (o *spyObserver) RequestStarted(ctx context.Context, clientName, method, host string) (context.Context, RequestProbe) {
 	o.clientName = clientName
 	o.method = method
 	o.host = host
 	o.probe = &spyProbe{}
-	return context.Background(), o.probe
+	o.gotCtx = ctx
+	return context.WithValue(ctx, spyCtxKey{}, "observed"), o.probe
 }
 
 type spyProbe struct {
