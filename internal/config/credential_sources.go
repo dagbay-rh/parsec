@@ -51,7 +51,11 @@ func newCredentialSource(cfg CredentialSourceConfig) (server.CredentialSource, e
 	case server.CredentialSourceTypeBasicAuth:
 		return server.NewBasicAuthCredentialSource(cfg.Name)
 	case server.CredentialSourceTypeHeader:
-		return server.NewHeaderCredentialSource(cfg.Name, cfg.Headers)
+		headers := make([]server.HeaderSpec, len(cfg.Headers))
+		for i, h := range cfg.Headers {
+			headers[i] = server.HeaderSpec{Name: h.Name}
+		}
+		return server.NewHeaderCredentialSource(cfg.Name, headers)
 	case server.CredentialSourceTypeForwardedClientCert:
 		return server.NewForwardedClientCertCredentialSource(cfg.Name, cfg.SubjectHeader, cfg.IssuerHeader)
 	default:

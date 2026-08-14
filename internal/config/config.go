@@ -75,6 +75,11 @@ type AuthzCheckPolicyConfig struct {
 	AllowAnonymousWithoutIssuePaths []string `koanf:"allow_anonymous_without_issue_paths"`
 }
 
+// HeaderSpec configures a single header for extraction
+type HeaderSpec struct {
+	Name string `koanf:"name"`
+}
+
 // CredentialSourceConfig configures a credential extraction source
 type CredentialSourceConfig struct {
 	// Name uniquely identifies this credential source (multiple sources may share a type)
@@ -87,7 +92,7 @@ type CredentialSourceConfig struct {
 	CookieName string `koanf:"cookie_name"`
 
 	// Headers is the list of headers to extract (header type)
-	Headers []string `koanf:"headers"`
+	Headers []HeaderSpec `koanf:"headers"`
 
 	// SubjectHeader is the header containing the certificate subject (forwarded_client_cert_auth type)
 	SubjectHeader string `koanf:"subject_header"`

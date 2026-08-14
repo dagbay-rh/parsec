@@ -8,7 +8,7 @@ import (
 )
 
 func TestHeaderCredentialSource_Extract(t *testing.T) {
-	headers := []string{"x-custom-header-a", "x-custom-header-b"}
+	headers := []HeaderSpec{{Name: "x-custom-header-a"}, {Name: "x-custom-header-b"}}
 	src, err := NewHeaderCredentialSource("custom-headers", headers)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -93,7 +93,7 @@ func TestHeaderCredentialSource_Extract(t *testing.T) {
 }
 
 func TestHeaderCredentialSource_MixedCaseHeaders(t *testing.T) {
-	src, err := NewHeaderCredentialSource("custom-headers", []string{"X-Custom-Header-A", "X-Custom-Header-B"})
+	src, err := NewHeaderCredentialSource("custom-headers", []HeaderSpec{{Name: "X-Custom-Header-A"}, {Name: "X-Custom-Header-B"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestHeaderCredentialSource_MixedCaseHeaders(t *testing.T) {
 }
 
 func TestNewHeaderCredentialSource_EmptyName(t *testing.T) {
-	_, err := NewHeaderCredentialSource("", []string{"x-header"})
+	_, err := NewHeaderCredentialSource("", []HeaderSpec{{Name: "x-header"}})
 	if err == nil {
 		t.Fatal("expected error for empty name, got nil")
 	}
