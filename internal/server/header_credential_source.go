@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/project-kessel/parsec/internal/trust"
 )
@@ -24,7 +25,11 @@ func NewHeaderCredentialSource(name string, headers []string) (*HeaderCredential
 	if len(headers) == 0 {
 		return nil, fmt.Errorf("header credential source: at least one header is required")
 	}
-	return &HeaderCredentialSource{SourceName: name, Headers: headers}, nil
+	normalized := make([]string, len(headers))
+	for i, h := range headers {
+		normalized[i] = strings.ToLower(h)
+	}
+	return &HeaderCredentialSource{SourceName: name, Headers: normalized}, nil
 }
 
 func (s *HeaderCredentialSource) Extract(_ context.Context, cc CredentialContext) (*CredentialExtraction, error) {

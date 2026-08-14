@@ -80,7 +80,7 @@ type CredentialSourceConfig struct {
 	// Name uniquely identifies this credential source (multiple sources may share a type)
 	Name string `koanf:"name"`
 
-	// Type is the source kind: bearer, cookie, header, forwarded_client_cert_auth
+	// Type is the source kind: authorization_bearer_opaque, cookie_bearer_opaque, authorization_basic_auth, header, forwarded_client_cert_auth
 	Type string `koanf:"type"`
 
 	// CookieName is the cookie to read (cookie type)

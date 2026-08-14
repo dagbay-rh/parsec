@@ -104,6 +104,39 @@ func TestForwardedClientCertCredentialSource_Extract(t *testing.T) {
 	})
 }
 
+func TestForwardedClientCertCredentialSource_MixedCaseHeaders(t *testing.T) {
+	src, err := NewForwardedClientCertCredentialSource("cert-auth", "X-RH-CertAuth-CN", "X-RH-CertAuth-Issuer")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	cc := CredentialContext{
+		Headers: map[string]string{
+			"x-rh-certauth-cn":     "/CN=test-system",
+			"x-rh-certauth-issuer": "CN=Red Hat CA",
+		},
+	}
+
+	ext, err := src.Extract(context.Background(), cc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ext == nil {
+		t.Fatal("expected extraction, got nil")
+	}
+
+	cred, ok := ext.Credential.(*trust.ForwardedClientCertCredential)
+	if !ok {
+		t.Fatalf("expected *ForwardedClientCertCredential, got %T", ext.Credential)
+	}
+	if cred.Subject != "/CN=test-system" {
+		t.Errorf("expected subject '/CN=test-system', got %q", cred.Subject)
+	}
+	if cred.Issuer != "CN=Red Hat CA" {
+		t.Errorf("expected issuer 'CN=Red Hat CA', got %q", cred.Issuer)
+	}
+}
+
 func TestNewForwardedClientCertCredentialSource_EmptyName(t *testing.T) {
 	_, err := NewForwardedClientCertCredentialSource("", "x-rh-certauth-cn", "x-rh-certauth-issuer")
 	if err == nil {

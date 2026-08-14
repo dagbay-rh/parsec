@@ -92,6 +92,39 @@ func TestHeaderCredentialSource_Extract(t *testing.T) {
 	})
 }
 
+func TestHeaderCredentialSource_MixedCaseHeaders(t *testing.T) {
+	src, err := NewHeaderCredentialSource("custom-headers", []string{"X-Custom-Header-A", "X-Custom-Header-B"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	cc := CredentialContext{
+		Headers: map[string]string{
+			"x-custom-header-a": "value-a",
+			"x-custom-header-b": "value-b",
+		},
+	}
+
+	ext, err := src.Extract(context.Background(), cc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ext == nil {
+		t.Fatal("expected extraction, got nil")
+	}
+
+	cred, ok := ext.Credential.(*trust.HeaderCredential)
+	if !ok {
+		t.Fatalf("expected *HeaderCredential, got %T", ext.Credential)
+	}
+	if cred.Headers["x-custom-header-a"] != "value-a" {
+		t.Errorf("expected 'value-a', got %q", cred.Headers["x-custom-header-a"])
+	}
+	if cred.Headers["x-custom-header-b"] != "value-b" {
+		t.Errorf("expected 'value-b', got %q", cred.Headers["x-custom-header-b"])
+	}
+}
+
 func TestNewHeaderCredentialSource_EmptyName(t *testing.T) {
 	_, err := NewHeaderCredentialSource("", []string{"x-header"})
 	if err == nil {

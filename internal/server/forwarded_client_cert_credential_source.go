@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/project-kessel/parsec/internal/trust"
 )
@@ -32,8 +33,8 @@ func NewForwardedClientCertCredentialSource(name, subjectHeader, issuerHeader st
 	}
 	return &ForwardedClientCertCredentialSource{
 		SourceName:    name,
-		SubjectHeader: subjectHeader,
-		IssuerHeader:  issuerHeader,
+		SubjectHeader: strings.ToLower(subjectHeader),
+		IssuerHeader:  strings.ToLower(issuerHeader),
 	}, nil
 }
 
