@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/project-kessel/parsec/internal/clock"
+	"github.com/project-kessel/parsec/internal/httpclient"
 	"github.com/project-kessel/parsec/internal/observer"
 	"github.com/project-kessel/parsec/internal/probe/zlog"
 )
@@ -89,6 +90,7 @@ func newLoggingObserver(cfg *ObservabilityConfig, logCtx LoggerContext) (observe
 		zlog.NewLoggingKeysObserver(krLog, kpLog, clk),
 		zlog.NewLoggingTrustObserver(tvLog, clk),
 		zlog.NewLoggingServerObserver(jcLog, slLog, clk),
+		httpclient.NoOpHTTPClientObserver{},
 	), nil
 }
 

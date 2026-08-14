@@ -14,8 +14,8 @@ const defaultHTTPClientTimeout = 30 * time.Second
 // NewHTTPClientRegistry creates an HTTP client registry from configuration.
 // If no config entry has name "default", a stock default client is auto-created
 // (30s timeout, no auth, no cert source).
-func NewHTTPClientRegistry(cfgs []HTTPClientConfig, fixtureTransport http.RoundTripper) (*httpclient.Registry, error) {
-	registry := httpclient.NewRegistry(fixtureTransport)
+func NewHTTPClientRegistry(cfgs []HTTPClientConfig, fixtureTransport http.RoundTripper, opts ...httpclient.RegistryOption) (*httpclient.Registry, error) {
+	registry := httpclient.NewRegistry(fixtureTransport, opts...)
 
 	hasDefault := false
 	for _, cfg := range cfgs {

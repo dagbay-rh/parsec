@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/project-kessel/parsec/internal/datasource"
+	"github.com/project-kessel/parsec/internal/httpclient"
 	"github.com/project-kessel/parsec/internal/keys"
 	"github.com/project-kessel/parsec/internal/server"
 	"github.com/project-kessel/parsec/internal/service"
@@ -165,6 +166,15 @@ func TestNoOp_AllProbeMethodsCallable(t *testing.T) {
 		_, p := obs.StopStarted(ctx)
 		p.End()
 	}
+	{
+		ctx2, p := obs.RequestStarted(ctx, "test-client", "GET", "example.com")
+		if ctx2 != ctx {
+			t.Error("expected same context back from noop RequestStarted")
+		}
+		p.StatusCode(200)
+		p.Error(errors.New("x"))
+		p.End()
+	}
 	if err := obs.Shutdown(ctx); err != nil {
 		t.Errorf("noop Shutdown should return nil, got %v", err)
 	}
@@ -179,6 +189,7 @@ func TestCompose_ShutdownCallsShutdownFn(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 		WithShutdown(func(context.Context) error {
 			called.Add(1)
 			return nil
@@ -200,6 +211,7 @@ func TestCompose_ShutdownWithoutOption_ReturnsNil(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 	)
 
 	if err := obs.Shutdown(context.Background()); err != nil {
@@ -215,6 +227,7 @@ func TestCompose_ConfigureHTTPMuxCallsFn(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 		WithHTTPMux(func(*http.ServeMux) {
 			called.Add(1)
 		}),
@@ -234,6 +247,7 @@ func TestCompositeAll_ConfigureHTTPMuxCascadesToAllChildren(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 		WithHTTPMux(func(*http.ServeMux) { c1.Add(1) }),
 	)
 	child2 := Compose(
@@ -242,6 +256,7 @@ func TestCompositeAll_ConfigureHTTPMuxCascadesToAllChildren(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 		WithHTTPMux(func(*http.ServeMux) { c2.Add(1) }),
 	)
 
@@ -264,6 +279,7 @@ func TestCompositeAll_ShutdownCascadesToAllChildren(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 		WithShutdown(func(context.Context) error {
 			c1.Add(1)
 			return nil
@@ -275,6 +291,7 @@ func TestCompositeAll_ShutdownCascadesToAllChildren(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 		WithShutdown(func(context.Context) error {
 			c2.Add(1)
 			return errors.New("child2 error")
@@ -332,6 +349,7 @@ func TestCompose_DelegatesToCorrectSubObserver(t *testing.T) {
 			server.JWKSObserver
 			server.LifecycleObserver
 		}{&spyJWKSObserver{called: &jwksCalled}, &spySrvLifeObserver{called: &srvCalled}},
+		httpclient.NoOpHTTPClientObserver{},
 	)
 
 	ctx := context.Background()
@@ -452,6 +470,7 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 			server.JWKSObserver
 			server.LifecycleObserver
 		}{&spyJWKSObserver{called: &jwks1}, &spySrvLifeObserver{called: &srv1}},
+		httpclient.NoOpHTTPClientObserver{},
 	)
 	child2 := Compose(
 		service.NoOpServiceObserver{},
@@ -472,6 +491,7 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 			server.JWKSObserver
 			server.LifecycleObserver
 		}{&spyJWKSObserver{called: &jwks2}, &spySrvLifeObserver{called: &srv2}},
+		httpclient.NoOpHTTPClientObserver{},
 	)
 
 	composite := CompositeAll([]Observer{child1, child2})
@@ -537,6 +557,7 @@ func TestCompositeAll_FansOutServiceTypes(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 	)
 	child2 := Compose(
 		&spyServiceObserver{
@@ -548,6 +569,7 @@ func TestCompositeAll_FansOutServiceTypes(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 	)
 
 	composite := CompositeAll([]Observer{child1, child2})
@@ -586,6 +608,7 @@ func TestCompositeAll_MultiProbe_FansOutEvents(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 	)
 	child2 := Compose(
 		service.NoOpServiceObserver{},
@@ -596,6 +619,7 @@ func TestCompositeAll_MultiProbe_FansOutEvents(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 	)
 
 	composite := CompositeAll([]Observer{child1, child2})
