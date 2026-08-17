@@ -138,7 +138,7 @@ objects:
           },
           "entitlements": {}
         } : (
-          has(subject.claims) && isConsoleApiToken(subject.claims) && !has(subject.claims.idp)
+          datasource("identity-policy").enforce_idp_auth && has(subject.claims) && isConsoleApiToken(subject.claims) && !has(subject.claims.idp)
             ? invalidSubject("claim 'idp' is required")
           : has(subject.claims) && isConsoleApiToken(subject.claims) ? {
             "identity": {
@@ -155,8 +155,7 @@ objects:
                 "last_name": has(subject.claims.family_name) ? subject.claims.family_name : "",
                 "is_active": true,
                 "is_org_admin": hasRole(subject.claims, "admin:org:all"),
-                "is_internal": subject.claims.idp == datasource("identity-policy").internal_idp_target ?
-                               true :
+                "is_internal": has(subject.claims.idp) ? (subject.claims.idp == datasource("identity-policy").internal_idp_target) :
                                has(subject.claims.is_internal) ? subject.claims.is_internal :
                                datasource("identity-policy").role_fallback_enabled ? hasRole(subject.claims, "redhat:employees") :
                                false,
