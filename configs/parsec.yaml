@@ -45,6 +45,7 @@ data_sources:
     data:
       internal_idp_target: "https://sso.redhat.com/auth/realms/internal"
       role_fallback_enabled: true
+      enforce_idp_auth: false
 
 # Token issuers
 #

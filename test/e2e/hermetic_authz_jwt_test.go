@@ -93,6 +93,7 @@ func TestHermeticAuthzCheckJWT(t *testing.T) {
 	identityPolicyDS, err := datasource.NewStaticDataSource("identity-policy", map[string]any{
 		"internal_idp_target":   "https://sso.redhat.com/auth/realms/internal",
 		"role_fallback_enabled": true,
+		"enforce_idp_auth":      false,
 	})
 	if err != nil {
 		t.Fatalf("failed to create identity-policy datasource: %v", err)
