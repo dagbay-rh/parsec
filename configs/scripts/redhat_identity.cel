@@ -10,6 +10,7 @@
 // Reserve fail() for true mapping/system failures (Internal), not policy.
 //
 // Supports:
+//   - Trusted username tokens (issuer is "urn:redhat:names:identity:username", enriched via BOP)
 //   - Registry Auth tokens (issuer is "container-registry-authorizer(.stage).api.redhat.com")
 //   - Service Account tokens (preferred_username starts with "service-account-")
 //   - Console API tokens (scope contains "api.console")
@@ -41,6 +42,35 @@ has(subject.issuer) && subject.issuer.startsWith("x509://") ? {
   },
   "entitlements": {}
 } : (
+// Trusted username path: subject validated by the pass-through username validator,
+// enriched via BOP data source. No JWT claims available.
+has(subject.issuer) && subject.issuer == "urn:redhat:names:identity:username" ? (
+  datasource("bop") != null ?
+    {
+      "identity": {
+        "account_number": has(datasource("bop").account_number) ? datasource("bop").account_number : "",
+        "org_id": safeToString(datasource("bop").org_id),
+        "type": "User",
+        "auth_type": "jwt-auth",
+        "user": {
+          "username": has(datasource("bop").username) ? datasource("bop").username : "",
+          "email": has(datasource("bop").email) ? datasource("bop").email : "",
+          "first_name": has(datasource("bop").first_name) ? datasource("bop").first_name : "",
+          "last_name": has(datasource("bop").last_name) ? datasource("bop").last_name : "",
+          "is_active": has(datasource("bop").is_active) ? datasource("bop").is_active : true,
+          "is_org_admin": has(datasource("bop").is_org_admin) ? datasource("bop").is_org_admin : false,
+          "is_internal": has(datasource("bop").is_internal) ? datasource("bop").is_internal : false,
+          "locale": has(datasource("bop").locale) ? datasource("bop").locale : "",
+          "user_id": safeToString(datasource("bop").user_id)
+        },
+        "internal": {
+          "org_id": safeToString(datasource("bop").org_id),
+          "cross_access": false
+        }
+      }
+    }
+  : fail("bop_enrichment_failed")
+) : (
 has(subject.issuer) && subject.issuer.contains("container-registry-authorizer") && subject.issuer.contains("api.redhat.com") ? {
   "identity": {
     "auth_type": "registry-auth",

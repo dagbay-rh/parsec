@@ -91,6 +91,7 @@ const (
 	CredentialTypeBasicAuth           CredentialType = "basic_auth"
 	CredentialTypeHeader              CredentialType = "header"
 	CredentialTypeForwardedClientCert CredentialType = "forwarded_client_cert"
+	CredentialTypeUsername            CredentialType = "username"
 )
 
 // Credential is the interface for all credential types
@@ -214,6 +215,16 @@ func (c *ForwardedClientCertCredential) Type() CredentialType {
 	return CredentialTypeForwardedClientCert
 }
 
+// UsernameCredential represents a plain username identity assertion.
+// The subject_token value is interpreted directly as a username string.
+type UsernameCredential struct {
+	Username string `json:"username"`
+}
+
+func (c *UsernameCredential) Type() CredentialType {
+	return CredentialTypeUsername
+}
+
 // MarshalCredentialJSON serializes a [Credential] to JSON with a "type"
 // discriminator field. The concrete credential struct must have json tags.
 func MarshalCredentialJSON(c Credential) ([]byte, error) {
@@ -266,6 +277,9 @@ func UnmarshalCredentialJSON(data []byte) (Credential, error) {
 		return &c, json.Unmarshal(data, &c)
 	case CredentialTypeForwardedClientCert:
 		var c ForwardedClientCertCredential
+		return &c, json.Unmarshal(data, &c)
+	case CredentialTypeUsername:
+		var c UsernameCredential
 		return &c, json.Unmarshal(data, &c)
 	default:
 		return nil, fmt.Errorf("unsupported credential type: %s", envelope.Type)

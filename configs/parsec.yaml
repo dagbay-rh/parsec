@@ -38,6 +38,14 @@ trust_store:
       refresh_interval: "15m"
       audiences: ["rhsm-api", "customer-portal", "api.console", ""]
 
+    - name: trusted-username
+      type: lua_validator
+      credential_types: ["username"]
+      script_file: ./configs/scripts/trusted_username.lua
+      config:
+        trust_domain: "username.redhat.com"
+        issuer: "urn:redhat:names:identity:username"
+
 # Data sources for token enrichment
 data_sources:
   - name: identity-policy
@@ -46,6 +54,21 @@ data_sources:
       internal_idp_target: "https://sso.redhat.com/auth/realms/internal"
       role_fallback_enabled: true
       enforce_idp_auth: false
+
+  - name: bop
+    type: lua
+    script_file: ./configs/scripts/bop_user.lua
+    config:
+      bop_url: "${PARSEC_BOP_URL}"
+      users_path: "/v1/users"
+      api_token: "${PARSEC_BOP_API_TOKEN}"
+      client_id: "${PARSEC_BOP_CLIENT_ID}"
+      environment: "${PARSEC_BOP_ENVIRONMENT}"
+    http:
+      timeout: 30s
+    caching:
+      type: in_memory
+      ttl: 5m
 
 # Token issuers
 #
