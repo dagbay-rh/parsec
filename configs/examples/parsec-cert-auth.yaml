@@ -3,7 +3,8 @@
 # For manually testing cert auth (certificate authentication) against BOP.
 #
 # Prerequisites:
-#   - BOP credentials set via PARSEC_BOP_CERTAUTH_SECRET, PARSEC_BOP_CLIENT_ID, PARSEC_BOP_TOKEN env vars
+#   - BOP client credentials set via PARSEC_BOP_CLIENT_ID, PARSEC_BOP_TOKEN env vars (injected by http_auth)
+#   - BOP certauth secret set via PARSEC_BOP_CERTAUTH_SECRET env var (read by the Lua script)
 #
 # Usage:
 #   ./bin/parsec serve --config ./configs/examples/parsec-cert-auth.yaml
@@ -45,6 +46,13 @@ http_clients:
   - name: backoffice-proxy
     timeout: "30s"
     ca_cert: "./local/it-ca-bundle.crt"
+    http_auth:
+      type: headers
+      headers:
+        x-rh-clientid:
+          env: PARSEC_BOP_CLIENT_ID
+        x-rh-apitoken:
+          env: PARSEC_BOP_TOKEN
 
 # Credential sources — cert auth first, then bearer fallback
 credential_sources:
@@ -68,8 +76,6 @@ trust_store:
         bop_env: "stage"
         trust_domain: "cert.redhat.com"
         bop_certauth_secret_env: "PARSEC_BOP_CERTAUTH_SECRET"
-        bop_client_id_env: "PARSEC_BOP_CLIENT_ID"
-        bop_token_env: "PARSEC_BOP_TOKEN"
       caching:
         type: in_memory
         ttl: "5m"

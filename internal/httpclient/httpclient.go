@@ -146,8 +146,22 @@ type BearerTransport struct {
 
 // RoundTrip implements [http.RoundTripper].
 func (t *BearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Clone the request to avoid mutating the caller's request
 	clone := req.Clone(req.Context())
 	clone.Header.Set("Authorization", "Bearer "+t.Token)
+	return t.Base.RoundTrip(clone)
+}
+
+// HeadersTransport injects a fixed set of headers into every request.
+type HeadersTransport struct {
+	Headers map[string]string
+	Base    http.RoundTripper
+}
+
+// RoundTrip implements [http.RoundTripper].
+func (t *HeadersTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	for k, v := range t.Headers {
+		clone.Header.Set(k, v)
+	}
 	return t.Base.RoundTrip(clone)
 }

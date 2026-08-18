@@ -1,20 +1,19 @@
 -- Cert auth validator: authenticates certificate credentials against an
 -- external back office proxy (BOP) service.
 --
+-- The HTTP client injecting x-rh-clientid and x-rh-apitoken headers is
+-- configured at the http_clients level via http_auth.type: headers.
+--
 -- Config values:
---   bop_url           (required) HTTPS endpoint for BOP auth (e.g., https://bop.api.redhat.com/v1/auth)
---   trust_domain      (required) trust domain for validated results
+--   bop_url                 (required) HTTPS endpoint for BOP auth (e.g., https://bop.api.redhat.com/v1/auth)
+--   trust_domain            (required) trust domain for validated results
 --   bop_certauth_secret_env (required) env var name containing the proxy proof secret for x-rh-insights-certauth-secret header
---   bop_client_id_env   (required) env var name containing the BOP client ID for x-rh-clientid header
---   bop_token_env       (required) env var name containing the BOP API token for x-rh-apitoken header
---   bop_env             (optional) environment value for x-rh-insights-env header (e.g., "stage", "prod")
+--   bop_env                 (required) environment value for x-rh-insights-env header (e.g., "stage", "prod")
 
 function validate(input)
   local bop_url = config.get("bop_url")
   local trust_domain = config.get("trust_domain")
   local bop_certauth_secret = os.getenv(config.get("bop_certauth_secret_env"))
-  local bop_client_id = os.getenv(config.get("bop_client_id_env"))
-  local bop_token = os.getenv(config.get("bop_token_env"))
   local bop_env = config.has("bop_env") and config.get("bop_env") or "stage"
 
   local cn = input.credential.subject
@@ -36,8 +35,6 @@ function validate(input)
   end
 
   local response, err = http.get(bop_url, {
-    ["x-rh-clientid"] = bop_client_id,
-    ["x-rh-apitoken"] = bop_token,
     ["x-rh-insights-certauth-secret"] = bop_certauth_secret,
     ["x-rh-insights-env"] = bop_env,
     ["x-rh-certauth-cn"] = cn,

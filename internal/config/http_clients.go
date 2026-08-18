@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/project-kessel/parsec/internal/httpclient"
@@ -149,7 +150,37 @@ func buildTransportMiddleware(cfg HTTPAuthConfig) (httpclient.TransportMiddlewar
 		return func(base http.RoundTripper) http.RoundTripper {
 			return &httpclient.BearerTransport{Token: cfg.Token, Base: base}
 		}, nil
+	case "headers":
+		resolved, err := resolveHeaders(cfg.Headers)
+		if err != nil {
+			return nil, err
+		}
+		return func(base http.RoundTripper) http.RoundTripper {
+			return &httpclient.HeadersTransport{Headers: resolved, Base: base}
+		}, nil
 	default:
-		return nil, fmt.Errorf("unknown http_auth type: %q (supported: bearer)", cfg.Type)
+		return nil, fmt.Errorf("unknown http_auth type: %q (supported: bearer, headers)", cfg.Type)
 	}
+}
+
+func resolveHeaders(headers map[string]HeaderSourceConfig) (map[string]string, error) {
+	if len(headers) == 0 {
+		return nil, fmt.Errorf("http_auth[headers]: at least one header is required")
+	}
+	resolved := make(map[string]string, len(headers))
+	for name, src := range headers {
+		switch {
+		case src.Value != "":
+			resolved[name] = src.Value
+		case src.Env != "":
+			val := os.Getenv(src.Env)
+			if val == "" {
+				return nil, fmt.Errorf("http_auth[headers]: env var %q for header %q is empty or not set", src.Env, name)
+			}
+			resolved[name] = val
+		default:
+			return nil, fmt.Errorf("http_auth[headers]: header %q requires either value or env", name)
+		}
+	}
+	return resolved, nil
 }

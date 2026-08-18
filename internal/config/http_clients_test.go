@@ -116,6 +116,109 @@ func TestNewHTTPClientRegistry_InvalidTimeoutErrors(t *testing.T) {
 	}
 }
 
+func TestNewHTTPClientRegistry_HeadersAuth(t *testing.T) {
+	t.Setenv("TEST_BOP_CLIENT_ID", "my-client-id")
+	t.Setenv("TEST_BOP_TOKEN", "my-token")
+
+	cfgs := []HTTPClientConfig{
+		{
+			Name: "bop",
+			HTTPClientSpec: HTTPClientSpec{
+				Timeout: "10s",
+				HTTPAuth: &HTTPAuthConfig{
+					Type: "headers",
+					Headers: map[string]HeaderSourceConfig{
+						"x-rh-clientid": {Env: "TEST_BOP_CLIENT_ID"},
+						"x-rh-apitoken": {Value: "static-token"},
+					},
+				},
+			},
+		},
+	}
+
+	registry, err := NewHTTPClientRegistry(cfgs, nil)
+	if err != nil {
+		t.Fatalf("NewHTTPClientRegistry() error: %v", err)
+	}
+
+	client, err := registry.Get("bop")
+	if err != nil {
+		t.Fatalf("Get(bop) error: %v", err)
+	}
+
+	ht, ok := client.Transport.(*httpclient.HeadersTransport)
+	if !ok {
+		t.Fatalf("transport type = %T, want *httpclient.HeadersTransport", client.Transport)
+	}
+	if ht.Headers["x-rh-clientid"] != "my-client-id" {
+		t.Errorf("x-rh-clientid = %q, want %q", ht.Headers["x-rh-clientid"], "my-client-id")
+	}
+	if ht.Headers["x-rh-apitoken"] != "static-token" {
+		t.Errorf("x-rh-apitoken = %q, want %q", ht.Headers["x-rh-apitoken"], "static-token")
+	}
+}
+
+func TestNewHTTPClientRegistry_HeadersAuth_EmptyEnvErrors(t *testing.T) {
+	cfgs := []HTTPClientConfig{
+		{
+			Name: "bad-env",
+			HTTPClientSpec: HTTPClientSpec{
+				HTTPAuth: &HTTPAuthConfig{
+					Type: "headers",
+					Headers: map[string]HeaderSourceConfig{
+						"x-rh-clientid": {Env: "NONEXISTENT_ENV_VAR_FOR_TEST"},
+					},
+				},
+			},
+		},
+	}
+
+	_, err := NewHTTPClientRegistry(cfgs, nil)
+	if err == nil {
+		t.Fatal("expected error for empty env var")
+	}
+}
+
+func TestNewHTTPClientRegistry_HeadersAuth_NoHeadersErrors(t *testing.T) {
+	cfgs := []HTTPClientConfig{
+		{
+			Name: "no-headers",
+			HTTPClientSpec: HTTPClientSpec{
+				HTTPAuth: &HTTPAuthConfig{
+					Type:    "headers",
+					Headers: map[string]HeaderSourceConfig{},
+				},
+			},
+		},
+	}
+
+	_, err := NewHTTPClientRegistry(cfgs, nil)
+	if err == nil {
+		t.Fatal("expected error for empty headers map")
+	}
+}
+
+func TestNewHTTPClientRegistry_HeadersAuth_NeitherValueNorEnvErrors(t *testing.T) {
+	cfgs := []HTTPClientConfig{
+		{
+			Name: "no-source",
+			HTTPClientSpec: HTTPClientSpec{
+				HTTPAuth: &HTTPAuthConfig{
+					Type: "headers",
+					Headers: map[string]HeaderSourceConfig{
+						"x-rh-clientid": {},
+					},
+				},
+			},
+		},
+	}
+
+	_, err := NewHTTPClientRegistry(cfgs, nil)
+	if err == nil {
+		t.Fatal("expected error when header has neither value nor env")
+	}
+}
+
 func TestNewHTTPClientRegistry_InvalidAuthTypeErrors(t *testing.T) {
 	cfgs := []HTTPClientConfig{
 		{

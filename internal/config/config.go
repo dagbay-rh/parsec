@@ -255,11 +255,21 @@ type HTTPClientConfig struct {
 // HTTPAuthConfig configures HTTP-layer (header-based) authentication.
 // Distinct from transport-level auth (mTLS), which is configured via client_cert_source.
 type HTTPAuthConfig struct {
-	// Type selects the auth mechanism: "bearer" (future: "oauth2_client_credentials", etc.)
+	// Type selects the auth mechanism: "bearer", "headers" (future: "oauth2_client_credentials", etc.)
 	Type string `koanf:"type"`
 
 	// Bearer fields
 	Token string `koanf:"token"` // Static bearer token value
+
+	// Headers fields (type: "headers")
+	Headers map[string]HeaderSourceConfig `koanf:"headers"`
+}
+
+// HeaderSourceConfig specifies where a header value comes from.
+// Exactly one of Value or Env should be set. If both are set, Value takes precedence.
+type HeaderSourceConfig struct {
+	Value string `koanf:"value"` // Static header value
+	Env   string `koanf:"env"`   // Environment variable name to read the value from
 }
 
 // CertSourceConfig configures where client certificates come from for mTLS.
