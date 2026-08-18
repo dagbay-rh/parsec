@@ -806,11 +806,11 @@ func (s *spyServiceObserver) AuthzCheckStarted(ctx context.Context) (context.Con
 
 type spyHTTPClientObserver struct {
 	httpclient.NoOpHTTPClientObserver
-	called       *atomic.Int32
-	statusCode   *atomic.Int32
-	errored      *atomic.Int32
-	connReused   *atomic.Int32
-	ended        *atomic.Int32
+	called     *atomic.Int32
+	statusCode *atomic.Int32
+	errored    *atomic.Int32
+	connReused *atomic.Int32
+	ended      *atomic.Int32
 }
 
 func (s *spyHTTPClientObserver) RequestStarted(ctx context.Context, _ string, _ string, _ string) (context.Context, httpclient.RequestProbe) {
@@ -827,6 +827,6 @@ type spyHTTPClientProbe struct {
 }
 
 func (p *spyHTTPClientProbe) StatusCode(int)        { p.statusCode.Add(1) }
-func (p *spyHTTPClientProbe) Error(error)            { p.errored.Add(1) }
-func (p *spyHTTPClientProbe) ConnectionReused(bool)  { p.connReused.Add(1) }
-func (p *spyHTTPClientProbe) End()                   { p.ended.Add(1) }
+func (p *spyHTTPClientProbe) Error(error)           { p.errored.Add(1) }
+func (p *spyHTTPClientProbe) ConnectionReused(bool) { p.connReused.Add(1) }
+func (p *spyHTTPClientProbe) End()                  { p.ended.Add(1) }

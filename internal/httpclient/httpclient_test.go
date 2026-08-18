@@ -394,17 +394,17 @@ func (o *spyObserver) RequestStarted(ctx context.Context, clientName, method, ho
 
 type spyProbe struct {
 	NoOpRequestProbe
-	statusCode     int
-	errored        bool
-	ended          bool
-	connReusedSet  bool
-	connReusedVal  bool
+	statusCode    int
+	errored       bool
+	ended         bool
+	connReusedSet bool
+	connReusedVal bool
 }
 
-func (p *spyProbe) StatusCode(code int)        { p.statusCode = code }
-func (p *spyProbe) Error(error)                { p.errored = true }
+func (p *spyProbe) StatusCode(code int)          { p.statusCode = code }
+func (p *spyProbe) Error(error)                  { p.errored = true }
 func (p *spyProbe) ConnectionReused(reused bool) { p.connReusedSet = true; p.connReusedVal = reused }
-func (p *spyProbe) End()                       { p.ended = true }
+func (p *spyProbe) End()                         { p.ended = true }
 
 func TestRegistry_ObserverCalledOnRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

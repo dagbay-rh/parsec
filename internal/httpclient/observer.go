@@ -43,6 +43,6 @@ func (NoOpHTTPClientObserver) RequestStarted(ctx context.Context, _ string, _ st
 type NoOpRequestProbe struct{}
 
 func (NoOpRequestProbe) StatusCode(int)        {}
-func (NoOpRequestProbe) Error(error)            {}
-func (NoOpRequestProbe) ConnectionReused(bool)  {}
-func (NoOpRequestProbe) End()                   {}
+func (NoOpRequestProbe) Error(error)           {}
+func (NoOpRequestProbe) ConnectionReused(bool) {}
+func (NoOpRequestProbe) End()                  {}
