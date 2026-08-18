@@ -12,6 +12,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"net/http/httptrace"
 	"time"
 )
 
@@ -167,6 +168,14 @@ type instrumentedTransport struct {
 // RoundTrip implements [http.RoundTripper].
 func (t *instrumentedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	ctx, probe := t.observer.RequestStarted(req.Context(), t.clientName, req.Method, req.URL.Host)
+
+	trace := &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) {
+			probe.ConnectionReused(info.Reused)
+		},
+	}
+	ctx = httptrace.WithClientTrace(ctx, trace)
+
 	defer probe.End()
 
 	resp, err := t.base.RoundTrip(req.WithContext(ctx))

@@ -1019,41 +1019,50 @@ func TestHTTPClientRequestMetrics(t *testing.T) {
 		action     func(probe interface {
 			StatusCode(int)
 			Error(error)
+			ConnectionReused(bool)
 			End()
 		})
 		wantStatus     string
 		wantStatusCode string
 		wantNoCode     bool
+		wantConn       string
+		wantNoConn     bool
 	}{
 		{
-			name:       "success 200",
+			name:       "success 200 new connection",
 			clientName: "registry-auth",
 			method:     "GET",
 			host:       "registry.example.com",
 			action: func(p interface {
 				StatusCode(int)
 				Error(error)
+				ConnectionReused(bool)
 				End()
 			}) {
+				p.ConnectionReused(false)
 				p.StatusCode(200)
 			},
 			wantStatus:     `status="success"`,
 			wantStatusCode: `status_code="200"`,
+			wantConn:       `connection="new"`,
 		},
 		{
-			name:       "success 201",
+			name:       "success 201 reused connection",
 			clientName: "sso-jwks",
 			method:     "POST",
 			host:       "sso.example.com",
 			action: func(p interface {
 				StatusCode(int)
 				Error(error)
+				ConnectionReused(bool)
 				End()
 			}) {
+				p.ConnectionReused(true)
 				p.StatusCode(201)
 			},
 			wantStatus:     `status="success"`,
 			wantStatusCode: `status_code="201"`,
+			wantConn:       `connection="reused"`,
 		},
 		{
 			name:       "server error 500",
@@ -1063,27 +1072,49 @@ func TestHTTPClientRequestMetrics(t *testing.T) {
 			action: func(p interface {
 				StatusCode(int)
 				Error(error)
+				ConnectionReused(bool)
 				End()
 			}) {
+				p.ConnectionReused(true)
 				p.StatusCode(500)
 			},
 			wantStatus:     `status="success"`,
 			wantStatusCode: `status_code="500"`,
+			wantConn:       `connection="reused"`,
 		},
 		{
-			name:       "transport error",
+			name:       "transport error no connection info",
 			clientName: "registry-auth",
 			method:     "GET",
 			host:       "registry.example.com",
 			action: func(p interface {
 				StatusCode(int)
 				Error(error)
+				ConnectionReused(bool)
 				End()
 			}) {
 				p.Error(errors.New("connection refused"))
 			},
 			wantStatus: `status="error"`,
 			wantNoCode: true,
+			wantNoConn: true,
+		},
+		{
+			name:       "no connection info omits label",
+			clientName: "plain-client",
+			method:     "GET",
+			host:       "example.com",
+			action: func(p interface {
+				StatusCode(int)
+				Error(error)
+				ConnectionReused(bool)
+				End()
+			}) {
+				p.StatusCode(200)
+			},
+			wantStatus:     `status="success"`,
+			wantStatusCode: `status_code="200"`,
+			wantNoConn:     true,
 		},
 	}
 
@@ -1109,6 +1140,12 @@ func TestHTTPClientRequestMetrics(t *testing.T) {
 			}
 			if tt.wantNoCode {
 				assert.NotContains(t, body, "status_code")
+			}
+			if tt.wantConn != "" {
+				assert.Contains(t, body, tt.wantConn)
+			}
+			if tt.wantNoConn {
+				assert.NotContains(t, body, "connection=")
 			}
 		})
 	}

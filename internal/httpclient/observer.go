@@ -21,6 +21,11 @@ type RequestProbe interface {
 	// Error records a transport-level error (timeout, connection refused, etc.).
 	Error(err error)
 
+	// ConnectionReused records whether the underlying TCP connection was
+	// reused (true) or newly established (false). Called from an
+	// httptrace.ClientTrace.GotConn callback during the round-trip.
+	ConnectionReused(reused bool)
+
 	// End signals the request is complete (for timing). Called via defer.
 	End()
 }
@@ -37,6 +42,7 @@ func (NoOpHTTPClientObserver) RequestStarted(ctx context.Context, _ string, _ st
 // NoOpRequestProbe is a no-op implementation for forward compatibility.
 type NoOpRequestProbe struct{}
 
-func (NoOpRequestProbe) StatusCode(int) {}
-func (NoOpRequestProbe) Error(error)    {}
-func (NoOpRequestProbe) End()           {}
+func (NoOpRequestProbe) StatusCode(int)        {}
+func (NoOpRequestProbe) Error(error)            {}
+func (NoOpRequestProbe) ConnectionReused(bool)  {}
+func (NoOpRequestProbe) End()                   {}

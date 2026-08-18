@@ -394,14 +394,17 @@ func (o *spyObserver) RequestStarted(ctx context.Context, clientName, method, ho
 
 type spyProbe struct {
 	NoOpRequestProbe
-	statusCode int
-	errored    bool
-	ended      bool
+	statusCode     int
+	errored        bool
+	ended          bool
+	connReusedSet  bool
+	connReusedVal  bool
 }
 
-func (p *spyProbe) StatusCode(code int) { p.statusCode = code }
-func (p *spyProbe) Error(error)         { p.errored = true }
-func (p *spyProbe) End()                { p.ended = true }
+func (p *spyProbe) StatusCode(code int)        { p.statusCode = code }
+func (p *spyProbe) Error(error)                { p.errored = true }
+func (p *spyProbe) ConnectionReused(reused bool) { p.connReusedSet = true; p.connReusedVal = reused }
+func (p *spyProbe) End()                       { p.ended = true }
 
 func TestRegistry_ObserverCalledOnRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -562,6 +565,49 @@ func TestRegistry_Build_AnonymousObserver(t *testing.T) {
 	}
 	if obs.probe.statusCode != 200 {
 		t.Errorf("statusCode = %d, want 200", obs.probe.statusCode)
+	}
+}
+
+func TestRegistry_ObserverReportsConnectionReused(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	obs := &spyObserver{}
+	r := NewRegistry(nil, WithObserver(obs))
+
+	client, err := r.Register("conn-test", ClientSpec{Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	// First request: connection should be new
+	resp, err := client.Get(server.URL)
+	if err != nil {
+		t.Fatalf("first Get failed: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if !obs.probe.connReusedSet {
+		t.Fatal("ConnectionReused was not called on first request")
+	}
+	if obs.probe.connReusedVal {
+		t.Error("first request should report connection as new (reused=false)")
+	}
+
+	// Second request to same server: connection should be reused
+	resp, err = client.Get(server.URL)
+	if err != nil {
+		t.Fatalf("second Get failed: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if !obs.probe.connReusedSet {
+		t.Fatal("ConnectionReused was not called on second request")
+	}
+	if !obs.probe.connReusedVal {
+		t.Error("second request should report connection as reused (reused=true)")
 	}
 }
 

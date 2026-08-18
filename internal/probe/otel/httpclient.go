@@ -49,6 +49,7 @@ func (o *httpClientObserver) RequestStarted(
 		method:     attribute.String("method", method),
 		host:       attribute.String("host", host),
 		statusCode: attribute.String("status_code", ""),
+		connection: attribute.String("connection", ""),
 	}
 }
 
@@ -62,6 +63,7 @@ type requestProbe struct {
 	method     attribute.KeyValue
 	host       attribute.KeyValue
 	statusCode attribute.KeyValue
+	connection attribute.KeyValue
 }
 
 func (p *requestProbe) StatusCode(code int) {
@@ -72,10 +74,21 @@ func (p *requestProbe) Error(_ error) {
 	p.status = errorStatusAttr
 }
 
+func (p *requestProbe) ConnectionReused(reused bool) {
+	if reused {
+		p.connection = attribute.String("connection", "reused")
+	} else {
+		p.connection = attribute.String("connection", "new")
+	}
+}
+
 func (p *requestProbe) End() {
 	keys := []attribute.KeyValue{p.clientName, p.method, p.host, p.status}
 	if p.statusCode.Value.AsString() != "" {
 		keys = append(keys, p.statusCode)
+	}
+	if p.connection.Value.AsString() != "" {
+		keys = append(keys, p.connection)
 	}
 	attrs := metric.WithAttributeSet(attribute.NewSet(keys...))
 	p.obs.requestDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)

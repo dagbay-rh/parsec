@@ -843,6 +843,11 @@ func (m *compositeRequestProbe) Error(err error) {
 		p.Error(err)
 	}
 }
+func (m *compositeRequestProbe) ConnectionReused(reused bool) {
+	for _, p := range m.probes {
+		p.ConnectionReused(reused)
+	}
+}
 func (m *compositeRequestProbe) End() {
 	for _, p := range m.probes {
 		p.End()
