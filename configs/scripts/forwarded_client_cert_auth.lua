@@ -7,13 +7,13 @@
 -- Config values:
 --   bop_url                 (required) HTTPS endpoint for BOP auth (e.g., https://bop.api.redhat.com/v1/auth)
 --   trust_domain            (required) trust domain for validated results
---   bop_certauth_secret_env (required) env var name containing the proxy proof secret for x-rh-insights-certauth-secret header
+--   bop_certauth_secret     (required) proxy proof secret for x-rh-insights-certauth-secret header
 --   bop_env                 (required) environment value for x-rh-insights-env header (e.g., "stage", "prod")
 
 function validate(input)
   local bop_url = config.get("bop_url")
   local trust_domain = config.get("trust_domain")
-  local bop_certauth_secret = os.getenv(config.get("bop_certauth_secret_env"))
+  local bop_certauth_secret = config.get("bop_certauth_secret")
   local bop_env = config.has("bop_env") and config.get("bop_env") or "stage"
 
   local cn = input.credential.subject

@@ -262,14 +262,7 @@ type HTTPAuthConfig struct {
 	Token string `koanf:"token"` // Static bearer token value
 
 	// Headers fields (type: "headers")
-	Headers map[string]HeaderSourceConfig `koanf:"headers"`
-}
-
-// HeaderSourceConfig specifies where a header value comes from.
-// Exactly one of Value or Env should be set. If both are set, Value takes precedence.
-type HeaderSourceConfig struct {
-	Value string `koanf:"value"` // Static header value
-	Env   string `koanf:"env"`   // Environment variable name to read the value from
+	Headers map[string]any `koanf:"headers"`
 }
 
 // CertSourceConfig configures where client certificates come from for mTLS.

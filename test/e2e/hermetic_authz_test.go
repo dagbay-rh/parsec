@@ -193,22 +193,16 @@ func TestHermeticAuthzCheckCertAuth(t *testing.T) {
 		t.Fatalf("failed to read redhat_identity.cel: %v", err)
 	}
 
-	t.Setenv("PARSEC_BOP_CERTAUTH_SECRET", "test-secret")
-	t.Setenv("PARSEC_BOP_CLIENT_ID", "test-client-id")
-	t.Setenv("PARSEC_BOP_TOKEN", "test-token")
-
 	luaValidator, err := trust.NewLuaValidator(
 		"cert-auth",
 		string(luaScript),
 		[]trust.CredentialType{trust.CredentialTypeForwardedClientCert},
 		trust.WithLuaHTTPClient(httpClient),
 		trust.WithLuaConfigSource(luaservices.NewMapConfigSource(map[string]any{
-			"bop_url":                 bopURL,
-			"bop_env":                 "stage",
-			"trust_domain":            "cert.example.com",
-			"bop_certauth_secret_env": "PARSEC_BOP_CERTAUTH_SECRET",
-			"bop_client_id_env":       "PARSEC_BOP_CLIENT_ID",
-			"bop_token_env":           "PARSEC_BOP_TOKEN",
+			"bop_url":              bopURL,
+			"bop_env":              "stage",
+			"trust_domain":         "cert.example.com",
+			"bop_certauth_secret":  "test-secret",
 		})),
 	)
 	if err != nil {

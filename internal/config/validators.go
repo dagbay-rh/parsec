@@ -166,7 +166,11 @@ func newLuaValidator(name string, cfg ValidatorConfig, httpRegistry *httpclient.
 
 	var configSource luaservices.ConfigSource
 	if cfg.Config != nil {
-		configSource = luaservices.NewMapConfigSource(cfg.Config)
+		resolved, err := resolveConfigValues(cfg.Config)
+		if err != nil {
+			return nil, fmt.Errorf("lua_validator config: %w", err)
+		}
+		configSource = luaservices.NewMapConfigSource(resolved)
 	}
 
 	// Resolve HTTP client from registry

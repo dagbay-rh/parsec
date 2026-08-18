@@ -118,7 +118,6 @@ func TestNewHTTPClientRegistry_InvalidTimeoutErrors(t *testing.T) {
 
 func TestNewHTTPClientRegistry_HeadersAuth(t *testing.T) {
 	t.Setenv("TEST_BOP_CLIENT_ID", "my-client-id")
-	t.Setenv("TEST_BOP_TOKEN", "my-token")
 
 	cfgs := []HTTPClientConfig{
 		{
@@ -127,9 +126,9 @@ func TestNewHTTPClientRegistry_HeadersAuth(t *testing.T) {
 				Timeout: "10s",
 				HTTPAuth: &HTTPAuthConfig{
 					Type: "headers",
-					Headers: map[string]HeaderSourceConfig{
-						"x-rh-clientid": {Env: "TEST_BOP_CLIENT_ID"},
-						"x-rh-apitoken": {Value: "static-token"},
+					Headers: map[string]any{
+						"x-rh-clientid": map[string]any{"env": "TEST_BOP_CLIENT_ID"},
+						"x-rh-apitoken": "static-token",
 					},
 				},
 			},
@@ -165,8 +164,8 @@ func TestNewHTTPClientRegistry_HeadersAuth_EmptyEnvErrors(t *testing.T) {
 			HTTPClientSpec: HTTPClientSpec{
 				HTTPAuth: &HTTPAuthConfig{
 					Type: "headers",
-					Headers: map[string]HeaderSourceConfig{
-						"x-rh-clientid": {Env: "NONEXISTENT_ENV_VAR_FOR_TEST"},
+					Headers: map[string]any{
+						"x-rh-clientid": map[string]any{"env": "NONEXISTENT_ENV_VAR_FOR_TEST"},
 					},
 				},
 			},
@@ -186,7 +185,7 @@ func TestNewHTTPClientRegistry_HeadersAuth_NoHeadersErrors(t *testing.T) {
 			HTTPClientSpec: HTTPClientSpec{
 				HTTPAuth: &HTTPAuthConfig{
 					Type:    "headers",
-					Headers: map[string]HeaderSourceConfig{},
+					Headers: map[string]any{},
 				},
 			},
 		},
@@ -198,15 +197,15 @@ func TestNewHTTPClientRegistry_HeadersAuth_NoHeadersErrors(t *testing.T) {
 	}
 }
 
-func TestNewHTTPClientRegistry_HeadersAuth_NeitherValueNorEnvErrors(t *testing.T) {
+func TestNewHTTPClientRegistry_HeadersAuth_NonStringHeaderErrors(t *testing.T) {
 	cfgs := []HTTPClientConfig{
 		{
-			Name: "no-source",
+			Name: "bad-type",
 			HTTPClientSpec: HTTPClientSpec{
 				HTTPAuth: &HTTPAuthConfig{
 					Type: "headers",
-					Headers: map[string]HeaderSourceConfig{
-						"x-rh-clientid": {},
+					Headers: map[string]any{
+						"x-rh-clientid": 123,
 					},
 				},
 			},
@@ -215,7 +214,78 @@ func TestNewHTTPClientRegistry_HeadersAuth_NeitherValueNorEnvErrors(t *testing.T
 
 	_, err := NewHTTPClientRegistry(cfgs, nil)
 	if err == nil {
-		t.Fatal("expected error when header has neither value nor env")
+		t.Fatal("expected error when header value is not a string")
+	}
+}
+
+func TestResolveConfigValues_EnvVar(t *testing.T) {
+	t.Setenv("TEST_SECRET", "resolved-secret")
+
+	m := map[string]any{
+		"plain_key": "plain_value",
+		"secret":    map[string]any{"env": "TEST_SECRET"},
+	}
+
+	resolved, err := resolveConfigValues(m)
+	if err != nil {
+		t.Fatalf("resolveConfigValues() error: %v", err)
+	}
+	if resolved["plain_key"] != "plain_value" {
+		t.Errorf("plain_key = %v, want %q", resolved["plain_key"], "plain_value")
+	}
+	if resolved["secret"] != "resolved-secret" {
+		t.Errorf("secret = %v, want %q", resolved["secret"], "resolved-secret")
+	}
+}
+
+func TestResolveConfigValues_EmptyEnvErrors(t *testing.T) {
+	m := map[string]any{
+		"secret": map[string]any{"env": "NONEXISTENT_ENV_VAR_FOR_TEST"},
+	}
+
+	_, err := resolveConfigValues(m)
+	if err == nil {
+		t.Fatal("expected error for empty env var")
+	}
+}
+
+func TestResolveConfigValues_NonStringEnvErrors(t *testing.T) {
+	m := map[string]any{
+		"secret": map[string]any{"env": 123},
+	}
+
+	_, err := resolveConfigValues(m)
+	if err == nil {
+		t.Fatal("expected error for non-string env value")
+	}
+}
+
+func TestResolveConfigValues_NilMap(t *testing.T) {
+	resolved, err := resolveConfigValues(nil)
+	if err != nil {
+		t.Fatalf("resolveConfigValues(nil) error: %v", err)
+	}
+	if resolved != nil {
+		t.Errorf("expected nil, got %v", resolved)
+	}
+}
+
+func TestResolveConfigValues_NonEnvMapPassesThrough(t *testing.T) {
+	nested := map[string]any{"foo": "bar"}
+	m := map[string]any{
+		"nested": nested,
+	}
+
+	resolved, err := resolveConfigValues(m)
+	if err != nil {
+		t.Fatalf("resolveConfigValues() error: %v", err)
+	}
+	sub, ok := resolved["nested"].(map[string]any)
+	if !ok {
+		t.Fatalf("nested = %T, want map[string]any", resolved["nested"])
+	}
+	if sub["foo"] != "bar" {
+		t.Errorf("nested[foo] = %v, want %q", sub["foo"], "bar")
 	}
 }
 
