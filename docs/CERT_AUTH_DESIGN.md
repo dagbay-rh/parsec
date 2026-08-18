@@ -26,7 +26,7 @@ Envoy CheckRequest (x-rh-certauth-cn, x-rh-certauth-issuer headers)
 [CacheableLuaValidator.Validate]
   - Checks cache using key derived from validate_cache_key() → returns cached Result on hit
   - Runs validate() in Lua sandbox:
-    - Reads BOP secrets from env vars (certauth secret, client ID, API token)
+    - Reads BOP certauth secret from config (resolved from env var at startup)
     - Parses CN value from subject string (/CN=<value>)
     - Calls BOP GET /v1/auth with auth headers + cert headers + env header
     - Parses BOP response for account_number, org_id, type
@@ -84,14 +84,14 @@ Validates `ForwardedClientCertCredential` by calling BOP's `/v1/auth` endpoint. 
 
 **`validate(input)` steps:**
 1. Read `bop_url`, `trust_domain`, `bop_env` from `config.get()`
-2. Read BOP secrets from env vars via `os.getenv(config.get("bop_certauth_secret_env"))` etc.
+2. Read `bop_certauth_secret` from `config.get()` (resolved from env var at startup via `{env: "VAR"}` syntax)
 3. Read `input.credential.subject` and `input.credential.issuer`
 4. Reject if either is nil or empty (return `nil`)
 5. Parse CN value from subject string using pattern `/CN=([^/]+)`
 6. GET `bop_url` with headers:
-   - `x-rh-clientid` — BOP client ID (from env)
-   - `x-rh-apitoken` — BOP API token (from env)
-   - `x-rh-insights-certauth-secret` — proxy proof secret (from env)
+   - `x-rh-clientid` — BOP client ID (injected by HTTP client via `http_auth.type: headers`)
+   - `x-rh-apitoken` — BOP API token (injected by HTTP client via `http_auth.type: headers`)
+   - `x-rh-insights-certauth-secret` — proxy proof secret (from config, resolved from env at startup)
    - `x-rh-insights-env` — environment routing (from config, defaults to `"stage"`)
    - `x-rh-certauth-cn` — certificate subject
    - `x-rh-certauth-issuer` — certificate issuer
@@ -115,13 +115,22 @@ Validates `ForwardedClientCertCredential` by calling BOP's `/v1/auth` endpoint. 
 
 ### BOP Authentication
 
-BOP requires three authentication headers on every request:
+BOP requires three authentication headers on every request. These are split across two layers:
+
+**HTTP client layer** (`http_auth.type: headers`) — injected on every request by the transport:
 
 | Header | Source | Purpose |
 |--------|--------|---------|
 | `x-rh-clientid` | K8s secret `parsec` | Identifies the calling service |
 | `x-rh-apitoken` | K8s secret `parsec` | API authentication token |
+
+**Lua script layer** — set per-request by the validation script:
+
+| Header | Source | Purpose |
+|--------|--------|---------|
 | `x-rh-insights-certauth-secret` | K8s secret `backoffice-proxy-config` | Proxy proof — BOP validates this matches its `PROXY_PROOF` config |
+
+The client ID and API token are general BOP credentials shared across all requests, so they're configured at the HTTP client level. The certauth secret is specific to the cert auth flow and is read via `config.get("bop_certauth_secret")`, resolved from an env var at startup using the `{env: "VAR"}` config syntax.
 
 BOP also validates the certificate issuer against its `TRUSTED_ISSUERS` list (semicolon-separated). The default trusted issuers include multiple Red Hat Candlepin Authority variants with both `Email` and `emailAddress` formats.
 
@@ -143,6 +152,8 @@ Successful validations are cached to avoid repeated BOP calls. Caching is split 
 The Lua script makes HTTP calls via a named HTTP client (`backoffice-proxy`) resolved from the `http_clients` registry. The BOP connection does not require mTLS — only TLS with proper CA verification.
 
 The `ca_cert` option on the HTTP client appends a custom CA to the system cert pool, enabling TLS verification against internal services signed by the Red Hat IT CA.
+
+The HTTP client uses `http_auth.type: headers` to inject `x-rh-clientid` and `x-rh-apitoken` at the transport layer via `HeadersTransport`. Header values can be static strings or resolved from environment variables at startup using `{env: "VAR"}` syntax.
 
 ### CEL Integration
 
@@ -182,6 +193,13 @@ http_clients:
   - name: backoffice-proxy
     timeout: "30s"
     ca_cert: "/etc/parsec/secrets/it-ca-bundle/it-ca-bundle.crt"
+    http_auth:
+      type: headers
+      headers:
+        x-rh-clientid:
+          env: PARSEC_BOP_CLIENT_ID
+        x-rh-apitoken:
+          env: PARSEC_BOP_TOKEN
 
 credential_sources:
   - name: cert-auth
@@ -203,9 +221,8 @@ trust_store:
         bop_url: "https://backoffice-proxy.apps.ext.spoke.preprod.us-west-2.aws.paas.redhat.com/v1/auth"
         bop_env: "stage"
         trust_domain: "cert.redhat.com"
-        bop_certauth_secret_env: "PARSEC_BOP_CERTAUTH_SECRET"
-        bop_client_id_env: "PARSEC_BOP_CLIENT_ID"
-        bop_token_env: "PARSEC_BOP_TOKEN"
+        bop_certauth_secret:
+          env: "PARSEC_BOP_CERTAUTH_SECRET"
       caching:
         type: in_memory
         ttl: "5m"
@@ -230,9 +247,7 @@ trust_store:
 | `config.bop_url` | Yes | HTTPS URL of BOP auth endpoint |
 | `config.bop_env` | No | Environment for `x-rh-insights-env` header (defaults to `"stage"`) |
 | `config.trust_domain` | Yes | Trust domain assigned to validated results |
-| `config.bop_certauth_secret_env` | Yes | Env var name containing the proxy proof secret |
-| `config.bop_client_id_env` | Yes | Env var name containing the BOP client ID |
-| `config.bop_token_env` | Yes | Env var name containing the BOP API token |
+| `config.bop_certauth_secret` | Yes | Proxy proof secret (supports `{env: "VAR"}` syntax for env var resolution) |
 | `caching.type` | No | `in_memory`, `distributed`, or `none` |
 | `caching.ttl` | No | Cache duration for successful validations |
 
@@ -256,8 +271,8 @@ All secret references use `optional: true` to allow the pod to start without cer
 - **Proxy proof**: BOP validates `x-rh-insights-certauth-secret` matches its `PROXY_PROOF` config, ensuring only authorized proxies can trigger cert auth.
 - **Issuer validation**: BOP checks the certificate issuer against its `TRUSTED_ISSUERS` list before resolving the CN.
 - **Cache key derivation**: Cache keys include credential type, subject, and issuer. The caching wrappers handle key hashing.
-- **Lua sandbox**: The validation script runs in a restricted Lua environment — only `config`, `json`, `http`, and `os` (getenv only) modules are available.
-- **Secret management**: BOP credentials are read from environment variables at runtime, not stored in config files.
+- **Lua sandbox**: The validation script runs in a restricted Lua environment — only `config`, `json`, `http`, and `os` modules are available.
+- **Secret management**: BOP credentials are resolved from environment variables at startup. The `{env: "VAR"}` syntax in config values and `http_auth.headers` entries resolves env vars eagerly — if a required env var is empty or unset, startup fails immediately.
 
 ## Testing
 
