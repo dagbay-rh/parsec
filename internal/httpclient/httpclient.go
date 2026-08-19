@@ -185,6 +185,7 @@ func (t *instrumentedTransport) RoundTrip(req *http.Request) (*http.Response, er
 	}
 
 	probe.StatusCode(resp.StatusCode)
+	probe.ProtocolVersion(resp.Proto)
 	return resp, nil
 }
 

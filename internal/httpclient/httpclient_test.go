@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -394,16 +395,19 @@ func (o *spyObserver) RequestStarted(ctx context.Context, clientName, method, ho
 
 type spyProbe struct {
 	NoOpRequestProbe
-	statusCode    int
-	errored       bool
-	ended         bool
-	connReusedSet bool
-	connReusedVal bool
+	statusCode       int
+	errored          bool
+	ended            bool
+	connReusedSet    bool
+	connReusedVal    bool
+	protocolVersion  string
+	protoVersionSet  bool
 }
 
 func (p *spyProbe) StatusCode(code int)          { p.statusCode = code }
 func (p *spyProbe) Error(error)                  { p.errored = true }
 func (p *spyProbe) ConnectionReused(reused bool) { p.connReusedSet = true; p.connReusedVal = reused }
+func (p *spyProbe) ProtocolVersion(proto string) { p.protoVersionSet = true; p.protocolVersion = proto }
 func (p *spyProbe) End()                         { p.ended = true }
 
 func TestRegistry_ObserverCalledOnRequest(t *testing.T) {
@@ -608,6 +612,58 @@ func TestRegistry_ObserverReportsConnectionReused(t *testing.T) {
 	}
 	if !obs.probe.connReusedVal {
 		t.Error("second request should report connection as reused (reused=true)")
+	}
+}
+
+func TestRegistry_ObserverReportsProtocolVersion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	obs := &spyObserver{}
+	r := NewRegistry(nil, WithObserver(obs))
+
+	client, err := r.Register("proto-test", ClientSpec{Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	resp, err := client.Get(server.URL)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if !obs.probe.protoVersionSet {
+		t.Fatal("ProtocolVersion was not called")
+	}
+	if obs.probe.protocolVersion != "HTTP/1.1" {
+		t.Errorf("protocolVersion = %q, want %q", obs.probe.protocolVersion, "HTTP/1.1")
+	}
+}
+
+func TestRegistry_ObserverOmitsProtocolVersionOnError(t *testing.T) {
+	errTransport := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("connection refused")
+	})
+
+	obs := &spyObserver{}
+	r := NewRegistry(errTransport, WithObserver(obs))
+
+	client, err := r.Register("proto-err", ClientSpec{Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	req, _ := http.NewRequest("GET", "http://example.com", nil)
+	_, err = client.Transport.RoundTrip(req)
+	if err == nil {
+		t.Fatal("expected error from transport")
+	}
+
+	if obs.probe.protoVersionSet {
+		t.Error("ProtocolVersion should not be called on transport error")
 	}
 }
 
