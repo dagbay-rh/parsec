@@ -7,12 +7,14 @@
 -- Config values:
 --   bop_url                 (required) HTTPS endpoint for BOP auth (e.g., https://bop.api.redhat.com/v1/auth)
 --   trust_domain            (required) trust domain for validated results
+--   issuer_host             (required) RHSM host for the issuer URI (e.g., "rhsm.stage.redhat.com", "rhsm.redhat.com")
 --   bop_certauth_secret     (required) proxy proof secret for x-rh-insights-certauth-secret header
 --   bop_env                 (required) environment value for x-rh-insights-env header (e.g., "stage", "prod")
 
 function validate(input)
   local bop_url = config.get("bop_url")
   local trust_domain = config.get("trust_domain")
+  local issuer_host = config.get("issuer_host")
   local bop_certauth_secret = config.get("bop_certauth_secret")
   local bop_env = config.has("bop_env") and config.get("bop_env") or "stage"
 
@@ -68,7 +70,7 @@ function validate(input)
 
   return {
     subject = cn_value,
-    issuer = bop_url,
+    issuer = "x509://" .. issuer_host .. "/" .. url.encode(cert_issuer),
     trust_domain = trust_domain,
     claims = claims
   }

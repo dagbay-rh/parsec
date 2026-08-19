@@ -59,6 +59,7 @@ trust_store:
         bop_url: "https://example.backoffice-proxy.api.redhat.com/v1/auth"
         bop_env: "stage"
         trust_domain: "cert.example.com"
+        issuer_host: "rhsm.example.com"
         bop_certauth_secret:
           env: "PARSEC_BOP_CERTAUTH_SECRET"
       caching:

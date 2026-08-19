@@ -199,10 +199,11 @@ func TestHermeticAuthzCheckCertAuth(t *testing.T) {
 		[]trust.CredentialType{trust.CredentialTypeForwardedClientCert},
 		trust.WithLuaHTTPClient(httpClient),
 		trust.WithLuaConfigSource(luaservices.NewMapConfigSource(map[string]any{
-			"bop_url":             bopURL,
-			"bop_env":             "stage",
-			"trust_domain":        "cert.example.com",
-			"bop_certauth_secret": "test-secret",
+			"bop_url":              bopURL,
+			"bop_env":              "stage",
+			"trust_domain":         "cert.example.com",
+			"issuer_host":          "rhsm.example.com",
+			"bop_certauth_secret":  "test-secret",
 		})),
 	)
 	if err != nil {
