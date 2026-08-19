@@ -395,13 +395,13 @@ func (o *spyObserver) RequestStarted(ctx context.Context, clientName, method, ho
 
 type spyProbe struct {
 	NoOpRequestProbe
-	statusCode       int
-	errored          bool
-	ended            bool
-	connReusedSet    bool
-	connReusedVal    bool
-	protocolVersion  string
-	protoVersionSet  bool
+	statusCode      int
+	errored         bool
+	ended           bool
+	connReusedSet   bool
+	connReusedVal   bool
+	protocolVersion string
+	protoVersionSet bool
 }
 
 func (p *spyProbe) StatusCode(code int)          { p.statusCode = code }

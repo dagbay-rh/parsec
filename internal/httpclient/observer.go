@@ -47,8 +47,8 @@ func (NoOpHTTPClientObserver) RequestStarted(ctx context.Context, _ string, _ st
 // NoOpRequestProbe is a no-op implementation for forward compatibility.
 type NoOpRequestProbe struct{}
 
-func (NoOpRequestProbe) StatusCode(int)           {}
-func (NoOpRequestProbe) Error(error)              {}
-func (NoOpRequestProbe) ConnectionReused(bool)    {}
-func (NoOpRequestProbe) ProtocolVersion(string)   {}
-func (NoOpRequestProbe) End()                     {}
+func (NoOpRequestProbe) StatusCode(int)         {}
+func (NoOpRequestProbe) Error(error)            {}
+func (NoOpRequestProbe) ConnectionReused(bool)  {}
+func (NoOpRequestProbe) ProtocolVersion(string) {}
+func (NoOpRequestProbe) End()                   {}

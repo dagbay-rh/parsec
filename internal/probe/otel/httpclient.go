@@ -41,13 +41,13 @@ func (o *httpClientObserver) RequestStarted(
 	host string,
 ) (context.Context, httpclient.RequestProbe) {
 	return ctx, &requestProbe{
-		obs:        o,
-		ctx:        ctx,
-		startTime:  o.clock.Now(),
-		status:     successStatusAttr,
-		clientName: attribute.String("client_name", clientName),
-		method:     attribute.String("method", method),
-		host:       attribute.String("host", host),
+		obs:             o,
+		ctx:             ctx,
+		startTime:       o.clock.Now(),
+		status:          successStatusAttr,
+		clientName:      attribute.String("client_name", clientName),
+		method:          attribute.String("method", method),
+		host:            attribute.String("host", host),
 		statusCode:      attribute.String("status_code", ""),
 		connection:      attribute.String("connection", ""),
 		protocolVersion: attribute.String("network.protocol.version", ""),
@@ -56,13 +56,13 @@ func (o *httpClientObserver) RequestStarted(
 
 type requestProbe struct {
 	httpclient.NoOpRequestProbe
-	obs        *httpClientObserver
-	ctx        context.Context
-	startTime  time.Time
-	status     attribute.KeyValue
-	clientName attribute.KeyValue
-	method     attribute.KeyValue
-	host       attribute.KeyValue
+	obs             *httpClientObserver
+	ctx             context.Context
+	startTime       time.Time
+	status          attribute.KeyValue
+	clientName      attribute.KeyValue
+	method          attribute.KeyValue
+	host            attribute.KeyValue
 	statusCode      attribute.KeyValue
 	connection      attribute.KeyValue
 	protocolVersion attribute.KeyValue
