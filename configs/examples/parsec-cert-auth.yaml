@@ -104,8 +104,9 @@ issuers:
         script_file: ./configs/scripts/redhat_identity.cel
 
 authz_server:
-  token_types:
-    - type: "urn:ietf:params:oauth:token-type:txn_token"
-      header_name: "Transaction-Token"
-    - type: "urn:redhat:params:oauth:token-type:rh-identity"
-      header_name: "x-rh-identity"
+  policy:
+    token_types:
+      - type: "urn:ietf:params:oauth:token-type:txn_token"
+        header_name: "Transaction-Token"
+      - type: "urn:redhat:params:oauth:token-type:rh-identity"
+        header_name: "x-rh-identity"
