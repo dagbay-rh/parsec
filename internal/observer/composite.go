@@ -848,6 +848,11 @@ func (m *compositeRequestProbe) ConnectionReused(reused bool) {
 		p.ConnectionReused(reused)
 	}
 }
+func (m *compositeRequestProbe) ProtocolVersion(proto string) {
+	for _, p := range m.probes {
+		p.ProtocolVersion(proto)
+	}
+}
 func (m *compositeRequestProbe) End() {
 	for _, p := range m.probes {
 		p.End()

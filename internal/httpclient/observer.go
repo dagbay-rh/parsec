@@ -26,6 +26,11 @@ type RequestProbe interface {
 	// httptrace.ClientTrace.GotConn callback during the round-trip.
 	ConnectionReused(reused bool)
 
+	// ProtocolVersion records the negotiated HTTP protocol version
+	// (e.g. "HTTP/1.1", "HTTP/2.0") from the response. Only called on
+	// successful round-trips; omitted on transport-level errors.
+	ProtocolVersion(proto string)
+
 	// End signals the request is complete (for timing). Called via defer.
 	End()
 }
@@ -42,7 +47,8 @@ func (NoOpHTTPClientObserver) RequestStarted(ctx context.Context, _ string, _ st
 // NoOpRequestProbe is a no-op implementation for forward compatibility.
 type NoOpRequestProbe struct{}
 
-func (NoOpRequestProbe) StatusCode(int)        {}
-func (NoOpRequestProbe) Error(error)           {}
-func (NoOpRequestProbe) ConnectionReused(bool) {}
-func (NoOpRequestProbe) End()                  {}
+func (NoOpRequestProbe) StatusCode(int)         {}
+func (NoOpRequestProbe) Error(error)            {}
+func (NoOpRequestProbe) ConnectionReused(bool)  {}
+func (NoOpRequestProbe) ProtocolVersion(string) {}
+func (NoOpRequestProbe) End()                   {}

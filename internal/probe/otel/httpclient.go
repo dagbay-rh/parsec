@@ -41,29 +41,31 @@ func (o *httpClientObserver) RequestStarted(
 	host string,
 ) (context.Context, httpclient.RequestProbe) {
 	return ctx, &requestProbe{
-		obs:        o,
-		ctx:        ctx,
-		startTime:  o.clock.Now(),
-		status:     successStatusAttr,
-		clientName: attribute.String("client_name", clientName),
-		method:     attribute.String("method", method),
-		host:       attribute.String("host", host),
-		statusCode: attribute.String("status_code", ""),
-		connection: attribute.String("connection", ""),
+		obs:             o,
+		ctx:             ctx,
+		startTime:       o.clock.Now(),
+		status:          successStatusAttr,
+		clientName:      attribute.String("client_name", clientName),
+		method:          attribute.String("method", method),
+		host:            attribute.String("host", host),
+		statusCode:      attribute.String("status_code", ""),
+		connection:      attribute.String("connection", ""),
+		protocolVersion: attribute.String("network.protocol.version", ""),
 	}
 }
 
 type requestProbe struct {
 	httpclient.NoOpRequestProbe
-	obs        *httpClientObserver
-	ctx        context.Context
-	startTime  time.Time
-	status     attribute.KeyValue
-	clientName attribute.KeyValue
-	method     attribute.KeyValue
-	host       attribute.KeyValue
-	statusCode attribute.KeyValue
-	connection attribute.KeyValue
+	obs             *httpClientObserver
+	ctx             context.Context
+	startTime       time.Time
+	status          attribute.KeyValue
+	clientName      attribute.KeyValue
+	method          attribute.KeyValue
+	host            attribute.KeyValue
+	statusCode      attribute.KeyValue
+	connection      attribute.KeyValue
+	protocolVersion attribute.KeyValue
 }
 
 func (p *requestProbe) StatusCode(code int) {
@@ -82,6 +84,10 @@ func (p *requestProbe) ConnectionReused(reused bool) {
 	}
 }
 
+func (p *requestProbe) ProtocolVersion(proto string) {
+	p.protocolVersion = attribute.String("network.protocol.version", proto)
+}
+
 func (p *requestProbe) End() {
 	keys := []attribute.KeyValue{p.clientName, p.method, p.host, p.status}
 	if p.statusCode.Value.AsString() != "" {
@@ -89,6 +95,9 @@ func (p *requestProbe) End() {
 	}
 	if p.connection.Value.AsString() != "" {
 		keys = append(keys, p.connection)
+	}
+	if p.protocolVersion.Value.AsString() != "" {
+		keys = append(keys, p.protocolVersion)
 	}
 	attrs := metric.WithAttributeSet(attribute.NewSet(keys...))
 	p.obs.requestDuration.Record(p.ctx, p.obs.clock.Since(p.startTime).Seconds(), attrs)

@@ -1020,6 +1020,7 @@ func TestHTTPClientRequestMetrics(t *testing.T) {
 			StatusCode(int)
 			Error(error)
 			ConnectionReused(bool)
+			ProtocolVersion(string)
 			End()
 		})
 		wantStatus     string
@@ -1027,6 +1028,8 @@ func TestHTTPClientRequestMetrics(t *testing.T) {
 		wantNoCode     bool
 		wantConn       string
 		wantNoConn     bool
+		wantProto      string
+		wantNoProto    bool
 	}{
 		{
 			name:       "success 200 new connection",
@@ -1037,14 +1040,17 @@ func TestHTTPClientRequestMetrics(t *testing.T) {
 				StatusCode(int)
 				Error(error)
 				ConnectionReused(bool)
+				ProtocolVersion(string)
 				End()
 			}) {
 				p.ConnectionReused(false)
 				p.StatusCode(200)
+				p.ProtocolVersion("HTTP/1.1")
 			},
 			wantStatus:     `status="success"`,
 			wantStatusCode: `status_code="200"`,
 			wantConn:       `connection="new"`,
+			wantProto:      `network_protocol_version="HTTP/1.1"`,
 		},
 		{
 			name:       "success 201 reused connection",
@@ -1055,14 +1061,17 @@ func TestHTTPClientRequestMetrics(t *testing.T) {
 				StatusCode(int)
 				Error(error)
 				ConnectionReused(bool)
+				ProtocolVersion(string)
 				End()
 			}) {
 				p.ConnectionReused(true)
 				p.StatusCode(201)
+				p.ProtocolVersion("HTTP/2.0")
 			},
 			wantStatus:     `status="success"`,
 			wantStatusCode: `status_code="201"`,
 			wantConn:       `connection="reused"`,
+			wantProto:      `network_protocol_version="HTTP/2.0"`,
 		},
 		{
 			name:       "server error 500",
@@ -1073,14 +1082,17 @@ func TestHTTPClientRequestMetrics(t *testing.T) {
 				StatusCode(int)
 				Error(error)
 				ConnectionReused(bool)
+				ProtocolVersion(string)
 				End()
 			}) {
 				p.ConnectionReused(true)
 				p.StatusCode(500)
+				p.ProtocolVersion("HTTP/1.1")
 			},
 			wantStatus:     `status="success"`,
 			wantStatusCode: `status_code="500"`,
 			wantConn:       `connection="reused"`,
+			wantProto:      `network_protocol_version="HTTP/1.1"`,
 		},
 		{
 			name:       "transport error no connection info",
@@ -1091,13 +1103,15 @@ func TestHTTPClientRequestMetrics(t *testing.T) {
 				StatusCode(int)
 				Error(error)
 				ConnectionReused(bool)
+				ProtocolVersion(string)
 				End()
 			}) {
 				p.Error(errors.New("connection refused"))
 			},
-			wantStatus: `status="error"`,
-			wantNoCode: true,
-			wantNoConn: true,
+			wantStatus:  `status="error"`,
+			wantNoCode:  true,
+			wantNoConn:  true,
+			wantNoProto: true,
 		},
 		{
 			name:       "no connection info omits label",
@@ -1108,13 +1122,16 @@ func TestHTTPClientRequestMetrics(t *testing.T) {
 				StatusCode(int)
 				Error(error)
 				ConnectionReused(bool)
+				ProtocolVersion(string)
 				End()
 			}) {
 				p.StatusCode(200)
+				p.ProtocolVersion("HTTP/1.1")
 			},
 			wantStatus:     `status="success"`,
 			wantStatusCode: `status_code="200"`,
 			wantNoConn:     true,
+			wantProto:      `network_protocol_version="HTTP/1.1"`,
 		},
 	}
 
@@ -1146,6 +1163,12 @@ func TestHTTPClientRequestMetrics(t *testing.T) {
 			}
 			if tt.wantNoConn {
 				assert.NotContains(t, body, "connection=")
+			}
+			if tt.wantProto != "" {
+				assert.Contains(t, body, tt.wantProto)
+			}
+			if tt.wantNoProto {
+				assert.NotContains(t, body, "network_protocol_version")
 			}
 		})
 	}
