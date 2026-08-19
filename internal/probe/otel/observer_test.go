@@ -1005,4 +1005,148 @@ func TestProbeContext_CarriesRequestContext(t *testing.T) {
 
 	_, crp := obs.CacheRefreshStarted(ctx)
 	assert.Equal(t, "request-123", crp.(*cacheRefreshProbe).ctx.Value(ctxKey{}))
+
+	_, hrp := obs.RequestStarted(ctx, "my-client", "GET", "example.com")
+	assert.Equal(t, "request-123", hrp.(*requestProbe).ctx.Value(ctxKey{}))
+}
+
+func TestHTTPClientRequestMetrics(t *testing.T) {
+	tests := []struct {
+		name       string
+		clientName string
+		method     string
+		host       string
+		action     func(probe interface {
+			StatusCode(int)
+			Error(error)
+			ConnectionReused(bool)
+			End()
+		})
+		wantStatus     string
+		wantStatusCode string
+		wantNoCode     bool
+		wantConn       string
+		wantNoConn     bool
+	}{
+		{
+			name:       "success 200 new connection",
+			clientName: "registry-auth",
+			method:     "GET",
+			host:       "registry.example.com",
+			action: func(p interface {
+				StatusCode(int)
+				Error(error)
+				ConnectionReused(bool)
+				End()
+			}) {
+				p.ConnectionReused(false)
+				p.StatusCode(200)
+			},
+			wantStatus:     `status="success"`,
+			wantStatusCode: `status_code="200"`,
+			wantConn:       `connection="new"`,
+		},
+		{
+			name:       "success 201 reused connection",
+			clientName: "sso-jwks",
+			method:     "POST",
+			host:       "sso.example.com",
+			action: func(p interface {
+				StatusCode(int)
+				Error(error)
+				ConnectionReused(bool)
+				End()
+			}) {
+				p.ConnectionReused(true)
+				p.StatusCode(201)
+			},
+			wantStatus:     `status="success"`,
+			wantStatusCode: `status_code="201"`,
+			wantConn:       `connection="reused"`,
+		},
+		{
+			name:       "server error 500",
+			clientName: "bop-service",
+			method:     "GET",
+			host:       "bop.example.com",
+			action: func(p interface {
+				StatusCode(int)
+				Error(error)
+				ConnectionReused(bool)
+				End()
+			}) {
+				p.ConnectionReused(true)
+				p.StatusCode(500)
+			},
+			wantStatus:     `status="success"`,
+			wantStatusCode: `status_code="500"`,
+			wantConn:       `connection="reused"`,
+		},
+		{
+			name:       "transport error no connection info",
+			clientName: "registry-auth",
+			method:     "GET",
+			host:       "registry.example.com",
+			action: func(p interface {
+				StatusCode(int)
+				Error(error)
+				ConnectionReused(bool)
+				End()
+			}) {
+				p.Error(errors.New("connection refused"))
+			},
+			wantStatus: `status="error"`,
+			wantNoCode: true,
+			wantNoConn: true,
+		},
+		{
+			name:       "no connection info omits label",
+			clientName: "plain-client",
+			method:     "GET",
+			host:       "example.com",
+			action: func(p interface {
+				StatusCode(int)
+				Error(error)
+				ConnectionReused(bool)
+				End()
+			}) {
+				p.StatusCode(200)
+			},
+			wantStatus:     `status="success"`,
+			wantStatusCode: `status_code="200"`,
+			wantNoConn:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := testProvider(t)
+			obs, err := NewObserver(p, "/metrics")
+			require.NoError(t, err)
+
+			_, probe := obs.RequestStarted(context.Background(), tt.clientName, tt.method, tt.host)
+			tt.action(probe)
+			probe.End()
+
+			body := scrape(t, p)
+			assert.Contains(t, body, "parsec_httpclient_request_duration_seconds")
+			assert.Contains(t, body, fmt.Sprintf(`client_name="%s"`, tt.clientName))
+			assert.Contains(t, body, fmt.Sprintf(`method="%s"`, tt.method))
+			assert.Contains(t, body, fmt.Sprintf(`host="%s"`, tt.host))
+			assert.Contains(t, body, tt.wantStatus)
+
+			if tt.wantStatusCode != "" {
+				assert.Contains(t, body, tt.wantStatusCode)
+			}
+			if tt.wantNoCode {
+				assert.NotContains(t, body, "status_code")
+			}
+			if tt.wantConn != "" {
+				assert.Contains(t, body, tt.wantConn)
+			}
+			if tt.wantNoConn {
+				assert.NotContains(t, body, "connection=")
+			}
+		})
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/project-kessel/parsec/internal/datasource"
+	"github.com/project-kessel/parsec/internal/httpclient"
 	"github.com/project-kessel/parsec/internal/keys"
 	"github.com/project-kessel/parsec/internal/server"
 	"github.com/project-kessel/parsec/internal/service"
@@ -31,6 +32,7 @@ type Observer interface {
 	keys.KeysObserver
 	trust.TrustObserver
 	server.ServerObserver
+	httpclient.HTTPClientObserver
 
 	// Shutdown flushes pending data and releases resources held by the
 	// observer tree. Composite observers cascade Shutdown to all children.
@@ -66,6 +68,7 @@ type composed struct {
 	keys.KeysObserver
 	trust.TrustObserver
 	server.ServerObserver
+	httpclient.HTTPClientObserver
 
 	shutdownFn   func(context.Context) error
 	configureMux func(*http.ServeMux)
@@ -91,6 +94,7 @@ func Compose(
 	ks keys.KeysObserver,
 	ts trust.TrustObserver,
 	srv server.ServerObserver,
+	hc httpclient.HTTPClientObserver,
 	opts ...ComposeOption,
 ) Observer {
 	c := &composed{
@@ -99,6 +103,7 @@ func Compose(
 		KeysObserver:       ks,
 		TrustObserver:      ts,
 		ServerObserver:     srv,
+		HTTPClientObserver: hc,
 	}
 	for _, o := range opts {
 		o(c)
@@ -117,6 +122,7 @@ type noopObserver struct {
 	keys.NoOpKeysObserver
 	trust.NoOpTrustObserver
 	server.NoOpServerObserver
+	httpclient.NoOpHTTPClientObserver
 }
 
 func (*noopObserver) Shutdown(context.Context) error  { return nil }

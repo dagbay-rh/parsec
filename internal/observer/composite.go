@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/project-kessel/parsec/internal/datasource"
+	"github.com/project-kessel/parsec/internal/httpclient"
 	"github.com/project-kessel/parsec/internal/keys"
 	"github.com/project-kessel/parsec/internal/request"
 	"github.com/project-kessel/parsec/internal/server"
@@ -209,6 +210,19 @@ func (c *compositeAll) StopStarted(ctx context.Context) (context.Context, server
 		ctx, probes[i] = ch.StopStarted(ctx)
 	}
 	return ctx, &compositeStopProbe{probes}
+}
+
+func (c *compositeAll) RequestStarted(
+	ctx context.Context,
+	clientName string,
+	method string,
+	host string,
+) (context.Context, httpclient.RequestProbe) {
+	probes := make([]httpclient.RequestProbe, len(c.children))
+	for i, ch := range c.children {
+		ctx, probes[i] = ch.RequestStarted(ctx, clientName, method, host)
+	}
+	return ctx, &compositeRequestProbe{probes: probes}
 }
 
 func (c *compositeAll) Shutdown(ctx context.Context) error {
@@ -812,6 +826,29 @@ func (m *compositeAuthzCheckProbe) PolicyEvaluationFailed(err error) {
 }
 
 func (m *compositeAuthzCheckProbe) End() {
+	for _, p := range m.probes {
+		p.End()
+	}
+}
+
+type compositeRequestProbe struct{ probes []httpclient.RequestProbe }
+
+func (m *compositeRequestProbe) StatusCode(code int) {
+	for _, p := range m.probes {
+		p.StatusCode(code)
+	}
+}
+func (m *compositeRequestProbe) Error(err error) {
+	for _, p := range m.probes {
+		p.Error(err)
+	}
+}
+func (m *compositeRequestProbe) ConnectionReused(reused bool) {
+	for _, p := range m.probes {
+		p.ConnectionReused(reused)
+	}
+}
+func (m *compositeRequestProbe) End() {
 	for _, p := range m.probes {
 		p.End()
 	}

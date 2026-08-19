@@ -12,6 +12,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"net/http/httptrace"
 	"time"
 )
 
@@ -31,20 +32,48 @@ type ClientSpec struct {
 	TransportMiddleware TransportMiddleware // nil = no wrapping
 }
 
+// RegistryOption configures optional parameters for [NewRegistry].
+type RegistryOption func(*registryConfig)
+
+type registryConfig struct {
+	observer HTTPClientObserver
+}
+
+// WithObserver sets the observer used to instrument outbound HTTP requests.
+// If not provided, no instrumentation is applied.
+func WithObserver(obs HTTPClientObserver) RegistryOption {
+	return func(c *registryConfig) {
+		if obs != nil {
+			c.observer = obs
+		}
+	}
+}
+
+func resolveRegistryConfig(opts []RegistryOption) registryConfig {
+	var c registryConfig
+	for _, o := range opts {
+		o(&c)
+	}
+	return c
+}
+
 // Registry builds, stores, and provides named HTTP clients.
 // It is also the factory for inline (anonymous) clients, ensuring
 // global concerns like fixture transports are applied uniformly.
 type Registry struct {
 	clients          map[ClientName]*http.Client
-	fixtureTransport http.RoundTripper // nil in production
+	fixtureTransport http.RoundTripper  // nil in production
+	observer         HTTPClientObserver // nil = no instrumentation
 }
 
 // NewRegistry creates a Registry. If fixtureTransport is non-nil, it overrides
 // the base transport for every client built by this registry (hermetic mode).
-func NewRegistry(fixtureTransport http.RoundTripper) *Registry {
+func NewRegistry(fixtureTransport http.RoundTripper, opts ...RegistryOption) *Registry {
+	cfg := resolveRegistryConfig(opts)
 	return &Registry{
 		clients:          make(map[ClientName]*http.Client),
 		fixtureTransport: fixtureTransport,
+		observer:         cfg.observer,
 	}
 }
 
@@ -55,7 +84,7 @@ func (r *Registry) Register(name ClientName, spec ClientSpec) (*http.Client, err
 		return nil, fmt.Errorf("httpclient: client %q already registered", name)
 	}
 
-	client, err := r.build(spec)
+	client, err := r.build(string(name), spec)
 	if err != nil {
 		return nil, fmt.Errorf("httpclient: failed to build client %q: %w", name, err)
 	}
@@ -77,10 +106,10 @@ func (r *Registry) Get(name ClientName) (*http.Client, error) {
 // all global concerns (fixture transport, etc.). The client is NOT stored
 // in the registry. Use this for inline-defined clients.
 func (r *Registry) Build(spec ClientSpec) (*http.Client, error) {
-	return r.build(spec)
+	return r.build("", spec)
 }
 
-func (r *Registry) build(spec ClientSpec) (*http.Client, error) {
+func (r *Registry) build(clientName string, spec ClientSpec) (*http.Client, error) {
 	// 1. Determine base transport
 	var base http.RoundTripper
 
@@ -112,10 +141,51 @@ func (r *Registry) build(spec ClientSpec) (*http.Client, error) {
 		transport = spec.TransportMiddleware(base)
 	}
 
+	// 3. Apply metrics instrumentation (outermost layer so it captures
+	//    the full round-trip including any middleware overhead).
+	if r.observer != nil {
+		transport = &instrumentedTransport{
+			base:       transport,
+			observer:   r.observer,
+			clientName: clientName,
+		}
+	}
+
 	return &http.Client{
 		Timeout:   spec.Timeout,
 		Transport: transport,
 	}, nil
+}
+
+// instrumentedTransport wraps a base [http.RoundTripper] and records metrics
+// for each request via the [HTTPClientObserver].
+type instrumentedTransport struct {
+	base       http.RoundTripper
+	observer   HTTPClientObserver
+	clientName string
+}
+
+// RoundTrip implements [http.RoundTripper].
+func (t *instrumentedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	ctx, probe := t.observer.RequestStarted(req.Context(), t.clientName, req.Method, req.URL.Host)
+
+	trace := &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) {
+			probe.ConnectionReused(info.Reused)
+		},
+	}
+	ctx = httptrace.WithClientTrace(ctx, trace)
+
+	defer probe.End()
+
+	resp, err := t.base.RoundTrip(req.WithContext(ctx))
+	if err != nil {
+		probe.Error(err)
+		return nil, err
+	}
+
+	probe.StatusCode(resp.StatusCode)
+	return resp, nil
 }
 
 // BearerTransport injects a static Authorization: Bearer header into every request.
