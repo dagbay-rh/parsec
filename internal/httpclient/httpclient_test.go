@@ -277,6 +277,65 @@ func TestFileCertSource_InvalidPathErrors(t *testing.T) {
 	}
 }
 
+func TestHeadersTransport_InjectsHeaders(t *testing.T) {
+	var capturedHeaders http.Header
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	ht := &HeadersTransport{
+		Headers: map[string]string{
+			"X-Custom-Id":    "my-client",
+			"X-Custom-Token": "my-token",
+		},
+		Base: http.DefaultTransport,
+	}
+
+	req, _ := http.NewRequest("GET", server.URL, nil)
+	resp, err := ht.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip failed: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if capturedHeaders.Get("X-Custom-Id") != "my-client" {
+		t.Errorf("X-Custom-Id = %q, want %q", capturedHeaders.Get("X-Custom-Id"), "my-client")
+	}
+	if capturedHeaders.Get("X-Custom-Token") != "my-token" {
+		t.Errorf("X-Custom-Token = %q, want %q", capturedHeaders.Get("X-Custom-Token"), "my-token")
+	}
+}
+
+func TestHeadersTransport_DoesNotMutateOriginalRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	ht := &HeadersTransport{
+		Headers: map[string]string{"X-Injected": "secret"},
+		Base:    http.DefaultTransport,
+	}
+
+	req, _ := http.NewRequest("GET", server.URL, nil)
+	req.Header.Set("X-Original", "keep-me")
+
+	resp, err := ht.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip failed: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if req.Header.Get("X-Injected") != "" {
+		t.Error("original request should not have X-Injected header")
+	}
+	if req.Header.Get("X-Original") != "keep-me" {
+		t.Error("original request headers should be preserved")
+	}
+}
+
 // roundTripFunc adapts a function to the http.RoundTripper interface.
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
@@ -324,6 +383,7 @@ var _ CertSource = (*FileCertSource)(nil)
 
 // Verify RoundTripper interface compliance
 var _ http.RoundTripper = (*BearerTransport)(nil)
+var _ http.RoundTripper = (*HeadersTransport)(nil)
 
 // Verify that tls.Certificate is returned correctly
 func TestFileCertSource_CertificateIsValid(t *testing.T) {

@@ -10,9 +10,11 @@ package httpclient
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/http"
 	"net/http/httptrace"
+	"os"
 	"time"
 )
 
@@ -30,6 +32,7 @@ type ClientSpec struct {
 	Timeout             time.Duration
 	CertSource          CertSource          // nil = share default transport
 	TransportMiddleware TransportMiddleware // nil = no wrapping
+	RootCAPath          string              // PEM-encoded CA cert file to trust
 }
 
 // RegistryOption configures optional parameters for [NewRegistry].
@@ -116,21 +119,38 @@ func (r *Registry) build(clientName string, spec ClientSpec) (*http.Client, erro
 	if r.fixtureTransport != nil {
 		// Hermetic mode: fixture transport overrides everything
 		base = r.fixtureTransport
-	} else if spec.CertSource != nil {
-		// mTLS: clone the default transport so we keep standard behavior
-		// (proxy handling, HTTP/2, idle connection reuse, timeouts) and
-		// only add the client-certificate callback.
-		mtlsTransport := http.DefaultTransport.(*http.Transport).Clone()
-		mtlsTransport.TLSClientConfig = &tls.Config{
-			GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+	} else if spec.CertSource != nil || spec.RootCAPath != "" {
+		// Clone the default transport so we keep standard behavior
+		// (proxy handling, HTTP/2, idle connection reuse, timeouts)
+		// and customize TLS settings.
+		customTransport := http.DefaultTransport.(*http.Transport).Clone()
+		if customTransport.TLSClientConfig == nil {
+			customTransport.TLSClientConfig = &tls.Config{}
+		}
+		if spec.CertSource != nil {
+			customTransport.TLSClientConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
 				cert, err := spec.CertSource.Certificate()
 				if err != nil {
 					return nil, err
 				}
 				return &cert, nil
-			},
+			}
 		}
-		base = mtlsTransport
+		if spec.RootCAPath != "" {
+			pem, err := os.ReadFile(spec.RootCAPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read CA cert %q: %w", spec.RootCAPath, err)
+			}
+			pool, err := x509.SystemCertPool()
+			if err != nil {
+				pool = x509.NewCertPool()
+			}
+			if !pool.AppendCertsFromPEM(pem) {
+				return nil, fmt.Errorf("failed to parse CA cert from %q", spec.RootCAPath)
+			}
+			customTransport.TLSClientConfig.RootCAs = pool
+		}
+		base = customTransport
 	} else {
 		base = http.DefaultTransport
 	}
@@ -197,8 +217,22 @@ type BearerTransport struct {
 
 // RoundTrip implements [http.RoundTripper].
 func (t *BearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Clone the request to avoid mutating the caller's request
 	clone := req.Clone(req.Context())
 	clone.Header.Set("Authorization", "Bearer "+t.Token)
+	return t.Base.RoundTrip(clone)
+}
+
+// HeadersTransport injects a fixed set of headers into every request.
+type HeadersTransport struct {
+	Headers map[string]string
+	Base    http.RoundTripper
+}
+
+// RoundTrip implements [http.RoundTripper].
+func (t *HeadersTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	for k, v := range t.Headers {
+		clone.Header.Set(k, v)
+	}
 	return t.Base.RoundTrip(clone)
 }

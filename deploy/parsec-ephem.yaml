@@ -294,6 +294,24 @@ objects:
                 value: "true"
               - name: PARSEC_CONFIG
                 value: "/etc/parsec/parsec.yaml"
+              - name: PARSEC_BOP_CERTAUTH_SECRET
+                valueFrom:
+                  secretKeyRef:
+                    name: ${BOP_CERTAUTH_SECRET}
+                    key: certauth-secret
+                    optional: true
+              - name: PARSEC_BOP_CLIENT_ID
+                valueFrom:
+                  secretKeyRef:
+                    name: ${BOP_CLIENT_SECRET}
+                    key: client_id
+                    optional: true
+              - name: PARSEC_BOP_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: ${BOP_CLIENT_SECRET}
+                    key: token
+                    optional: true
             volumeMounts:
               - name: config-volume
                 mountPath: "/etc/parsec/parsec.yaml"
@@ -301,10 +319,24 @@ objects:
               - name: config-volume
                 mountPath: "/etc/parsec/scripts/redhat_identity.cel"
                 subPath: redhat_identity.cel
+              - name: forwarded-client-cert-auth
+                mountPath: "/etc/parsec/scripts/forwarded_client_cert_auth.lua"
+                subPath: forwarded_client_cert_auth.lua
+              - name: it-ca-bundle
+                mountPath: "/etc/parsec/secrets/it-ca-bundle"
+                readOnly: true
             volumes:
               - name: config-volume
                 configMap:
                   name: parsec-config
+              - name: forwarded-client-cert-auth
+                secret:
+                  secretName: ${FORWARDED_CLIENT_CERT_AUTH_SECRET}
+                  optional: true
+              - name: it-ca-bundle
+                secret:
+                  secretName: ${IT_CA_BUNDLE_SECRET}
+                  optional: true
           webServices:
             public:
               enabled: true
@@ -327,6 +359,18 @@ parameters:
   - description: Number of replicas
     name: REPLICAS
     value: "1"
+  - description: Name of the K8s secret containing the BOP certauth proxy proof secret
+    name: BOP_CERTAUTH_SECRET
+    value: backoffice-proxy-config
+  - description: Name of the K8s secret containing BOP client-id and token
+    name: BOP_CLIENT_SECRET
+    value: parsec
+  - description: Name of the K8s secret containing the forwarded client cert auth Lua script
+    name: FORWARDED_CLIENT_CERT_AUTH_SECRET
+    value: forwarded-client-cert-auth
+  - description: Name of the K8s secret containing the Red Hat IT CA bundle
+    name: IT_CA_BUNDLE_SECRET
+    value: it-ca-bundle
   - description: Memory request for Parsec service
     name: PARSEC_REQUESTS_MEMORY
     value: '128Mi'

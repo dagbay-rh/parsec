@@ -75,16 +75,30 @@ type AuthzCheckPolicyConfig struct {
 	AllowAnonymousWithoutIssuePaths []string `koanf:"allow_anonymous_without_issue_paths"`
 }
 
+// HeaderSpec configures a single header for extraction
+type HeaderSpec struct {
+	Name string `koanf:"name"`
+}
+
 // CredentialSourceConfig configures a credential extraction source
 type CredentialSourceConfig struct {
 	// Name uniquely identifies this credential source (multiple sources may share a type)
 	Name string `koanf:"name"`
 
-	// Type is the source kind: bearer, cookie
+	// Type is the source kind: authorization_bearer_opaque, cookie_bearer_opaque, authorization_basic_auth, header, forwarded_client_cert_auth
 	Type string `koanf:"type"`
 
 	// CookieName is the cookie to read (cookie type)
 	CookieName string `koanf:"cookie_name"`
+
+	// Headers is the list of headers to extract (header type)
+	Headers []HeaderSpec `koanf:"headers"`
+
+	// SubjectHeader is the header containing the certificate subject (forwarded_client_cert_auth type)
+	SubjectHeader string `koanf:"subject_header"`
+
+	// IssuerHeader is the header containing the certificate issuer (forwarded_client_cert_auth type)
+	IssuerHeader string `koanf:"issuer_header"`
 }
 
 // TokenTypeConfig specifies a token type to issue via ext_authz
@@ -224,6 +238,10 @@ type HTTPClientSpec struct {
 	// ClientCertSource configures the client certificate source for mTLS. Optional.
 	// When set, this client gets its own transport rather than sharing the default.
 	ClientCertSource *CertSourceConfig `koanf:"client_cert_source"`
+
+	// CACert is the path to a PEM-encoded CA certificate file for TLS verification.
+	// When set, this CA is appended to the system root pool for this client.
+	CACert string `koanf:"ca_cert"`
 }
 
 // HTTPClientConfig is a named HTTP client entry for the top-level registry.
@@ -237,11 +255,14 @@ type HTTPClientConfig struct {
 // HTTPAuthConfig configures HTTP-layer (header-based) authentication.
 // Distinct from transport-level auth (mTLS), which is configured via client_cert_source.
 type HTTPAuthConfig struct {
-	// Type selects the auth mechanism: "bearer" (future: "oauth2_client_credentials", etc.)
+	// Type selects the auth mechanism: "bearer", "headers" (future: "oauth2_client_credentials", etc.)
 	Type string `koanf:"type"`
 
 	// Bearer fields
 	Token string `koanf:"token"` // Static bearer token value
+
+	// Headers fields (type: "headers")
+	Headers map[string]any `koanf:"headers"`
 }
 
 // CertSourceConfig configures where client certificates come from for mTLS.

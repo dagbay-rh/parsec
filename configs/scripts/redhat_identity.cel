@@ -23,6 +23,24 @@
 has(subject.claims) && has(subject.claims.impersonated) && subject.claims.impersonated == true
   ? invalidSubject("impersonated tokens are not accepted")
 : (
+has(subject.issuer) && subject.issuer.startsWith("x509://") ? {
+  "identity": {
+    "auth_type": "cert-auth",
+    "account_number": has(subject.claims) && has(subject.claims.account_number) ? subject.claims.account_number : "",
+    "org_id": has(subject.claims) && has(subject.claims.org_id) ? subject.claims.org_id : "",
+    "type": "System",
+    "system": {
+      "cn": has(subject.claims) && has(subject.claims.cn) ? subject.claims.cn : "",
+      "cert_type": has(subject.claims) && has(subject.claims.cert_type) ? subject.claims.cert_type : ""
+    },
+    "internal": {
+      "org_id": has(subject.claims) && has(subject.claims.org_id) ? subject.claims.org_id : "",
+      "cross_access": false,
+      "auth_time": now_ms()
+    }
+  },
+  "entitlements": {}
+} : (
 has(subject.issuer) && subject.issuer.contains("container-registry-authorizer") && subject.issuer.contains("api.redhat.com") ? {
   "identity": {
     "auth_type": "registry-auth",
@@ -179,6 +197,7 @@ isServiceAccountToken(subject.claims) ? {
       } : unsupportedTokenType("unsupported_token_type")
     )
   )
+)
 )
 )
 )

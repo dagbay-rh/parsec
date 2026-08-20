@@ -166,7 +166,11 @@ func newLuaValidator(name string, cfg ValidatorConfig, httpRegistry *httpclient.
 
 	var configSource luaservices.ConfigSource
 	if cfg.Config != nil {
-		configSource = luaservices.NewMapConfigSource(cfg.Config)
+		resolved, err := resolveConfigValues(cfg.Config)
+		if err != nil {
+			return nil, fmt.Errorf("lua_validator config: %w", err)
+		}
+		configSource = luaservices.NewMapConfigSource(resolved)
 	}
 
 	// Resolve HTTP client from registry
@@ -346,7 +350,11 @@ func parseCredentialType(s string) (trust.CredentialType, error) {
 		return trust.CredentialTypeOIDC, nil
 	case "basic_auth":
 		return trust.CredentialTypeBasicAuth, nil
+	case "header":
+		return trust.CredentialTypeHeader, nil
+	case "forwarded_client_cert":
+		return trust.CredentialTypeForwardedClientCert, nil
 	default:
-		return "", fmt.Errorf("unknown credential type: %s (supported: bearer, jwt, json, mtls, oidc, basic_auth)", s)
+		return "", fmt.Errorf("unknown credential type: %s (supported: bearer, jwt, json, mtls, oidc, basic_auth, header, forwarded_client_cert)", s)
 	}
 }

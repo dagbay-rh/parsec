@@ -51,8 +51,8 @@ func TestProvider_CredentialSources(t *testing.T) {
 		},
 		{
 			name:    "unknown type",
-			sources: []CredentialSourceConfig{{Name: "x", Type: "header"}},
-			wantErr: `unknown type "header"`,
+			sources: []CredentialSourceConfig{{Name: "x", Type: "not_a_real_type"}},
+			wantErr: `unknown type "not_a_real_type"`,
 		},
 		{
 			name:    "cookie without cookie_name",

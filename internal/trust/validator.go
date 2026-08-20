@@ -82,13 +82,15 @@ func AnonymousResult() *Result {
 type CredentialType string
 
 const (
-	CredentialTypeBearer    CredentialType = "bearer"
-	CredentialTypeJWT       CredentialType = "jwt"
-	CredentialTypeOIDC      CredentialType = "oidc"
-	CredentialTypeMTLS      CredentialType = "mtls"
-	CredentialTypeOAuth2    CredentialType = "oauth2"
-	CredentialTypeJSON      CredentialType = "json"
-	CredentialTypeBasicAuth CredentialType = "basic_auth"
+	CredentialTypeBearer              CredentialType = "bearer"
+	CredentialTypeJWT                 CredentialType = "jwt"
+	CredentialTypeOIDC                CredentialType = "oidc"
+	CredentialTypeMTLS                CredentialType = "mtls"
+	CredentialTypeOAuth2              CredentialType = "oauth2"
+	CredentialTypeJSON                CredentialType = "json"
+	CredentialTypeBasicAuth           CredentialType = "basic_auth"
+	CredentialTypeHeader              CredentialType = "header"
+	CredentialTypeForwardedClientCert CredentialType = "forwarded_client_cert"
 )
 
 // Credential is the interface for all credential types
@@ -192,6 +194,26 @@ func (c *BasicAuthCredential) Type() CredentialType {
 	return CredentialTypeBasicAuth
 }
 
+// HeaderCredential represents a generic set of headers extracted from a request.
+type HeaderCredential struct {
+	Headers map[string]string `json:"headers"`
+}
+
+func (c *HeaderCredential) Type() CredentialType {
+	return CredentialTypeHeader
+}
+
+// ForwardedClientCertCredential represents certificate authentication
+// credentials extracted from proxy-forwarded headers after TLS termination.
+type ForwardedClientCertCredential struct {
+	Subject string `json:"subject"`
+	Issuer  string `json:"issuer"`
+}
+
+func (c *ForwardedClientCertCredential) Type() CredentialType {
+	return CredentialTypeForwardedClientCert
+}
+
 // MarshalCredentialJSON serializes a [Credential] to JSON with a "type"
 // discriminator field. The concrete credential struct must have json tags.
 func MarshalCredentialJSON(c Credential) ([]byte, error) {
@@ -238,6 +260,12 @@ func UnmarshalCredentialJSON(data []byte) (Credential, error) {
 		return &c, json.Unmarshal(data, &c)
 	case CredentialTypeBasicAuth:
 		var c BasicAuthCredential
+		return &c, json.Unmarshal(data, &c)
+	case CredentialTypeHeader:
+		var c HeaderCredential
+		return &c, json.Unmarshal(data, &c)
+	case CredentialTypeForwardedClientCert:
+		var c ForwardedClientCertCredential
 		return &c, json.Unmarshal(data, &c)
 	default:
 		return nil, fmt.Errorf("unsupported credential type: %s", envelope.Type)

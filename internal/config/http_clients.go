@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/project-kessel/parsec/internal/httpclient"
@@ -115,6 +116,8 @@ func resolveClientSpec(cfg HTTPClientSpec) (httpclient.ClientSpec, error) {
 		spec.TransportMiddleware = mw
 	}
 
+	spec.RootCAPath = cfg.CACert
+
 	return spec, nil
 }
 
@@ -147,7 +150,60 @@ func buildTransportMiddleware(cfg HTTPAuthConfig) (httpclient.TransportMiddlewar
 		return func(base http.RoundTripper) http.RoundTripper {
 			return &httpclient.BearerTransport{Token: cfg.Token, Base: base}
 		}, nil
+	case "headers":
+		resolved, err := resolveHeaders(cfg.Headers)
+		if err != nil {
+			return nil, err
+		}
+		return func(base http.RoundTripper) http.RoundTripper {
+			return &httpclient.HeadersTransport{Headers: resolved, Base: base}
+		}, nil
 	default:
-		return nil, fmt.Errorf("unknown http_auth type: %q (supported: bearer)", cfg.Type)
+		return nil, fmt.Errorf("unknown http_auth type: %q (supported: bearer, headers)", cfg.Type)
 	}
+}
+
+func resolveHeaders(headers map[string]any) (map[string]string, error) {
+	if len(headers) == 0 {
+		return nil, fmt.Errorf("http_auth[headers]: at least one header is required")
+	}
+	resolved, err := resolveConfigValues(headers)
+	if err != nil {
+		return nil, fmt.Errorf("http_auth[headers]: %w", err)
+	}
+	result := make(map[string]string, len(resolved))
+	for k, v := range resolved {
+		s, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("http_auth[headers]: header %q must resolve to a string", k)
+		}
+		result[k] = s
+	}
+	return result, nil
+}
+
+func resolveConfigValues(m map[string]any) (map[string]any, error) {
+	if m == nil {
+		return nil, nil
+	}
+	resolved := make(map[string]any, len(m))
+	for key, val := range m {
+		sub, ok := val.(map[string]any)
+		if ok {
+			if envName, hasEnv := sub["env"]; hasEnv {
+				name, ok := envName.(string)
+				if !ok {
+					return nil, fmt.Errorf("config key %q: env must be a string", key)
+				}
+				v := os.Getenv(name)
+				if v == "" {
+					return nil, fmt.Errorf("config key %q: env var %q is empty or not set", key, name)
+				}
+				resolved[key] = v
+				continue
+			}
+		}
+		resolved[key] = val
+	}
+	return resolved, nil
 }

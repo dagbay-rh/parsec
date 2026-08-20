@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/project-kessel/parsec/internal/server"
@@ -72,9 +73,12 @@ func Test_newCredentialSource(t *testing.T) {
 
 	t.Run("unknown type", func(t *testing.T) {
 		t.Parallel()
-		_, err := newCredentialSource(CredentialSourceConfig{Name: "x", Type: "header"})
+		_, err := newCredentialSource(CredentialSourceConfig{Name: "x", Type: "unknown_type"})
 		if err == nil {
 			t.Fatal("expected error for unknown type")
+		}
+		if !strings.Contains(err.Error(), "unknown type") {
+			t.Fatalf("expected 'unknown type' error, got: %v", err)
 		}
 	})
 }
