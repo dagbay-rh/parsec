@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/project-kessel/parsec/internal/datasource"
+	"github.com/project-kessel/parsec/internal/httpclient"
 	"github.com/project-kessel/parsec/internal/keys"
 	"github.com/project-kessel/parsec/internal/server"
 	"github.com/project-kessel/parsec/internal/service"
@@ -165,6 +166,16 @@ func TestNoOp_AllProbeMethodsCallable(t *testing.T) {
 		_, p := obs.StopStarted(ctx)
 		p.End()
 	}
+	{
+		ctx2, p := obs.RequestStarted(ctx, "test-client", "GET", "example.com")
+		if ctx2 != ctx {
+			t.Error("expected same context back from noop RequestStarted")
+		}
+		p.StatusCode(200)
+		p.Error(errors.New("x"))
+		p.ConnectionReused(true)
+		p.End()
+	}
 	if err := obs.Shutdown(ctx); err != nil {
 		t.Errorf("noop Shutdown should return nil, got %v", err)
 	}
@@ -179,6 +190,7 @@ func TestCompose_ShutdownCallsShutdownFn(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 		WithShutdown(func(context.Context) error {
 			called.Add(1)
 			return nil
@@ -200,6 +212,7 @@ func TestCompose_ShutdownWithoutOption_ReturnsNil(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 	)
 
 	if err := obs.Shutdown(context.Background()); err != nil {
@@ -215,6 +228,7 @@ func TestCompose_ConfigureHTTPMuxCallsFn(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 		WithHTTPMux(func(*http.ServeMux) {
 			called.Add(1)
 		}),
@@ -234,6 +248,7 @@ func TestCompositeAll_ConfigureHTTPMuxCascadesToAllChildren(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 		WithHTTPMux(func(*http.ServeMux) { c1.Add(1) }),
 	)
 	child2 := Compose(
@@ -242,6 +257,7 @@ func TestCompositeAll_ConfigureHTTPMuxCascadesToAllChildren(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 		WithHTTPMux(func(*http.ServeMux) { c2.Add(1) }),
 	)
 
@@ -264,6 +280,7 @@ func TestCompositeAll_ShutdownCascadesToAllChildren(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 		WithShutdown(func(context.Context) error {
 			c1.Add(1)
 			return nil
@@ -275,6 +292,7 @@ func TestCompositeAll_ShutdownCascadesToAllChildren(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 		WithShutdown(func(context.Context) error {
 			c2.Add(1)
 			return errors.New("child2 error")
@@ -332,6 +350,7 @@ func TestCompose_DelegatesToCorrectSubObserver(t *testing.T) {
 			server.JWKSObserver
 			server.LifecycleObserver
 		}{&spyJWKSObserver{called: &jwksCalled}, &spySrvLifeObserver{called: &srvCalled}},
+		httpclient.NoOpHTTPClientObserver{},
 	)
 
 	ctx := context.Background()
@@ -431,6 +450,11 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 		distCache1, distCache2   atomic.Int32
 		jwks1, jwks2             atomic.Int32
 		srv1, srv2               atomic.Int32
+		http1, http2             atomic.Int32
+		httpSC1, httpSC2         atomic.Int32
+		httpErr1, httpErr2       atomic.Int32
+		httpConn1, httpConn2     atomic.Int32
+		httpEnd1, httpEnd2       atomic.Int32
 	)
 
 	child1 := Compose(
@@ -452,6 +476,7 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 			server.JWKSObserver
 			server.LifecycleObserver
 		}{&spyJWKSObserver{called: &jwks1}, &spySrvLifeObserver{called: &srv1}},
+		&spyHTTPClientObserver{called: &http1, statusCode: &httpSC1, errored: &httpErr1, connReused: &httpConn1, ended: &httpEnd1},
 	)
 	child2 := Compose(
 		service.NoOpServiceObserver{},
@@ -472,6 +497,7 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 			server.JWKSObserver
 			server.LifecycleObserver
 		}{&spyJWKSObserver{called: &jwks2}, &spySrvLifeObserver{called: &srv2}},
+		&spyHTTPClientObserver{called: &http2, statusCode: &httpSC2, errored: &httpErr2, connReused: &httpConn2, ended: &httpEnd2},
 	)
 
 	composite := CompositeAll([]Observer{child1, child2})
@@ -492,6 +518,13 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 	composite.CacheRefreshStarted(ctx)
 	composite.StopStarted(ctx)
 
+	// Exercise HTTP client observer fan-out including probe methods.
+	_, probe := composite.RequestStarted(ctx, "test-client", "GET", "example.com")
+	probe.StatusCode(200)
+	probe.Error(errors.New("test"))
+	probe.ConnectionReused(true)
+	probe.End()
+
 	for _, tc := range []struct {
 		name   string
 		c1, c2 *atomic.Int32
@@ -510,6 +543,11 @@ func TestCompositeAll_FansOutAllInfraTypes(t *testing.T) {
 		{"DistributedValidate", &distCache1, &distCache2},
 		{"JWKS", &jwks1, &jwks2},
 		{"ServerLifecycle", &srv1, &srv2},
+		{"HTTPClientRequest", &http1, &http2},
+		{"HTTPClientStatusCode", &httpSC1, &httpSC2},
+		{"HTTPClientError", &httpErr1, &httpErr2},
+		{"HTTPClientConnReused", &httpConn1, &httpConn2},
+		{"HTTPClientEnd", &httpEnd1, &httpEnd2},
 	} {
 		if tc.c1.Load() != 1 {
 			t.Errorf("%s: child1 expected 1 call, got %d", tc.name, tc.c1.Load())
@@ -537,6 +575,7 @@ func TestCompositeAll_FansOutServiceTypes(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 	)
 	child2 := Compose(
 		&spyServiceObserver{
@@ -548,6 +587,7 @@ func TestCompositeAll_FansOutServiceTypes(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 	)
 
 	composite := CompositeAll([]Observer{child1, child2})
@@ -586,6 +626,7 @@ func TestCompositeAll_MultiProbe_FansOutEvents(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 	)
 	child2 := Compose(
 		service.NoOpServiceObserver{},
@@ -596,6 +637,7 @@ func TestCompositeAll_MultiProbe_FansOutEvents(t *testing.T) {
 		keys.NoOpKeysObserver{},
 		trust.NoOpTrustObserver{},
 		server.NoOpServerObserver{},
+		httpclient.NoOpHTTPClientObserver{},
 	)
 
 	composite := CompositeAll([]Observer{child1, child2})
@@ -761,3 +803,30 @@ func (s *spyServiceObserver) AuthzCheckStarted(ctx context.Context) (context.Con
 	s.authzCheckCalled.Add(1)
 	return ctx, service.NoOpAuthzCheckProbe{}
 }
+
+type spyHTTPClientObserver struct {
+	httpclient.NoOpHTTPClientObserver
+	called     *atomic.Int32
+	statusCode *atomic.Int32
+	errored    *atomic.Int32
+	connReused *atomic.Int32
+	ended      *atomic.Int32
+}
+
+func (s *spyHTTPClientObserver) RequestStarted(ctx context.Context, _ string, _ string, _ string) (context.Context, httpclient.RequestProbe) {
+	s.called.Add(1)
+	return ctx, &spyHTTPClientProbe{statusCode: s.statusCode, errored: s.errored, connReused: s.connReused, ended: s.ended}
+}
+
+type spyHTTPClientProbe struct {
+	httpclient.NoOpRequestProbe
+	statusCode *atomic.Int32
+	errored    *atomic.Int32
+	connReused *atomic.Int32
+	ended      *atomic.Int32
+}
+
+func (p *spyHTTPClientProbe) StatusCode(int)        { p.statusCode.Add(1) }
+func (p *spyHTTPClientProbe) Error(error)           { p.errored.Add(1) }
+func (p *spyHTTPClientProbe) ConnectionReused(bool) { p.connReused.Add(1) }
+func (p *spyHTTPClientProbe) End()                  { p.ended.Add(1) }

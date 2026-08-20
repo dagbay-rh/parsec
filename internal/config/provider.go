@@ -374,7 +374,17 @@ func (p *Provider) HTTPClientRegistry() (*httpclient.Registry, error) {
 	}
 
 	fixtureTransport := p.HTTPTransport()
-	registry, err := NewHTTPClientRegistry(p.config.HTTPClients, fixtureTransport)
+
+	obs, err := p.Observer()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create observer for HTTP client registry: %w", err)
+	}
+
+	registry, err := NewHTTPClientRegistry(
+		p.config.HTTPClients,
+		fixtureTransport,
+		httpclient.WithObserver(obs),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP client registry: %w", err)
 	}

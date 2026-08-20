@@ -1,6 +1,7 @@
 package httpclient
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -8,6 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -428,3 +430,303 @@ func TestFileCertSource_HasPrivateKey(t *testing.T) {
 
 // Suppress unused import warning for tls in tests
 var _ = tls.Certificate{}
+
+// --- observer integration tests ---
+
+type spyCtxKey struct{}
+
+type spyObserver struct {
+	NoOpHTTPClientObserver
+	clientName string
+	method     string
+	host       string
+	probe      *spyProbe
+	gotCtx     context.Context
+}
+
+func (o *spyObserver) RequestStarted(ctx context.Context, clientName, method, host string) (context.Context, RequestProbe) {
+	o.clientName = clientName
+	o.method = method
+	o.host = host
+	o.probe = &spyProbe{}
+	o.gotCtx = ctx
+	return context.WithValue(ctx, spyCtxKey{}, "observed"), o.probe
+}
+
+type spyProbe struct {
+	NoOpRequestProbe
+	statusCode      int
+	errored         bool
+	ended           bool
+	connReusedSet   bool
+	connReusedVal   bool
+	protocolVersion string
+	protoVersionSet bool
+}
+
+func (p *spyProbe) StatusCode(code int)          { p.statusCode = code }
+func (p *spyProbe) Error(error)                  { p.errored = true }
+func (p *spyProbe) ConnectionReused(reused bool) { p.connReusedSet = true; p.connReusedVal = reused }
+func (p *spyProbe) ProtocolVersion(proto string) { p.protoVersionSet = true; p.protocolVersion = proto }
+func (p *spyProbe) End()                         { p.ended = true }
+
+func TestRegistry_ObserverCalledOnRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	obs := &spyObserver{}
+	r := NewRegistry(nil, WithObserver(obs))
+
+	spec := ClientSpec{Timeout: 5 * time.Second}
+	client, err := r.Register("my-api", spec)
+	if err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	resp, err := client.Get(server.URL + "/test")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if obs.clientName != "my-api" {
+		t.Errorf("clientName = %q, want %q", obs.clientName, "my-api")
+	}
+	if obs.method != "GET" {
+		t.Errorf("method = %q, want %q", obs.method, "GET")
+	}
+	if obs.probe == nil {
+		t.Fatal("probe was nil")
+	}
+	if obs.probe.statusCode != 200 {
+		t.Errorf("statusCode = %d, want 200", obs.probe.statusCode)
+	}
+	if obs.probe.errored {
+		t.Error("probe errored unexpectedly")
+	}
+	if !obs.probe.ended {
+		t.Error("probe.End() was not called")
+	}
+}
+
+func TestRegistry_ObserverCalledOnError(t *testing.T) {
+	obs := &spyObserver{}
+	r := NewRegistry(nil, WithObserver(obs))
+
+	spec := ClientSpec{Timeout: 1 * time.Millisecond}
+	client, err := r.Register("failing-client", spec)
+	if err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	// Use an invalid URL to trigger a transport error
+	_, err = client.Get("http://192.0.2.1:1/does-not-exist")
+	if err == nil {
+		t.Fatal("expected error for unreachable host")
+	}
+
+	if obs.probe == nil {
+		t.Fatal("probe was nil")
+	}
+	if !obs.probe.errored {
+		t.Error("probe.Error was not called")
+	}
+	if !obs.probe.ended {
+		t.Error("probe.End() was not called")
+	}
+}
+
+func TestRegistry_NoObserver_NoInstrumentation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	r := NewRegistry(nil) // no observer
+	client, err := r.Register("plain-client", ClientSpec{Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	resp, err := client.Get(server.URL)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Errorf("StatusCode = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestRegistry_ObserverWithMiddleware(t *testing.T) {
+	var capturedAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	obs := &spyObserver{}
+	r := NewRegistry(nil, WithObserver(obs))
+
+	spec := ClientSpec{
+		Timeout: 5 * time.Second,
+		TransportMiddleware: func(base http.RoundTripper) http.RoundTripper {
+			return &BearerTransport{Token: "test-token", Base: base}
+		},
+	}
+
+	client, err := r.Register("authed-client", spec)
+	if err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	resp, err := client.Get(server.URL)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	// Auth middleware applied
+	if capturedAuth != "Bearer test-token" {
+		t.Errorf("Authorization = %q, want %q", capturedAuth, "Bearer test-token")
+	}
+	// Observer still called
+	if obs.probe == nil {
+		t.Fatal("probe was nil")
+	}
+	if obs.probe.statusCode != 200 {
+		t.Errorf("statusCode = %d, want 200", obs.probe.statusCode)
+	}
+}
+
+func TestRegistry_Build_AnonymousObserver(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	obs := &spyObserver{}
+	r := NewRegistry(nil, WithObserver(obs))
+
+	client, err := r.Build(ClientSpec{Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	resp, err := client.Get(server.URL)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	// Anonymous clients have empty client name
+	if obs.clientName != "" {
+		t.Errorf("clientName = %q, want empty for anonymous client", obs.clientName)
+	}
+	if obs.probe.statusCode != 200 {
+		t.Errorf("statusCode = %d, want 200", obs.probe.statusCode)
+	}
+}
+
+func TestRegistry_ObserverReportsConnectionReused(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	obs := &spyObserver{}
+	r := NewRegistry(nil, WithObserver(obs))
+
+	client, err := r.Register("conn-test", ClientSpec{Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	// First request: connection should be new
+	resp, err := client.Get(server.URL)
+	if err != nil {
+		t.Fatalf("first Get failed: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if !obs.probe.connReusedSet {
+		t.Fatal("ConnectionReused was not called on first request")
+	}
+	if obs.probe.connReusedVal {
+		t.Error("first request should report connection as new (reused=false)")
+	}
+
+	// Second request to same server: connection should be reused
+	resp, err = client.Get(server.URL)
+	if err != nil {
+		t.Fatalf("second Get failed: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if !obs.probe.connReusedSet {
+		t.Fatal("ConnectionReused was not called on second request")
+	}
+	if !obs.probe.connReusedVal {
+		t.Error("second request should report connection as reused (reused=true)")
+	}
+}
+
+func TestRegistry_ObserverReportsProtocolVersion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	obs := &spyObserver{}
+	r := NewRegistry(nil, WithObserver(obs))
+
+	client, err := r.Register("proto-test", ClientSpec{Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	resp, err := client.Get(server.URL)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if !obs.probe.protoVersionSet {
+		t.Fatal("ProtocolVersion was not called")
+	}
+	if obs.probe.protocolVersion != "HTTP/1.1" {
+		t.Errorf("protocolVersion = %q, want %q", obs.probe.protocolVersion, "HTTP/1.1")
+	}
+}
+
+func TestRegistry_ObserverOmitsProtocolVersionOnError(t *testing.T) {
+	errTransport := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("connection refused")
+	})
+
+	obs := &spyObserver{}
+	r := NewRegistry(errTransport, WithObserver(obs))
+
+	client, err := r.Register("proto-err", ClientSpec{Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	req, _ := http.NewRequest("GET", "http://example.com", nil)
+	_, err = client.Transport.RoundTrip(req)
+	if err == nil {
+		t.Fatal("expected error from transport")
+	}
+
+	if obs.probe.protoVersionSet {
+		t.Error("ProtocolVersion should not be called on transport error")
+	}
+}
+
+// Verify interface compliance
+var _ HTTPClientObserver = NoOpHTTPClientObserver{}
+var _ RequestProbe = NoOpRequestProbe{}

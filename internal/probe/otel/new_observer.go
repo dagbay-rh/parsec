@@ -37,9 +37,13 @@ func NewObserver(p *Provider, endpoint string, opts ...ObserverOption) (observer
 	if err != nil {
 		return nil, err
 	}
+	hc, err := newHTTPClientObserver(m, clk)
+	if err != nil {
+		return nil, err
+	}
 
 	handler := p.Handler()
-	return observer.Compose(svc, ds, ks, ts, srv,
+	return observer.Compose(svc, ds, ks, ts, srv, hc,
 		observer.WithShutdown(p.Shutdown),
 		observer.WithHTTPMux(func(mux *http.ServeMux) {
 			mux.Handle("GET "+endpoint, handler)
