@@ -13,8 +13,8 @@ import (
 	"crypto/x509"
 	"fmt"
 	"net/http"
-	"os"
 	"net/http/httptrace"
+	"os"
 	"time"
 )
 
