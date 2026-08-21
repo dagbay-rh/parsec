@@ -420,6 +420,36 @@ Lua data sources with caching must define `fetch_cache_key(input)`. The returned
 table is used as cache key material and must contain enough input to rerun
 `fetch(input)` on a distributed cache miss.
 
+### Export compliance (RHCLOUD-49359)
+
+Fail-open Lua data source. CEL calls it on User jwt-auth unless Envoy sets
+`context_extensions.export_compliance: "false"`. Absent key defaults to on
+(same schema default as `auth_sso_jwt`). If the DS is not registered,
+`datasource()` returns null and the check is skipped (fail-safe).
+
+```yaml
+  - name: export_compliance
+    type: lua
+    script_file: ./configs/scripts/export_compliance.lua
+    config:
+      compliance_api: "https://export-compliance.example.internal/v1/compliance"
+    http:
+      timeout: 5s
+    caching:
+      type: in_memory
+      ttl: 24h
+      group_name: compliance-cache
+```
+
+Override the URL without replacing the list:
+
+```bash
+PARSEC_DATA_SOURCES__1__CONFIG__COMPLIANCE_API=http://127.0.0.1:9099/v1/compliance
+```
+
+(Index `1` matches `configs/parsec.yaml` where `export_compliance` is the
+second `data_sources` entry.)
+
 ### Claim Mappers
 
 Claim mappers build token claims from inputs:

@@ -72,6 +72,61 @@ func TestNewLoader_WithEnvironmentVariables(t *testing.T) {
 // readability, and because it happens to match the shape of the fields
 // supported by the removed legacy http config) unmarshals into a data
 // source's or validator's HTTPClientSpec.
+func TestNewLoader_EnvOverrideIndexedDataSourceConfig(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "parsec.yaml")
+	const yamlConfig = `
+data_sources:
+  - name: identity-policy
+    type: static
+    data:
+      enforce_idp_auth: false
+  - name: other
+    type: static
+    data: {}
+  - name: export_compliance
+    type: lua
+    script: "function fetch(input) return {data='{}'} end"
+    config:
+      compliance_api: "https://example.invalid/compliance"
+`
+	if err := os.WriteFile(configPath, []byte(yamlConfig), 0o600); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	t.Setenv("PARSEC_DATA_SOURCES__2__CONFIG__COMPLIANCE_API", "http://127.0.0.1:9099/v1/compliance")
+
+	loader, err := NewLoader(configPath)
+	if err != nil {
+		t.Fatalf("NewLoader: %v", err)
+	}
+	cfg, err := loader.Get()
+	if err != nil {
+		t.Fatalf("loader.Get(): %v", err)
+	}
+
+	if len(cfg.DataSources) != 3 {
+		t.Fatalf("len(DataSources) = %d, want 3", len(cfg.DataSources))
+	}
+	for i, ds := range cfg.DataSources {
+		if ds.Name == "" || ds.Type == "" {
+			t.Errorf("DataSources[%d] is empty: name=%q type=%q", i, ds.Name, ds.Type)
+		}
+	}
+	got := ""
+	if cfg.DataSources[2].Config != nil {
+		if v, ok := cfg.DataSources[2].Config["compliance_api"]; ok {
+			got, _ = v.(string)
+		}
+	}
+	if got != "http://127.0.0.1:9099/v1/compliance" {
+		t.Errorf("DataSources[2].Config[compliance_api] = %q, want local mock URL", got)
+	}
+	if cfg.DataSources[0].Name != "identity-policy" || cfg.DataSources[0].Type != "static" {
+		t.Errorf("DataSources[0] = {%q %q}, want identity-policy/static", cfg.DataSources[0].Name, cfg.DataSources[0].Type)
+	}
+}
+
 func TestNewLoader_InlineHTTPKey(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "parsec.yaml")

@@ -143,6 +143,9 @@ func (ds *LuaDataSource) Fetch(ctx context.Context, input *service.DataSourceInp
 	jsonService := luaservices.NewJSONService()
 	jsonService.Register(L)
 
+	base64Service := luaservices.NewBase64Service()
+	base64Service.Register(L)
+
 	urlService := luaservices.NewURLService()
 	urlService.Register(L)
 
@@ -421,6 +424,9 @@ func (ds *CacheableLuaDataSource) CacheKey(input *service.DataSourceInput) servi
 
 	jsonService := luaservices.NewJSONService()
 	jsonService.Register(L)
+
+	base64Service := luaservices.NewBase64Service()
+	base64Service.Register(L)
 
 	urlService := luaservices.NewURLService()
 	urlService.Register(L)

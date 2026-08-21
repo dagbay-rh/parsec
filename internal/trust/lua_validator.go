@@ -211,6 +211,9 @@ func (v *LuaValidator) Validate(ctx context.Context, credential Credential) (*Re
 	jsonService := luaservices.NewJSONService()
 	jsonService.Register(L)
 
+	base64Service := luaservices.NewBase64Service()
+	base64Service.Register(L)
+
 	urlService := luaservices.NewURLService()
 	urlService.Register(L)
 
@@ -295,6 +298,9 @@ func (v *CacheableLuaValidator) CacheKey(credential Credential) (ValidatorInput,
 
 	jsonService := luaservices.NewJSONService()
 	jsonService.Register(L)
+
+	base64Service := luaservices.NewBase64Service()
+	base64Service.Register(L)
 
 	urlService := luaservices.NewURLService()
 	urlService.Register(L)
