@@ -217,7 +217,7 @@ trust_store:
   type: stub_store  # or "filtered_store"
   validators:
     - name: my-validator  # Required for filtered_store
-      type: jwt_validator  # jwt_validator, json_validator, lua_validator, stub_validator
+      type: jwt_validator  # jwt_validator, json_validator, unsigned_json_validator, lua_validator, stub_validator
       issuer: "https://idp.example.com"
       jwks_url: "https://idp.example.com/.well-known/jwks.json"
       trust_domain: "example.com"
@@ -227,7 +227,8 @@ trust_store:
 **Validator Types:**
 
 - `jwt_validator` - Validates JWT tokens with JWKS
-- `json_validator` - Validates unsigned JSON credentials
+- `json_validator` - Validates unsigned JSON credentials in `trust.Result` shape
+- `unsigned_json_validator` - Validates IETF unsigned JSON subject tokens (`{"sub": "..."}`). Production MUST ForActor-filter this validator; without a filter any caller can assert any `sub`.
 - `lua_validator` - Validates credentials with a Lua `validate(input)` script
 - `stub_validator` - Testing validator (accepts any non-empty token)
 

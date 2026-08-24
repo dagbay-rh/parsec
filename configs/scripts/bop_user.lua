@@ -1,8 +1,12 @@
 -- BOP (Back Office Proxy) user enrichment data source.
 --
--- Fetches user details from BOP /v1/users for a given username,
+-- Fetches user details from BOP /v1/users for a given user id (queryBy=userId),
 -- returning org_id, account_number, email, and other profile fields
 -- needed by the CEL claim mapper to build x-rh-identity.
+--
+-- If input.subject.subject is prefixed "redhat:user:sso:", the prefix is
+-- stripped before the lookup so txn-token subs stay namespaced.
+-- Unprefixed subjects are sent as-is.
 --
 -- Fail-closed: returns nil on any error so identity is not issued
 -- for unenrichable users.
@@ -18,6 +22,16 @@ function fetch(input)
   local username = input.subject.subject
   if username == nil or username == "" then
     return nil
+  end
+
+  -- Namespaced SSO subjects keep the prefix on Result.Subject (for txn-token
+  -- uniqueness) but BOP looks up the bare user id.
+  local prefix = "redhat:user:sso:"
+  if string.sub(username, 1, #prefix) == prefix then
+    username = string.sub(username, #prefix + 1)
+    if username == "" then
+      return nil
+    end
   end
 
   local bop_url = config.get("bop_url")

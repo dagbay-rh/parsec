@@ -26,10 +26,10 @@ func TestSubjectCredential(t *testing.T) {
 			wantType:  trust.CredentialTypeOIDC,
 		},
 		{
-			name:      "username token type",
-			token:     "alice",
-			tokenType: "urn:redhat:params:oauth:token-type:username",
-			wantType:  trust.CredentialTypeUsername,
+			name:      "unsigned_json token type",
+			token:     `{"sub":"redhat:user:sso:123"}`,
+			tokenType: trust.UnsignedJSONTokenTypeURN,
+			wantType:  trust.CredentialTypeJSON,
 		},
 		{
 			name:      "access_token type",
@@ -69,9 +69,9 @@ func TestSubjectCredential(t *testing.T) {
 				if c.Token != tt.token {
 					t.Errorf("OIDCCredential.Token = %q, want %q", c.Token, tt.token)
 				}
-			case *trust.UsernameCredential:
-				if c.Username != tt.token {
-					t.Errorf("UsernameCredential.Username = %q, want %q", c.Username, tt.token)
+			case *trust.JSONCredential:
+				if string(c.RawJSON) != tt.token {
+					t.Errorf("JSONCredential.RawJSON = %q, want %q", c.RawJSON, tt.token)
 				}
 			case *trust.BearerCredential:
 				if c.Token != tt.token {

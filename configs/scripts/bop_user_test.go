@@ -78,7 +78,7 @@ func TestBOPUser_HappyPath(t *testing.T) {
 	input := &service.DataSourceInput{
 		Subject: &trust.Result{
 			Subject: "testuser",
-			Issuer:  "urn:redhat:names:identity:username",
+			Issuer:  trust.UnsignedJSONTokenTypeURN,
 		},
 	}
 
@@ -153,7 +153,7 @@ func TestBOPUser_EmptyUsername(t *testing.T) {
 	}
 
 	input := &service.DataSourceInput{
-		Subject: &trust.Result{Subject: "", Issuer: "urn:redhat:names:identity:username"},
+		Subject: &trust.Result{Subject: "", Issuer: trust.UnsignedJSONTokenTypeURN},
 	}
 
 	result, err := ds.Fetch(context.Background(), input)
@@ -436,6 +436,97 @@ func TestBOPUser_VerifiesRequestHeaders(t *testing.T) {
 	}
 }
 
+func TestBOPUser_StripsSSOPrefix(t *testing.T) {
+	script := loadScript(t, "bop_user.lua")
+
+	var capturedBody string
+	provider := httpfixture.NewFuncProvider(func(req *http.Request) *httpfixture.Fixture {
+		if req.Body != nil {
+			bodyBytes := make([]byte, 1024)
+			n, _ := req.Body.Read(bodyBytes)
+			capturedBody = string(bodyBytes[:n])
+		}
+		return &httpfixture.Fixture{
+			StatusCode: 200,
+			Headers:    map[string]string{"Content-Type": "application/json"},
+			Body:       bopHappyResponse(),
+		}
+	})
+
+	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
+		Name:   "bop",
+		Script: script,
+		ConfigSource: luaservices.NewMapConfigSource(map[string]any{
+			"bop_url":     "https://backoffice-proxy.example.com",
+			"users_path":  "/v1/users",
+			"api_token":   "test-token",
+			"client_id":   "test-client",
+			"environment": "stage",
+		}),
+		HTTPClient: bopFixtureClient(provider),
+	})
+	if err != nil {
+		t.Fatalf("NewCacheableLuaDataSource: %v", err)
+	}
+
+	input := &service.DataSourceInput{
+		Subject: &trust.Result{
+			Subject: "redhat:user:sso:98765",
+			Issuer:  trust.UnsignedJSONTokenTypeURN,
+		},
+	}
+
+	result, err := ds.Fetch(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(capturedBody), &body); err != nil {
+		t.Fatalf("failed to unmarshal request body: %v", err)
+	}
+	users, ok := body["users"].([]any)
+	if !ok || len(users) != 1 || users[0] != "98765" {
+		t.Errorf("request body users=%v, want [\"98765\"]", body["users"])
+	}
+}
+
+func TestBOPUser_EmptyPrefixRemainder(t *testing.T) {
+	script := loadScript(t, "bop_user.lua")
+
+	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
+		Name:   "bop",
+		Script: script,
+		ConfigSource: luaservices.NewMapConfigSource(map[string]any{
+			"bop_url":     "https://backoffice-proxy.example.com",
+			"api_token":   "test-token",
+			"client_id":   "test-client",
+			"environment": "stage",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewCacheableLuaDataSource: %v", err)
+	}
+
+	input := &service.DataSourceInput{
+		Subject: &trust.Result{
+			Subject: "redhat:user:sso:",
+			Issuer:  trust.UnsignedJSONTokenTypeURN,
+		},
+	}
+
+	result, err := ds.Fetch(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if result != nil {
+		t.Fatalf("expected nil result for empty prefix remainder, got %+v", result)
+	}
+}
+
 func TestBOPUser_CacheKey(t *testing.T) {
 	script := loadScript(t, "bop_user.lua")
 
@@ -465,7 +556,7 @@ func TestBOPUser_CacheKey(t *testing.T) {
 	input := &service.DataSourceInput{
 		Subject: &trust.Result{
 			Subject: "cacheuser",
-			Issuer:  "urn:redhat:names:identity:username",
+			Issuer:  trust.UnsignedJSONTokenTypeURN,
 		},
 	}
 

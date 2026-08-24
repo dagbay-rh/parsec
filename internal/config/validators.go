@@ -86,12 +86,14 @@ func newValidator(name string, cfg ValidatorConfig, httpRegistry *httpclient.Reg
 		return newJWTValidator(cfg, httpRegistry, trustObs)
 	case "json_validator":
 		return newJSONValidator(cfg)
+	case "unsigned_json_validator":
+		return newUnsignedJSONValidator(cfg)
 	case "lua_validator":
 		return newLuaValidator(name, cfg, httpRegistry, trustObs)
 	case "stub_validator":
 		return newStubValidator(cfg)
 	default:
-		return nil, fmt.Errorf("unknown validator type: %s (supported: jwt_validator, json_validator, lua_validator, stub_validator)", cfg.Type)
+		return nil, fmt.Errorf("unknown validator type: %s (supported: jwt_validator, json_validator, unsigned_json_validator, lua_validator, stub_validator)", cfg.Type)
 	}
 }
 
@@ -141,6 +143,19 @@ func newJSONValidator(cfg ValidatorConfig) (trust.Validator, error) {
 	return trust.NewJSONValidator(
 		trust.WithTrustDomain(cfg.TrustDomain),
 	), nil
+}
+
+func newUnsignedJSONValidator(cfg ValidatorConfig) (trust.Validator, error) {
+	if cfg.TrustDomain == "" {
+		return nil, fmt.Errorf("unsigned_json_validator requires trust_domain")
+	}
+
+	var opts []trust.UnsignedJSONValidatorOption
+	if cfg.Issuer != "" {
+		opts = append(opts, trust.WithUnsignedJSONIssuer(cfg.Issuer))
+	}
+
+	return trust.NewUnsignedJSONValidator(cfg.TrustDomain, opts...)
 }
 
 func newLuaValidator(name string, cfg ValidatorConfig, httpRegistry *httpclient.Registry, trustObs trust.TrustObserver) (trust.Validator, error) {
@@ -354,9 +369,7 @@ func parseCredentialType(s string) (trust.CredentialType, error) {
 		return trust.CredentialTypeHeader, nil
 	case "forwarded_client_cert":
 		return trust.CredentialTypeForwardedClientCert, nil
-	case "username":
-		return trust.CredentialTypeUsername, nil
 	default:
-		return "", fmt.Errorf("unknown credential type: %s (supported: bearer, jwt, json, mtls, oidc, basic_auth, header, forwarded_client_cert, username)", s)
+		return "", fmt.Errorf("unknown credential type: %s (supported: bearer, jwt, json, mtls, oidc, basic_auth, header, forwarded_client_cert)", s)
 	}
 }

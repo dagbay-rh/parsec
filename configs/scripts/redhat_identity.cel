@@ -10,7 +10,9 @@
 // Reserve fail() for true mapping/system failures (Internal), not policy.
 //
 // Supports:
-//   - Trusted username tokens (issuer is "urn:redhat:names:identity:username", enriched via BOP)
+//   - Certificate auth tokens (issuer starts with "x509://")
+//   - Unsigned JSON subject tokens (issuer is "urn:ietf:params:oauth:token-type:unsigned_json",
+//     sub prefixed "redhat:user:sso:{user_id}", enriched via BOP)
 //   - Registry Auth tokens (issuer is "container-registry-authorizer(.stage).api.redhat.com")
 //   - Service Account tokens (preferred_username starts with "service-account-")
 //   - Console API tokens (scope contains "api.console")
@@ -42,10 +44,11 @@ has(subject.issuer) && subject.issuer.startsWith("x509://") ? {
   },
   "entitlements": {}
 } : (
-// Trusted username path: subject validated by the pass-through username validator,
-// enriched via BOP data source. No JWT claims available.
-has(subject.issuer) && subject.issuer == "urn:redhat:names:identity:username" ? (
-  datasource("bop") != null ?
+// Unsigned JSON path: IETF unsigned_json subject token, enriched via BOP.
+// Result.Subject keeps the namespaced id; BOP strips the prefix for lookup.
+has(subject.issuer) && subject.issuer == "urn:ietf:params:oauth:token-type:unsigned_json" ? (
+  has(subject.subject) && subject.subject.startsWith("redhat:user:sso:") ? (
+    datasource("bop") != null ?
     {
       "identity": {
         "account_number": has(datasource("bop").account_number) ? datasource("bop").account_number : "",
@@ -69,7 +72,8 @@ has(subject.issuer) && subject.issuer == "urn:redhat:names:identity:username" ? 
         }
       }
     }
-  : fail("bop_enrichment_failed")
+    : fail("bop_enrichment_failed")
+  ) : invalidSubject("unsupported unsigned_json subject namespace")
 ) : (
 has(subject.issuer) && subject.issuer.contains("container-registry-authorizer") && subject.issuer.contains("api.redhat.com") ? {
   "identity": {

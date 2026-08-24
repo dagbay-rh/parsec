@@ -1,31 +1,39 @@
-# parsec Configuration - BOP Username Hermetic Testing
+# parsec Configuration - BOP Unsigned JSON Hermetic Testing
 #
 # For testing the BOP user enrichment flow (RHCLOUD-49474 + RHCLOUD-49475)
 # without external dependencies. All HTTP calls are stubbed with fixtures.
 #
 # Usage:
-#   ./bin/parsec serve --config ./configs/examples/parsec-bop-username-hermetic.yaml
+#   ./bin/parsec serve --config ./configs/examples/parsec-bop-unsigned-json-hermetic.yaml
 #
-# Token exchange (form-encoded):
+# Token exchange (form-encoded). subject_token is the JSON object as a form
+# string (percent-encode in production clients; curl -d is fine here):
 #   curl -s -X POST http://localhost:8080/v1/token \
 #     -H "Content-Type: application/x-www-form-urlencoded" \
 #     -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
-#     -d "subject_token=testuser" \
-#     -d "subject_token_type=urn:redhat:params:oauth:token-type:username" \
+#     -d 'subject_token={"sub":"redhat:user:sso:98765"}' \
+#     -d "subject_token_type=urn:ietf:params:oauth:token-type:unsigned_json" \
 #     -d "requested_token_type=urn:redhat:params:oauth:token-type:rh-identity"
 #
-# Token exchange (JSON):
+# Token exchange (JSON). subject_token is a string containing the JSON object:
 #   curl -s -X POST http://localhost:8080/v1/token \
 #     -H "Content-Type: application/json" \
 #     -d '{
 #       "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
-#       "subject_token": "testuser",
-#       "subject_token_type": "urn:redhat:params:oauth:token-type:username",
+#       "subject_token": "{\"sub\":\"redhat:user:sso:98765\"}",
+#       "subject_token_type": "urn:ietf:params:oauth:token-type:unsigned_json",
 #       "requested_token_type": "urn:redhat:params:oauth:token-type:rh-identity"
 #     }'
 #
-# Decode the x-rh-identity envelope:
-#   curl -s ... | jq -r .access_token | base64 -d | jq .
+# Decode the x-rh-identity envelope (form response uses access_token;
+# JSON/gRPC responses use accessToken):
+#   curl -s ... | jq -r '.access_token // .accessToken' | base64 -d | jq .
+#
+# Captured live curl/grpcurl output:
+#   docs/unsigned-json-exchange-verification.md
+#
+# This example uses stub_store (no ForActor filter) so local curl without actor
+# credentials works. Production MUST ForActor-filter unsigned-json.
 
 server:
   grpc_port: 9090
@@ -74,13 +82,9 @@ fixtures:
 trust_store:
   type: stub_store
   validators:
-    - name: trusted-username
-      type: lua_validator
-      credential_types: ["username"]
-      script_file: ./configs/scripts/trusted_username.lua
-      config:
-        trust_domain: "username.redhat.com"
-        issuer: "urn:redhat:names:identity:username"
+    - name: unsigned-json
+      type: unsigned_json_validator
+      trust_domain: "parsec.example.com"
 
 data_sources:
   - name: identity-policy

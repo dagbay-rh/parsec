@@ -41,6 +41,24 @@ result, err := validator.Validate(ctx, credential)
 // result.Claims will only contain "email" and "role"
 ```
 
+#### Unsigned JSON Validator
+
+The `UnsignedJSONValidator` validates IETF unsigned JSON subject tokens (`urn:ietf:params:oauth:token-type:unsigned_json`). The JSON object MUST contain a string `sub`; other fields become claims. `Result.Issuer` defaults to that URN (a type discriminator, not a vendor domain). `trust_domain` is required and is stamped onto the result.
+
+**Security:** unsigned JSON is an assertion by the authenticated actor. Production deployments must ForActor-filter this validator so only trusted clients (for example a scheduler) can use it. Without a filter, any caller can assert any `sub`.
+
+```go
+validator, err := NewUnsignedJSONValidator("parsec.example.com")
+credential := &JSONCredential{
+    RawJSON: []byte(`{"sub":"redhat:user:sso:123","azp":"scheduler"}`),
+}
+result, err := validator.Validate(ctx, credential)
+// result.Subject == "redhat:user:sso:123"
+// result.Issuer == UnsignedJSONTokenTypeURN
+```
+
+Claim mappers interpret `sub` namespaces (for example `redhat:user:sso:{user_id}` vs a future `redhat:system:{cn}`). The validator itself accepts any non-empty `sub`.
+
 ### Store
 
 The `Store` interface manages trust domains and their associated validators.
@@ -137,6 +155,7 @@ actor.issuer == "https://trusted-idp.example.com" && validator_name != "untruste
 
 All components have comprehensive test coverage:
 - `json_validator_test.go` - Tests for JSON validator and claims filters
+- `unsigned_json_validator_test.go` - Tests for IETF unsigned JSON subject tokens
 - `filtered_store_test.go` - Tests for filtered store and CEL policies
 
 Run tests:

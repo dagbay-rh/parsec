@@ -38,13 +38,13 @@ trust_store:
       refresh_interval: "15m"
       audiences: ["rhsm-api", "customer-portal", "api.console", ""]
 
-    - name: trusted-username
-      type: lua_validator
-      credential_types: ["username"]
-      script_file: ./configs/scripts/trusted_username.lua
-      config:
-        trust_domain: "username.redhat.com"
-        issuer: "urn:redhat:names:identity:username"
+    # IETF unsigned JSON subject tokens (draft-ietf-oauth-transaction-tokens).
+    # Production MUST use filtered_store ForActor so only trusted clients
+    # (e.g. scheduler) can use this validator. stub_store does not filter —
+    # any caller that can reach exchange can assert any sub.
+    - name: unsigned-json
+      type: unsigned_json_validator
+      trust_domain: "parsec.example.com"
 
 # Data sources for token enrichment
 data_sources:

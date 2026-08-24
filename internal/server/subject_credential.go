@@ -16,8 +16,8 @@ func subjectCredential(token, tokenType string) trust.Credential {
 		}
 	case "urn:ietf:params:oauth:token-type:id_token":
 		return &trust.OIDCCredential{Token: token}
-	case "urn:redhat:params:oauth:token-type:username":
-		return &trust.UsernameCredential{Username: token}
+	case trust.UnsignedJSONTokenTypeURN:
+		return &trust.JSONCredential{RawJSON: []byte(token)}
 	case "urn:ietf:params:oauth:token-type:access_token", "":
 		return &trust.BearerCredential{Token: token}
 	default:

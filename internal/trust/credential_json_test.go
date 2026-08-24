@@ -176,21 +176,6 @@ func TestMarshalCredentialJSON_RoundTrip(t *testing.T) {
 				}
 			},
 		},
-		{
-			name: "username credential",
-			credential: &UsernameCredential{
-				Username: "alice",
-			},
-			check: func(t *testing.T, got Credential) {
-				uc, ok := got.(*UsernameCredential)
-				if !ok {
-					t.Fatalf("expected *UsernameCredential, got %T", got)
-				}
-				if uc.Username != "alice" {
-					t.Fatalf("Username=%q", uc.Username)
-				}
-			},
-		},
 	}
 
 	for _, tt := range tests {
