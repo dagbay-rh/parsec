@@ -349,6 +349,18 @@ http_clients:
       type: "bearer"
       token: "my-static-token"
 
+  # Named client with static or env-resolved request headers (BOP)
+  - name: "backoffice-proxy"
+    timeout: "30s"
+    ca_cert: "./local/it-ca-bundle.crt"
+    http_auth:
+      type: headers
+      headers:
+        x-rh-clientid:
+          env: PARSEC_BOP_CLIENT_ID
+        x-rh-apitoken:
+          env: PARSEC_BOP_TOKEN
+
   # Named client with mutual TLS (client certificates)
   - name: "internal-service"
     timeout: "5s"
@@ -362,9 +374,11 @@ http_clients:
 
 - `name` (required) - Unique name for this client
 - `timeout` - Default request timeout (e.g. `"30s"`, `"1m"`). Default: 30s
+- `ca_cert` - Optional PEM CA file appended to the system root pool for this client
 - `http_auth` - HTTP-layer authentication (header-based)
-  - `type` - Auth mechanism: `"bearer"` (future: `"oauth2_client_credentials"`)
+  - `type` - Auth mechanism: `"bearer"`, `"headers"` (future: `"oauth2_client_credentials"`)
   - `token` - Static bearer token value (bearer type)
+  - `headers` - Map of header name to string value, or `{env: VAR}` (headers type). Empty env vars fail at startup.
 - `client_cert_source` - Client certificate source for mTLS
   - `type` - Source type: `"file"` (future: `"vault"`, `"k8s_secret"`)
   - `cert` - Path to client certificate PEM (file type)

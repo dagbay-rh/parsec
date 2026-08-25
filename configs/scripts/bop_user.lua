@@ -11,12 +11,13 @@
 -- Fail-closed: returns nil on any error so identity is not issued
 -- for unenrichable users.
 --
+-- The HTTP client injecting x-rh-clientid and x-rh-apitoken headers is
+-- configured at the http_clients level via http_auth.type: headers.
+--
 -- Config values:
---   bop_url      (required) BOP base URL, e.g. "https://backoffice-proxy.example.com"
---   users_path   (optional) path for user lookup, defaults to "/v1/users"
---   api_token    (required) x-rh-apitoken value
---   client_id    (required) x-rh-clientid value
---   environment  (required) x-rh-insights-env value, e.g. "stage" or "prod"
+--   bop_url     (required) BOP base URL, e.g. "https://backoffice-proxy.example.com"
+--   users_path  (optional) path for user lookup, defaults to "/v1/users"
+--   bop_env     (optional) x-rh-insights-env value, defaults to "stage"
 
 function fetch(input)
   local username = input.subject.subject
@@ -35,19 +36,19 @@ function fetch(input)
   end
 
   local bop_url = config.get("bop_url")
+  if bop_url == nil or bop_url == "" then
+    return nil
+  end
+
   local users_path = config.get("users_path", "/v1/users")
-  local api_token = config.get("api_token")
-  local client_id = config.get("client_id")
-  local environment = config.get("environment")
+  local bop_env = config.has("bop_env") and config.get("bop_env") or "stage"
 
   local url = bop_url .. users_path .. "?queryBy=userId"
 
   local body = json.encode({ users = { username } })
 
   local headers = {
-    ["x-rh-apitoken"]     = api_token,
-    ["x-rh-clientid"]     = client_id,
-    ["x-rh-insights-env"] = environment,
+    ["x-rh-insights-env"] = bop_env,
     ["Content-Type"]      = "application/json",
     ["Accept"]            = "application/json"
   }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/project-kessel/parsec/internal/datasource"
+	"github.com/project-kessel/parsec/internal/httpclient"
 	"github.com/project-kessel/parsec/internal/httpfixture"
 	luaservices "github.com/project-kessel/parsec/internal/lua"
 	"github.com/project-kessel/parsec/internal/service"
@@ -22,6 +23,14 @@ func bopFixtureClient(provider httpfixture.FixtureProvider) *http.Client {
 			Provider: provider,
 			Strict:   true,
 		}),
+	}
+}
+
+func bopLuaConfig() map[string]any {
+	return map[string]any{
+		"bop_url":    "https://backoffice-proxy.example.com",
+		"users_path": "/v1/users",
+		"bop_env":    "stage",
 	}
 }
 
@@ -60,16 +69,10 @@ func TestBOPUser_HappyPath(t *testing.T) {
 	})
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:   "bop",
-		Script: script,
-		ConfigSource: luaservices.NewMapConfigSource(map[string]any{
-			"bop_url":     "https://backoffice-proxy.example.com",
-			"users_path":  "/v1/users",
-			"api_token":   "test-token",
-			"client_id":   "test-client",
-			"environment": "stage",
-		}),
-		HTTPClient: bopFixtureClient(provider),
+		Name:         "bop",
+		Script:       script,
+		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
+		HTTPClient:   bopFixtureClient(provider),
 	})
 	if err != nil {
 		t.Fatalf("NewCacheableLuaDataSource: %v", err)
@@ -139,14 +142,9 @@ func TestBOPUser_EmptyUsername(t *testing.T) {
 	script := loadScript(t, "bop_user.lua")
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:   "bop",
-		Script: script,
-		ConfigSource: luaservices.NewMapConfigSource(map[string]any{
-			"bop_url":     "https://backoffice-proxy.example.com",
-			"api_token":   "test-token",
-			"client_id":   "test-client",
-			"environment": "stage",
-		}),
+		Name:         "bop",
+		Script:       script,
+		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
 	})
 	if err != nil {
 		t.Fatalf("NewCacheableLuaDataSource: %v", err)
@@ -173,15 +171,10 @@ func TestBOPUser_Non200Response(t *testing.T) {
 	})
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:   "bop",
-		Script: script,
-		ConfigSource: luaservices.NewMapConfigSource(map[string]any{
-			"bop_url":     "https://backoffice-proxy.example.com",
-			"api_token":   "test-token",
-			"client_id":   "test-client",
-			"environment": "stage",
-		}),
-		HTTPClient: bopFixtureClient(provider),
+		Name:         "bop",
+		Script:       script,
+		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
+		HTTPClient:   bopFixtureClient(provider),
 	})
 	if err != nil {
 		t.Fatalf("NewCacheableLuaDataSource: %v", err)
@@ -212,15 +205,10 @@ func TestBOPUser_EmptyArray(t *testing.T) {
 	})
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:   "bop",
-		Script: script,
-		ConfigSource: luaservices.NewMapConfigSource(map[string]any{
-			"bop_url":     "https://backoffice-proxy.example.com",
-			"api_token":   "test-token",
-			"client_id":   "test-client",
-			"environment": "stage",
-		}),
-		HTTPClient: bopFixtureClient(provider),
+		Name:         "bop",
+		Script:       script,
+		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
+		HTTPClient:   bopFixtureClient(provider),
 	})
 	if err != nil {
 		t.Fatalf("NewCacheableLuaDataSource: %v", err)
@@ -251,15 +239,10 @@ func TestBOPUser_MultipleUsers(t *testing.T) {
 	})
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:   "bop",
-		Script: script,
-		ConfigSource: luaservices.NewMapConfigSource(map[string]any{
-			"bop_url":     "https://backoffice-proxy.example.com",
-			"api_token":   "test-token",
-			"client_id":   "test-client",
-			"environment": "stage",
-		}),
-		HTTPClient: bopFixtureClient(provider),
+		Name:         "bop",
+		Script:       script,
+		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
+		HTTPClient:   bopFixtureClient(provider),
 	})
 	if err != nil {
 		t.Fatalf("NewCacheableLuaDataSource: %v", err)
@@ -290,15 +273,10 @@ func TestBOPUser_MissingOrgId(t *testing.T) {
 	})
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:   "bop",
-		Script: script,
-		ConfigSource: luaservices.NewMapConfigSource(map[string]any{
-			"bop_url":     "https://backoffice-proxy.example.com",
-			"api_token":   "test-token",
-			"client_id":   "test-client",
-			"environment": "stage",
-		}),
-		HTTPClient: bopFixtureClient(provider),
+		Name:         "bop",
+		Script:       script,
+		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
+		HTTPClient:   bopFixtureClient(provider),
 	})
 	if err != nil {
 		t.Fatalf("NewCacheableLuaDataSource: %v", err)
@@ -329,15 +307,10 @@ func TestBOPUser_MissingId(t *testing.T) {
 	})
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:   "bop",
-		Script: script,
-		ConfigSource: luaservices.NewMapConfigSource(map[string]any{
-			"bop_url":     "https://backoffice-proxy.example.com",
-			"api_token":   "test-token",
-			"client_id":   "test-client",
-			"environment": "stage",
-		}),
-		HTTPClient: bopFixtureClient(provider),
+		Name:         "bop",
+		Script:       script,
+		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
+		HTTPClient:   bopFixtureClient(provider),
 	})
 	if err != nil {
 		t.Fatalf("NewCacheableLuaDataSource: %v", err)
@@ -384,11 +357,9 @@ func TestBOPUser_VerifiesRequestHeaders(t *testing.T) {
 		Name:   "bop",
 		Script: script,
 		ConfigSource: luaservices.NewMapConfigSource(map[string]any{
-			"bop_url":     "https://backoffice-proxy.example.com",
-			"users_path":  "/v1/users",
-			"api_token":   "my-api-token",
-			"client_id":   "my-client-id",
-			"environment": "prod",
+			"bop_url":    "https://backoffice-proxy.example.com",
+			"users_path": "/v1/users",
+			"bop_env":    "prod",
 		}),
 		HTTPClient: bopFixtureClient(provider),
 	})
@@ -416,14 +387,17 @@ func TestBOPUser_VerifiesRequestHeaders(t *testing.T) {
 		t.Errorf("URL=%q, want containing queryBy=userId", capturedURL)
 	}
 
-	if capturedHeaders.Get("x-rh-apitoken") != "my-api-token" {
-		t.Errorf("x-rh-apitoken=%q, want my-api-token", capturedHeaders.Get("x-rh-apitoken"))
+	if capturedHeaders.Get("x-rh-apitoken") != "" {
+		t.Errorf("x-rh-apitoken=%q, want empty (injected by HTTP client, not Lua)", capturedHeaders.Get("x-rh-apitoken"))
 	}
-	if capturedHeaders.Get("x-rh-clientid") != "my-client-id" {
-		t.Errorf("x-rh-clientid=%q, want my-client-id", capturedHeaders.Get("x-rh-clientid"))
+	if capturedHeaders.Get("x-rh-clientid") != "" {
+		t.Errorf("x-rh-clientid=%q, want empty (injected by HTTP client, not Lua)", capturedHeaders.Get("x-rh-clientid"))
 	}
 	if capturedHeaders.Get("x-rh-insights-env") != "prod" {
 		t.Errorf("x-rh-insights-env=%q, want prod", capturedHeaders.Get("x-rh-insights-env"))
+	}
+	if capturedHeaders.Get("Content-Type") != "application/json" {
+		t.Errorf("Content-Type=%q, want application/json", capturedHeaders.Get("Content-Type"))
 	}
 
 	var body map[string]any
@@ -433,6 +407,61 @@ func TestBOPUser_VerifiesRequestHeaders(t *testing.T) {
 	users, ok := body["users"].([]any)
 	if !ok || len(users) != 1 || users[0] != "jdoe" {
 		t.Errorf("request body users=%v, want [\"jdoe\"]", body["users"])
+	}
+}
+
+func TestBOPUser_HTTPClientInjectsAuthHeaders(t *testing.T) {
+	script := loadScript(t, "bop_user.lua")
+
+	var capturedHeaders http.Header
+	provider := httpfixture.NewFuncProvider(func(req *http.Request) *httpfixture.Fixture {
+		capturedHeaders = req.Header.Clone()
+		return &httpfixture.Fixture{
+			StatusCode: 200,
+			Headers:    map[string]string{"Content-Type": "application/json"},
+			Body:       bopHappyResponse(),
+		}
+	})
+
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &httpclient.HeadersTransport{
+			Headers: map[string]string{
+				"x-rh-clientid": "my-client-id",
+				"x-rh-apitoken": "my-api-token",
+			},
+			Base: httpfixture.NewTransport(httpfixture.TransportConfig{
+				Provider: provider,
+				Strict:   true,
+			}),
+		},
+	}
+
+	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
+		Name:         "bop",
+		Script:       script,
+		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
+		HTTPClient:   client,
+	})
+	if err != nil {
+		t.Fatalf("NewCacheableLuaDataSource: %v", err)
+	}
+
+	input := &service.DataSourceInput{
+		Subject: &trust.Result{Subject: "jdoe", Issuer: trust.UnsignedJSONTokenTypeURN},
+	}
+	if _, err := ds.Fetch(context.Background(), input); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+
+	if capturedHeaders.Get("x-rh-apitoken") != "my-api-token" {
+		t.Errorf("x-rh-apitoken=%q, want my-api-token", capturedHeaders.Get("x-rh-apitoken"))
+	}
+	if capturedHeaders.Get("x-rh-clientid") != "my-client-id" {
+		t.Errorf("x-rh-clientid=%q, want my-client-id", capturedHeaders.Get("x-rh-clientid"))
+	}
+	if capturedHeaders.Get("x-rh-insights-env") != "stage" {
+		t.Errorf("x-rh-insights-env=%q, want stage", capturedHeaders.Get("x-rh-insights-env"))
 	}
 }
 
@@ -454,16 +483,10 @@ func TestBOPUser_StripsSSOPrefix(t *testing.T) {
 	})
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:   "bop",
-		Script: script,
-		ConfigSource: luaservices.NewMapConfigSource(map[string]any{
-			"bop_url":     "https://backoffice-proxy.example.com",
-			"users_path":  "/v1/users",
-			"api_token":   "test-token",
-			"client_id":   "test-client",
-			"environment": "stage",
-		}),
-		HTTPClient: bopFixtureClient(provider),
+		Name:         "bop",
+		Script:       script,
+		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
+		HTTPClient:   bopFixtureClient(provider),
 	})
 	if err != nil {
 		t.Fatalf("NewCacheableLuaDataSource: %v", err)
@@ -498,14 +521,9 @@ func TestBOPUser_EmptyPrefixRemainder(t *testing.T) {
 	script := loadScript(t, "bop_user.lua")
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:   "bop",
-		Script: script,
-		ConfigSource: luaservices.NewMapConfigSource(map[string]any{
-			"bop_url":     "https://backoffice-proxy.example.com",
-			"api_token":   "test-token",
-			"client_id":   "test-client",
-			"environment": "stage",
-		}),
+		Name:         "bop",
+		Script:       script,
+		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
 	})
 	if err != nil {
 		t.Fatalf("NewCacheableLuaDataSource: %v", err)
@@ -539,15 +557,10 @@ func TestBOPUser_CacheKey(t *testing.T) {
 	})
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:   "bop",
-		Script: script,
-		ConfigSource: luaservices.NewMapConfigSource(map[string]any{
-			"bop_url":     "https://backoffice-proxy.example.com",
-			"api_token":   "test-token",
-			"client_id":   "test-client",
-			"environment": "stage",
-		}),
-		HTTPClient: bopFixtureClient(provider),
+		Name:         "bop",
+		Script:       script,
+		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
+		HTTPClient:   bopFixtureClient(provider),
 	})
 	if err != nil {
 		t.Fatalf("NewCacheableLuaDataSource: %v", err)

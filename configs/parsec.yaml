@@ -28,7 +28,7 @@ exchange_server:
 
 # Trust store configuration
 trust_store:
-  type: stub_store
+  type: filtered_store
   validators:
     - name: redhat-sso
       type: jwt_validator
@@ -39,12 +39,35 @@ trust_store:
       audiences: ["rhsm-api", "customer-portal", "api.console", ""]
 
     # IETF unsigned JSON subject tokens (draft-ietf-oauth-transaction-tokens).
-    # Production MUST use filtered_store ForActor so only trusted clients
-    # (e.g. scheduler) can use this validator. stub_store does not filter —
-    # any caller that can reach exchange can assert any sub.
+    # ForActor below hides this validator unless the actor issuer identifies
+    # a trusted scheduler. stub_store / passthrough is rejected at config load.
     - name: unsigned-json
       type: unsigned_json_validator
       trust_domain: "parsec.example.com"
+  filter:
+    type: cel
+    script: |
+      validator_name != "unsigned-json" || (
+        has(actor.issuer) && actor.issuer.contains("scheduler")
+      )
+
+# Named HTTP clients. BOP credentials are injected here (http_auth.headers),
+# not in the Lua script.
+#
+# Prerequisites for live BOP:
+#   - PARSEC_BOP_CLIENT_ID, PARSEC_BOP_TOKEN
+#   - CA bundle at ./local/it-ca-bundle.crt
+http_clients:
+  - name: backoffice-proxy
+    timeout: "30s"
+    ca_cert: "./local/it-ca-bundle.crt"
+    http_auth:
+      type: headers
+      headers:
+        x-rh-clientid:
+          env: PARSEC_BOP_CLIENT_ID
+        x-rh-apitoken:
+          env: PARSEC_BOP_TOKEN
 
 # Data sources for token enrichment
 data_sources:
@@ -58,14 +81,11 @@ data_sources:
   - name: bop
     type: lua
     script_file: ./configs/scripts/bop_user.lua
+    http_client: backoffice-proxy
     config:
-      bop_url: "${PARSEC_BOP_URL}"
+      bop_url: "https://backoffice-proxy.apps.ext.spoke.preprod.us-west-2.aws.paas.redhat.com"
       users_path: "/v1/users"
-      api_token: "${PARSEC_BOP_API_TOKEN}"
-      client_id: "${PARSEC_BOP_CLIENT_ID}"
-      environment: "${PARSEC_BOP_ENVIRONMENT}"
-    http:
-      timeout: 30s
+      bop_env: "stage"
     caching:
       type: in_memory
       ttl: 5m

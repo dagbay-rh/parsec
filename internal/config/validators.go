@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"strings"
 	"time"
 
 	"github.com/project-kessel/parsec/internal/claims"
@@ -32,7 +33,7 @@ func newStubStore(cfg TrustStoreConfig, httpRegistry *httpclient.Registry, trust
 
 	// Add validators
 	for _, validatorCfg := range cfg.Validators {
-		validator, err := newValidator(validatorCfg.Name, validatorCfg.ValidatorConfig, httpRegistry, trustObs)
+		validator, err := newValidator(validatorCfg.Name, validatorCfg.ValidatorConfig, cfg, httpRegistry, trustObs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create validator: %w", err)
 		}
@@ -68,7 +69,7 @@ func newFilteredStore(cfg TrustStoreConfig, httpRegistry *httpclient.Registry, t
 			return nil, fmt.Errorf("validator name is required for filtered store")
 		}
 
-		validator, err := newValidator(validatorCfg.Name, validatorCfg.ValidatorConfig, httpRegistry, trustObs)
+		validator, err := newValidator(validatorCfg.Name, validatorCfg.ValidatorConfig, cfg, httpRegistry, trustObs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create validator %s: %w", validatorCfg.Name, err)
 		}
@@ -80,14 +81,14 @@ func newFilteredStore(cfg TrustStoreConfig, httpRegistry *httpclient.Registry, t
 }
 
 // newValidator creates a validator from configuration
-func newValidator(name string, cfg ValidatorConfig, httpRegistry *httpclient.Registry, trustObs trust.TrustObserver) (trust.Validator, error) {
+func newValidator(name string, cfg ValidatorConfig, store TrustStoreConfig, httpRegistry *httpclient.Registry, trustObs trust.TrustObserver) (trust.Validator, error) {
 	switch cfg.Type {
 	case "jwt_validator":
 		return newJWTValidator(cfg, httpRegistry, trustObs)
 	case "json_validator":
 		return newJSONValidator(cfg)
 	case "unsigned_json_validator":
-		return newUnsignedJSONValidator(cfg)
+		return newUnsignedJSONValidator(name, cfg, store)
 	case "lua_validator":
 		return newLuaValidator(name, cfg, httpRegistry, trustObs)
 	case "stub_validator":
@@ -145,9 +146,12 @@ func newJSONValidator(cfg ValidatorConfig) (trust.Validator, error) {
 	), nil
 }
 
-func newUnsignedJSONValidator(cfg ValidatorConfig) (trust.Validator, error) {
+func newUnsignedJSONValidator(name string, cfg ValidatorConfig, store TrustStoreConfig) (trust.Validator, error) {
 	if cfg.TrustDomain == "" {
 		return nil, fmt.Errorf("unsigned_json_validator requires trust_domain")
+	}
+	if err := requireUnsignedJSONActorGate(store, name); err != nil {
+		return nil, err
 	}
 
 	var opts []trust.UnsignedJSONValidatorOption
@@ -156,6 +160,60 @@ func newUnsignedJSONValidator(cfg ValidatorConfig) (trust.Validator, error) {
 	}
 
 	return trust.NewUnsignedJSONValidator(cfg.TrustDomain, opts...)
+}
+
+// requireUnsignedJSONActorGate rejects unsigned JSON unless ForActor can hide it
+// from everyone except trusted actors. stub_store and passthrough filters are
+// impersonation: any caller who can reach exchange can assert any sub.
+func requireUnsignedJSONActorGate(store TrustStoreConfig, validatorName string) error {
+	if validatorName == "" {
+		return fmt.Errorf("unsigned_json_validator requires a validator name for ForActor filtering")
+	}
+	if store.Type != "filtered_store" {
+		return fmt.Errorf("unsigned_json_validator requires trust_store.type=filtered_store with a ForActor filter")
+	}
+	if store.Filter == nil {
+		return fmt.Errorf("unsigned_json_validator requires trust_store.filter ForActor policy")
+	}
+	return requireFilterGatesUnsignedJSON(*store.Filter, validatorName)
+}
+
+func requireFilterGatesUnsignedJSON(filter ValidatorFilterConfig, validatorName string) error {
+	switch filter.Type {
+	case "", "passthrough":
+		return fmt.Errorf("unsigned_json_validator rejects passthrough ForActor filter; use cel that names %q for trusted actors", validatorName)
+	case "cel":
+		if filter.Script == "" {
+			return fmt.Errorf("cel filter requires script")
+		}
+		if !strings.Contains(filter.Script, validatorName) {
+			return fmt.Errorf("unsigned_json_validator requires ForActor CEL to name %q so only trusted actors can use it", validatorName)
+		}
+		if !strings.Contains(filter.Script, "actor") {
+			return fmt.Errorf("unsigned_json_validator requires ForActor CEL to constrain %q by actor", validatorName)
+		}
+		return nil
+	case "any":
+		if len(filter.Filters) == 0 {
+			return fmt.Errorf("any filter requires at least one sub-filter")
+		}
+		var named bool
+		for i, sub := range filter.Filters {
+			if err := requireFilterGatesUnsignedJSON(sub, validatorName); err != nil {
+				if strings.Contains(err.Error(), "rejects passthrough") {
+					return fmt.Errorf("unsigned_json_validator sub-filter %d: %w", i, err)
+				}
+				continue
+			}
+			named = true
+		}
+		if !named {
+			return fmt.Errorf("unsigned_json_validator requires a ForActor CEL sub-filter that names %q", validatorName)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown validator filter type: %s (supported: cel, any, passthrough)", filter.Type)
+	}
 }
 
 func newLuaValidator(name string, cfg ValidatorConfig, httpRegistry *httpclient.Registry, trustObs trust.TrustObserver) (trust.Validator, error) {
@@ -271,7 +329,7 @@ func newStubValidator(cfg ValidatorConfig) (trust.Validator, error) {
 	}
 
 	validator := trust.NewStubValidator(credTypes...)
-	if len(cfg.Claims) == 0 {
+	if len(cfg.Claims) == 0 && cfg.Issuer == "" && cfg.TrustDomain == "" {
 		return validator, nil
 	}
 
@@ -279,12 +337,16 @@ func newStubValidator(cfg ValidatorConfig) (trust.Validator, error) {
 	if trustDomain == "" {
 		trustDomain = "test-domain"
 	}
+	issuerURL := cfg.Issuer
+	if issuerURL == "" {
+		issuerURL = "https://test-issuer.example.com"
+	}
 
 	clk := clock.NewSystemClock()
 	stubClaims := claims.Claims(maps.Clone(cfg.Claims))
 	result := &trust.Result{
 		Subject:     "test-subject",
-		Issuer:      "https://test-issuer.example.com",
+		Issuer:      issuerURL,
 		TrustDomain: trustDomain,
 		Claims:      stubClaims,
 		ExpiresAt:   clk.Now().Add(time.Hour),

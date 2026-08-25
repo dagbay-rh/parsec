@@ -32,7 +32,7 @@ type ClientSpec struct {
 	Timeout             time.Duration
 	CertSource          CertSource          // nil = share default transport
 	TransportMiddleware TransportMiddleware // nil = no wrapping
-	RootCAPath          string              // PEM-encoded CA cert file to trust
+	RootCAPath          string              // PEM-encoded CA cert file to trust; empty = system roots
 }
 
 // RegistryOption configures optional parameters for [NewRegistry].

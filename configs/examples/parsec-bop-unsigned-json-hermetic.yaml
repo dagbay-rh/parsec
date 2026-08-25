@@ -6,9 +6,10 @@
 # Usage:
 #   ./bin/parsec serve --config ./configs/examples/parsec-bop-unsigned-json-hermetic.yaml
 #
-# Token exchange (form-encoded). subject_token is the JSON object as a form
-# string (percent-encode in production clients; curl -d is fine here):
+# Token exchange (form-encoded). ForActor requires a scheduler actor
+# (Authorization: Bearer; stub validator accepts any non-empty token).
 #   curl -s -X POST http://localhost:8080/v1/token \
+#     -H "Authorization: Bearer hermetic-scheduler" \
 #     -H "Content-Type: application/x-www-form-urlencoded" \
 #     -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
 #     -d 'subject_token={"sub":"redhat:user:sso:98765"}' \
@@ -17,6 +18,7 @@
 #
 # Token exchange (JSON). subject_token is a string containing the JSON object:
 #   curl -s -X POST http://localhost:8080/v1/token \
+#     -H "Authorization: Bearer hermetic-scheduler" \
 #     -H "Content-Type: application/json" \
 #     -d '{
 #       "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
@@ -32,8 +34,8 @@
 # Captured live curl/grpcurl output:
 #   docs/unsigned-json-exchange-verification.md
 #
-# This example uses stub_store (no ForActor filter) so local curl without actor
-# credentials works. Production MUST ForActor-filter unsigned-json.
+# ForActor allows unsigned-json only when the authenticated actor's issuer
+# identifies a scheduler. Anonymous curl cannot assert a sub.
 
 server:
   grpc_port: 9090
@@ -49,6 +51,18 @@ trust_domain: "parsec.example.com"
 exchange_server:
   claims_filter:
     type: stub
+
+# Named HTTP client matching cert-auth: credentials on the client, not in Lua.
+# Static header values so hermetic tests do not require env vars. Fixtures
+# replace the transport, so ca_cert is omitted.
+http_clients:
+  - name: backoffice-proxy
+    timeout: "30s"
+    http_auth:
+      type: headers
+      headers:
+        x-rh-clientid: hermetic-test-client
+        x-rh-apitoken: hermetic-test-token
 
 # Fixtures replace real HTTP calls with canned BOP responses
 fixtures:
@@ -80,11 +94,25 @@ fixtures:
         ]
 
 trust_store:
-  type: stub_store
+  type: filtered_store
   validators:
     - name: unsigned-json
       type: unsigned_json_validator
       trust_domain: "parsec.example.com"
+    # Hermetic stand-in for the scheduler's actor credential. Production uses
+    # a real JWT; stub accepts any non-empty Bearer and stamps a scheduler issuer
+    # so ForActor can allow unsigned-json.
+    - name: scheduler-actor
+      type: stub_validator
+      credential_types: ["bearer"]
+      issuer: "https://scheduler.example.com"
+      trust_domain: "scheduler.example.com"
+  filter:
+    type: cel
+    script: |
+      validator_name != "unsigned-json" || (
+        has(actor.issuer) && actor.issuer.contains("scheduler")
+      )
 
 data_sources:
   - name: identity-policy
@@ -96,14 +124,11 @@ data_sources:
   - name: bop
     type: lua
     script_file: ./configs/scripts/bop_user.lua
+    http_client: backoffice-proxy
     config:
       bop_url: "https://backoffice-proxy.example.com"
       users_path: "/v1/users"
-      api_token: "hermetic-test-token"
-      client_id: "hermetic-test-client"
-      environment: "stage"
-    http:
-      timeout: 30s
+      bop_env: "stage"
     caching:
       type: in_memory
       ttl: 5m
