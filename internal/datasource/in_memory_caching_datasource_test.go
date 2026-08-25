@@ -29,7 +29,7 @@ func (m *mockCacheableDataSource) Fetch(ctx context.Context, input *service.Data
 	}, nil
 }
 
-func (m *mockCacheableDataSource) CacheKey(input *service.DataSourceInput) service.DataSourceInput {
+func (m *mockCacheableDataSource) CacheKey(input *service.DataSourceInput) (service.DataSourceInput, bool) {
 	// Only cache by subject
 	masked := service.DataSourceInput{}
 	if input.Subject != nil {
@@ -37,7 +37,7 @@ func (m *mockCacheableDataSource) CacheKey(input *service.DataSourceInput) servi
 			Subject: input.Subject.Subject,
 		}
 	}
-	return masked
+	return masked, true
 }
 
 // mockNonCacheableDataSource doesn't implement Cacheable
@@ -302,4 +302,28 @@ func TestInMemoryCachingDataSource_CacheOutcomesAreMutuallyExclusive(t *testing.
 	if p.hitCalled {
 		t.Fatalf("expired: unexpected CacheHit")
 	}
+}
+
+func TestInMemoryCachingDataSource_SkipCache(t *testing.T) {
+	src := &mockSkipCacheDataSource{mockCacheableDataSource: mockCacheableDataSource{name: "skip"}}
+	cached := NewInMemoryCachingDataSource(src, NoOpDataSourceObserver{}, WithCacheTTL(time.Hour))
+
+	input := &service.DataSourceInput{Subject: &trust.Result{Subject: "alice"}}
+	if _, err := cached.Fetch(context.Background(), input); err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	if _, err := cached.Fetch(context.Background(), input); err != nil {
+		t.Fatalf("second: %v", err)
+	}
+	if src.fetchCount != 2 {
+		t.Fatalf("skip-cache must fetch every time, got %d", src.fetchCount)
+	}
+}
+
+type mockSkipCacheDataSource struct {
+	mockCacheableDataSource
+}
+
+func (m *mockSkipCacheDataSource) CacheKey(_ *service.DataSourceInput) (service.DataSourceInput, bool) {
+	return service.DataSourceInput{}, false
 }

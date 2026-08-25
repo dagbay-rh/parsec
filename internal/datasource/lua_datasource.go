@@ -370,7 +370,8 @@ type CacheableLuaDataSourceConfig struct {
 	// and returns a result table with 'data' and 'content_type' fields
 	//
 	// The script must define fetch_cache_key(input), which returns a modified input
-	// table with only the fields relevant for caching.
+	// table with only the fields relevant for caching. Return nil to skip the cache
+	// (no read, no write) for that request.
 	//
 	// Example:
 	//   function fetch_cache_key(input)
@@ -410,10 +411,11 @@ func NewCacheableLuaDataSource(config CacheableLuaDataSourceConfig) (*CacheableL
 	}, nil
 }
 
-// CacheKey implements the Cacheable interface
-func (ds *CacheableLuaDataSource) CacheKey(input *service.DataSourceInput) service.DataSourceInput {
+// CacheKey implements the Cacheable interface.
+// A Lua nil (or non-table) from fetch_cache_key means skip the cache entirely.
+func (ds *CacheableLuaDataSource) CacheKey(input *service.DataSourceInput) (service.DataSourceInput, bool) {
 	if input == nil {
-		return service.DataSourceInput{}
+		return service.DataSourceInput{}, false
 	}
 
 	L := lua.NewState()
@@ -432,7 +434,7 @@ func (ds *CacheableLuaDataSource) CacheKey(input *service.DataSourceInput) servi
 	urlService.Register(L)
 
 	if err := luaservices.LoadProto(L, ds.proto); err != nil {
-		return *input
+		return *input, true
 	}
 
 	inputTable := ds.inputToLuaTable(L, input)
@@ -443,20 +445,16 @@ func (ds *CacheableLuaDataSource) CacheKey(input *service.DataSourceInput) servi
 		NRet:    1,
 		Protect: true,
 	}, inputTable); err != nil {
-		// On error, return full input
-		return *input
+		// On error, cache under the full input so Fetch can still proceed.
+		return *input, true
 	}
 
-	// Get the result
 	ret := L.Get(-1)
 	L.Pop(1)
 
 	if ret.Type() != lua.LTTable {
-		// On error, return full input
-		return *input
+		return service.DataSourceInput{}, false
 	}
 
-	// Convert result back to DataSourceInput
-	maskedInput := ds.luaTableToInput(ret.(*lua.LTable))
-	return maskedInput
+	return ds.luaTableToInput(ret.(*lua.LTable)), true
 }

@@ -28,17 +28,20 @@ type DataSource interface {
 // Cacheable is an optional interface that data sources can implement
 // to enable caching of their results.
 type Cacheable interface {
-	// CacheKey returns a masked copy of the input with only the fields that affect the result.
-	// This serves two purposes:
-	// 1. It's the cache key (after serialization) - only relevant fields are included
-	// 2. It's the input used to fetch on cache miss - it contains all data needed for Fetch
+	// CacheKey returns a masked copy of the input with only the fields that affect the result,
+	// and whether this request should use the cache at all.
+	//
+	// When useCache is false, wrappers must Fetch with the original input and must not
+	// read or write cache entries. Lua scripts signal this by returning nil from
+	// fetch_cache_key.
+	//
+	// When useCache is true:
+	//  1. The returned input is the cache key (after serialization)
+	//  2. Distributed wrappers also pass that input to Fetch on a miss — it must
+	//     contain all data needed for Fetch
 	//
 	// Fields that don't affect the result should be zeroed out to reduce cache key size.
-	// For example, if only Subject.Subject matters, return an input with just that field set.
-	//
-	// The returned input MUST be sufficient to call Fetch() if there's a cache miss.
-	// Returned by value for clear semantics - it's a derived value, not a shared reference.
-	CacheKey(input *DataSourceInput) DataSourceInput
+	CacheKey(input *DataSourceInput) (key DataSourceInput, useCache bool)
 }
 
 // DataSourceContentType identifies the serialization format of data source results

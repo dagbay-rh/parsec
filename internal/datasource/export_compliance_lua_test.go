@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -75,6 +74,16 @@ func newCacheableComplianceDS(t *testing.T, script string, client *http.Client) 
 		t.Fatalf("NewCacheableLuaDataSource: %v", err)
 	}
 	return ds
+}
+
+func assertFailOpenNil(t *testing.T, result *service.DataSourceResult, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("fail-open should not error, got %v", err)
+	}
+	if result != nil {
+		t.Fatalf("fail-open should return nil result (uncached), got %+v", result)
+	}
 }
 
 // TestExportComplianceLua_Fetch_Pass verifies a 200 + passing result code → synthetic=false
@@ -201,19 +210,7 @@ func TestExportComplianceLua_Fetch_FailOpen_Non200(t *testing.T) {
 			}
 			ds := newComplianceDS(t, script, client)
 			result, err := ds.Fetch(context.Background(), consoleSubjectForCompliance())
-			if err != nil {
-				t.Fatalf("Fetch returned error (want fail-open): %v", err)
-			}
-			if result == nil {
-				t.Fatal("expected non-nil fail-open result")
-			}
-			var data map[string]any
-			if unmarshalErr := json.Unmarshal(result.Data, &data); unmarshalErr != nil {
-				t.Fatalf("unmarshal: %v", unmarshalErr)
-			}
-			if data["synthetic"] != true {
-				t.Errorf("synthetic = %v, want true for non-200 response", data["synthetic"])
-			}
+			assertFailOpenNil(t, result, err)
 		})
 	}
 }
@@ -234,19 +231,7 @@ func TestExportComplianceLua_Fetch_FailOpen_TransportError(t *testing.T) {
 
 	ds := newComplianceDS(t, script, client)
 	result, err := ds.Fetch(context.Background(), consoleSubjectForCompliance())
-	if err != nil {
-		t.Fatalf("Fetch returned error (want fail-open): %v", err)
-	}
-	if result == nil {
-		t.Fatal("expected non-nil fail-open result")
-	}
-	var data map[string]any
-	if unmarshalErr := json.Unmarshal(result.Data, &data); unmarshalErr != nil {
-		t.Fatalf("unmarshal: %v", unmarshalErr)
-	}
-	if data["synthetic"] != true {
-		t.Errorf("synthetic = %v, want true for transport error", data["synthetic"])
-	}
+	assertFailOpenNil(t, result, err)
 }
 
 // TestExportComplianceLua_Fetch_FailOpen_MissingUsername verifies no username → synthetic=true (AC3)
@@ -261,19 +246,7 @@ func TestExportComplianceLua_Fetch_FailOpen_MissingUsername(t *testing.T) {
 
 	ds := newComplianceDS(t, script, &http.Client{})
 	result, err := ds.Fetch(context.Background(), input)
-	if err != nil {
-		t.Fatalf("Fetch returned error (want fail-open): %v", err)
-	}
-	if result == nil {
-		t.Fatal("expected non-nil fail-open result")
-	}
-	var data map[string]any
-	if unmarshalErr := json.Unmarshal(result.Data, &data); unmarshalErr != nil {
-		t.Fatalf("unmarshal: %v", unmarshalErr)
-	}
-	if data["synthetic"] != true {
-		t.Errorf("synthetic = %v, want true for missing username", data["synthetic"])
-	}
+	assertFailOpenNil(t, result, err)
 }
 
 // TestExportComplianceLua_Fetch_BlockedResultCode verifies a blocking error code is preserved
@@ -315,7 +288,10 @@ func TestExportComplianceLua_CacheKey_Username(t *testing.T) {
 	script := loadExportComplianceScript(t)
 	ds := newCacheableComplianceDS(t, script, http.DefaultClient)
 
-	masked := ds.CacheKey(consoleSubjectForCompliance())
+	masked, useCache := ds.CacheKey(consoleSubjectForCompliance())
+	if !useCache {
+		t.Fatal("expected cacheable key for username")
+	}
 	if masked.Subject == nil || masked.Subject.Claims == nil {
 		t.Fatalf("expected masked subject claims, got %+v", masked)
 	}
@@ -328,8 +304,7 @@ func TestExportComplianceLua_CacheKey_Username(t *testing.T) {
 	}
 }
 
-// TestExportComplianceLua_CacheKey_NilForSynthetic verifies that no username → full input key (AC7)
-// When fetch_cache_key returns nil, CacheKey falls back to the full input.
+// TestExportComplianceLua_CacheKey_NilForSynthetic verifies that no username skips the cache (AC7).
 func TestExportComplianceLua_CacheKey_NilForSynthetic(t *testing.T) {
 	script := loadExportComplianceScript(t)
 	ds := newCacheableComplianceDS(t, script, http.DefaultClient)
@@ -341,21 +316,13 @@ func TestExportComplianceLua_CacheKey_NilForSynthetic(t *testing.T) {
 		},
 	}
 
-	masked := ds.CacheKey(noUserInput)
-	// When fetch_cache_key returns nil, CacheKey returns the full input.
-	// Verify the result is the full input (not a username-masked subset).
-	if masked.Subject != nil && len(masked.Subject.Claims) != 0 {
-		// The only valid "full input" behavior for an empty-claims subject:
-		// the masked key should also have empty claims (not a username key).
-		if _, hasUsername := masked.Subject.Claims["preferred_username"]; hasUsername {
-			t.Error("nil cache key: full input should not have a username-masked key")
-		}
+	_, useCache := ds.CacheKey(noUserInput)
+	if useCache {
+		t.Fatal("empty username must skip cache")
 	}
 }
 
-// TestExportComplianceLua_CacheKey_NilForBypassHeader verifies bypass header "0" → full input key (AC8)
-// When fetch_cache_key returns nil (bypass), CacheKey falls back to the full input,
-// which includes the bypass header — so bypass and normal requests never share a cache slot.
+// TestExportComplianceLua_CacheKey_NilForBypassHeader verifies bypass header "0" skips the cache (AC8).
 func TestExportComplianceLua_CacheKey_NilForBypassHeader(t *testing.T) {
 	script := loadExportComplianceScript(t)
 	ds := newCacheableComplianceDS(t, script, http.DefaultClient)
@@ -375,16 +342,14 @@ func TestExportComplianceLua_CacheKey_NilForBypassHeader(t *testing.T) {
 	}
 	normalInput := consoleSubjectForCompliance()
 
-	bypassKey := ds.CacheKey(bypassInput)
-	normalKey := ds.CacheKey(normalInput)
+	_, bypassCache := ds.CacheKey(bypassInput)
+	normalKey, normalCache := ds.CacheKey(normalInput)
 
-	// Bypass key must include the bypass header (from the full input fallback)
-	// and must differ from the normal username-based key.
-	if bypassKey.RequestAttributes == nil || bypassKey.RequestAttributes.Headers == nil {
-		t.Fatal("bypass CacheKey should include request_attributes with bypass header")
+	if bypassCache {
+		t.Fatal("bypass header must skip cache")
 	}
-	if bypassKey.RequestAttributes.Headers["x-rh-insights-gateway-use-compliance-cache"] != "0" {
-		t.Errorf("bypass CacheKey missing bypass header, got: %v", bypassKey.RequestAttributes.Headers)
+	if !normalCache {
+		t.Fatal("normal request must be cacheable")
 	}
 
 	// Normal key has no bypass header
@@ -423,8 +388,11 @@ func TestExportComplianceLua_DifferentUsers(t *testing.T) {
 		},
 	}
 
-	aliceKey := ds.CacheKey(inputAlice)
-	bobKey := ds.CacheKey(inputBob)
+	aliceKey, aliceCache := ds.CacheKey(inputAlice)
+	bobKey, bobCache := ds.CacheKey(inputBob)
+	if !aliceCache || !bobCache {
+		t.Fatal("expected cacheable keys for named users")
+	}
 
 	if aliceKey.Subject == nil || bobKey.Subject == nil {
 		t.Fatal("expected non-nil subjects in cache keys")
@@ -450,19 +418,7 @@ func TestExportComplianceLua_MissingConfig(t *testing.T) {
 	}
 
 	result, err := ds.Fetch(context.Background(), consoleSubjectForCompliance())
-	if err != nil {
-		t.Fatalf("Fetch returned error (want fail-open for missing config): %v", err)
-	}
-	if result == nil {
-		t.Fatal("expected non-nil fail-open result")
-	}
-	var data map[string]any
-	if unmarshalErr := json.Unmarshal(result.Data, &data); unmarshalErr != nil {
-		t.Fatalf("unmarshal: %v", unmarshalErr)
-	}
-	if data["synthetic"] != true {
-		t.Errorf("synthetic = %v, want true for missing config", data["synthetic"])
-	}
+	assertFailOpenNil(t, result, err)
 }
 
 // TestExportComplianceLua_RHSMTokenShape verifies rhsm-style claims (sub, org_id) are supported
@@ -529,7 +485,10 @@ func TestExportComplianceLua_RHSMTokenShape(t *testing.T) {
 
 	// Cache key should use "sub" as username
 	cacheDs := newCacheableComplianceDS(t, script, client)
-	masked := cacheDs.CacheKey(rhsmInput)
+	masked, useCache := cacheDs.CacheKey(rhsmInput)
+	if !useCache {
+		t.Fatal("RHSM shape should be cacheable")
+	}
 	if masked.Subject == nil || masked.Subject.Claims["preferred_username"] != "rhsm-user" {
 		t.Errorf("cache key for RHSM: expected preferred_username=rhsm-user, got %v", masked.Subject)
 	}
@@ -551,20 +510,104 @@ func TestExportComplianceLua_Fetch_FailOpen_MalformedJSON(t *testing.T) {
 
 	ds := newComplianceDS(t, script, client)
 	result, err := ds.Fetch(context.Background(), consoleSubjectForCompliance())
-	if err != nil {
-		t.Fatalf("Fetch returned error (want fail-open): %v", err)
+	assertFailOpenNil(t, result, err)
+}
+
+func TestExportComplianceLua_Cached_SyntheticNotStored(t *testing.T) {
+	script := loadExportComplianceScript(t)
+	status := 503
+	body := `{"error":"unavailable"}`
+	var calls int
+	provider := httpfixture.NewFuncProvider(func(req *http.Request) *httpfixture.Fixture {
+		if req.URL.String() != complianceAPIURL {
+			return nil
+		}
+		calls++
+		return &httpfixture.Fixture{StatusCode: status, Body: body}
+	})
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: httpfixture.NewTransport(httpfixture.TransportConfig{
+			Provider: provider,
+			Strict:   true,
+		}),
 	}
-	if result == nil {
-		t.Fatal("expected non-nil fail-open result")
+	inner := newCacheableComplianceDS(t, script, client)
+	cached := NewInMemoryCachingDataSource(inner, NoOpDataSourceObserver{}, WithCacheTTL(24*time.Hour))
+
+	first, err := cached.Fetch(context.Background(), consoleSubjectForCompliance())
+	assertFailOpenNil(t, first, err)
+
+	status = 200
+	body = `{"result_code":"ERROR_T5"}`
+	second, err := cached.Fetch(context.Background(), consoleSubjectForCompliance())
+	if err != nil {
+		t.Fatalf("second Fetch: %v", err)
+	}
+	if second == nil {
+		t.Fatal("expected blocked result after service recovery, not cached fail-open")
 	}
 	var data map[string]any
-	if unmarshalErr := json.Unmarshal(result.Data, &data); unmarshalErr != nil {
-		t.Fatalf("unmarshal: %v", unmarshalErr)
+	if err := json.Unmarshal(second.Data, &data); err != nil {
+		t.Fatalf("unmarshal: %v", err)
 	}
-	if data["synthetic"] != true {
-		t.Errorf("synthetic = %v, want true for malformed JSON", data["synthetic"])
+	if data["result_code"] != "ERROR_T5" {
+		t.Errorf("result_code = %v, want ERROR_T5", data["result_code"])
 	}
-	if !strings.Contains(string(result.Data), "result_code") {
-		t.Errorf("fail-open result must contain result_code field, got: %s", result.Data)
+	if calls != 2 {
+		t.Fatalf("expected 2 compliance HTTP calls, got %d", calls)
+	}
+}
+
+func TestExportComplianceLua_Cached_BypassSkipsReadAndWrite(t *testing.T) {
+	script := loadExportComplianceScript(t)
+	var calls int
+	var resultCode string
+	provider := httpfixture.NewFuncProvider(func(req *http.Request) *httpfixture.Fixture {
+		if req.URL.String() != complianceAPIURL {
+			return nil
+		}
+		calls++
+		return &httpfixture.Fixture{StatusCode: 200, Body: `{"result_code":"` + resultCode + `"}`}
+	})
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: httpfixture.NewTransport(httpfixture.TransportConfig{
+			Provider: provider,
+			Strict:   true,
+		}),
+	}
+	inner := newCacheableComplianceDS(t, script, client)
+	cached := NewInMemoryCachingDataSource(inner, NoOpDataSourceObserver{}, WithCacheTTL(24*time.Hour))
+
+	resultCode = ""
+	if _, err := cached.Fetch(context.Background(), consoleSubjectForCompliance()); err != nil {
+		t.Fatalf("seed Fetch: %v", err)
+	}
+
+	bypassInput := consoleSubjectForCompliance()
+	bypassInput.RequestAttributes = &request.RequestAttributes{
+		Headers: map[string]string{
+			"x-rh-insights-gateway-use-compliance-cache": "0",
+		},
+	}
+	resultCode = "ERROR_T5"
+	if _, err := cached.Fetch(context.Background(), bypassInput); err != nil {
+		t.Fatalf("bypass Fetch: %v", err)
+	}
+
+	cachedAgain, err := cached.Fetch(context.Background(), consoleSubjectForCompliance())
+	if err != nil {
+		t.Fatalf("third Fetch: %v", err)
+	}
+	var data map[string]any
+	if err := json.Unmarshal(cachedAgain.Data, &data); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if data["result_code"] != "" {
+		t.Errorf("normal cache must not be overwritten by bypass, got result_code=%v", data["result_code"])
+	}
+	if calls != 2 {
+		t.Fatalf("expected 2 HTTP calls (seed + bypass; third is cache hit), got %d", calls)
 	}
 }

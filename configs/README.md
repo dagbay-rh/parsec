@@ -448,7 +448,8 @@ PARSEC_DATA_SOURCES__1__CONFIG__COMPLIANCE_API=http://127.0.0.1:9099/v1/complian
 ```
 
 (Index `1` matches `configs/parsec.yaml` where `export_compliance` is the
-second `data_sources` entry.)
+second `data_sources` entry. Reorder the list → update the index; there is
+no runtime check that the name still sits at that slot.)
 
 ### Claim Mappers
 

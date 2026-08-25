@@ -403,7 +403,10 @@ None. Pattern already documented (`LUA_DATASOURCE.md`, `issuance-policy.md`).
 ### Config Examples
 
 ```yaml
-# configs/parsec.yaml — DS present; Envoy opt-out is per-request
+# Local / example only (configs/parsec.yaml). Not a production endpoint.
+# Stage/prod supply compliance_api via an app-interface namespace variable
+# (RHCLOUD-50414), e.g. PARSEC_DATA_SOURCES__N__CONFIG__COMPLIANCE_API
+# where N is the zero-based index of this list entry.
 - name: export_compliance
   type: lua
   script_file: ./configs/scripts/export_compliance.lua

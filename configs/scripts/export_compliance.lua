@@ -11,8 +11,8 @@
 --
 -- Behavior (fail-open):
 --   - Any error, non-200 response, malformed JSON, or missing username returns
---     { result_code = "", synthetic = true } — the request is allowed through.
---   - Only real compliance service responses set synthetic = false.
+--     nil — CEL sees datasource() as null and allows the request through.
+--   - Only real compliance service responses are returned (and cached).
 --   - The caller (CEL) is responsible for acting on result_code values.
 --
 -- Headers sent (AC2):
@@ -21,11 +21,10 @@
 --
 -- Caching (AC6, AC7, AC8):
 --   - Cache key is the resolved username (per-user cache, 24h TTL recommended).
---   - fetch_cache_key returns nil for synthetic results (AC7) — these are never
---     cached under the username key.
+--   - fetch() returns nil on fail-open so wrappers do not store the result (AC7).
 --   - fetch_cache_key returns nil when the request header
---     x-rh-insights-gateway-use-compliance-cache == "0" (AC8), bypassing both
---     reads and writes.
+--     x-rh-insights-gateway-use-compliance-cache == "0" (AC8), skipping both
+--     reads and writes (no full-input fallback).
 --
 -- Identity (AC9):
 --   - Compliance checks the ORIGINAL user identity, not any cross-account swap.
@@ -104,11 +103,10 @@ local function build_identity_envelope(username, org_id, account_number)
   }
 end
 
--- fail_open returns the synthetic sentinel result used for any error path.
--- The result is JSON-encoded so the Go layer and CEL can access result_code.
+-- fail_open returns nil so CEL treats the check as absent (allow) and so
+-- cache wrappers do not store the result (AC7).
 local function fail_open()
-  local encoded, _ = json.encode({ result_code = "", synthetic = true })
-  return { data = encoded or '{"result_code":"","synthetic":true}', content_type = "application/json" }
+  return nil
 end
 
 -- cache_bypass returns true when the caller has signalled to skip the cache.
@@ -170,13 +168,14 @@ end
 
 function fetch_cache_key(input)
   -- Cache bypass header disables both reads and writes (AC8).
+  -- Returning nil skips the cache wrapper entirely (no full-input fallback).
   if cache_bypass(input) then
     return nil
   end
 
   local username = resolve_username(input)
   if username == "" then
-    -- No username means fetch will be synthetic; do not cache (AC7).
+    -- No username means fetch will be nil (fail-open); do not cache (AC7).
     return nil
   end
 

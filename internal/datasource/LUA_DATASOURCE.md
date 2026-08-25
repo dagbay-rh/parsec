@@ -206,6 +206,7 @@ This function:
 - Returns a modified input with only fields that affect the result
 - Determines what gets cached and the cache key
 - Must include all data needed for `fetch` to work
+- Return `nil` to skip the cache for that request (no read, no write)
 
 ## Available Services
 
