@@ -2,6 +2,7 @@ package scripts_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/project-kessel/parsec/internal/datasource"
@@ -78,6 +79,10 @@ func TestRedHatIdentityCEL_UnsignedJSONSSO(t *testing.T) {
 	if identity["org_id"] != "54321" {
 		t.Errorf("org_id=%v, want 54321", identity["org_id"])
 	}
+
+	if _, ok := result.Claims["entitlements"]; !ok {
+		t.Error("missing entitlements key in unsigned JSON envelope")
+	}
 }
 
 func TestRedHatIdentityCEL_UnsignedJSONUnsupportedNamespace(t *testing.T) {
@@ -107,10 +112,86 @@ func TestRedHatIdentityCEL_UnsignedJSONUnsupportedNamespace(t *testing.T) {
 	if result.Decision.ExchangeError == nil {
 		t.Fatal("expected ExchangeError")
 	}
-	if result.Decision.ExchangeError.Reason != service.AbortReasonInvalidSubject {
-		t.Errorf("Reason=%q, want %q", result.Decision.ExchangeError.Reason, service.AbortReasonInvalidSubject)
+	if result.Decision.Reason != service.AbortReasonInvalidSubject {
+		t.Errorf("Reason=%q, want %q", result.Decision.Reason, service.AbortReasonInvalidSubject)
 	}
-	if result.Decision.ExchangeError.Message != "unsupported unsigned_json subject namespace" {
-		t.Errorf("Message=%q", result.Decision.ExchangeError.Message)
+	if result.Decision.Message != "unsupported unsigned_json subject namespace" {
+		t.Errorf("Message=%q", result.Decision.Message)
+	}
+}
+
+func TestRedHatIdentityCEL_UnsignedJSONUserNotFound(t *testing.T) {
+	script := loadScript(t, "redhat_identity.cel")
+	m, err := mapper.NewCELMapper(script)
+	if err != nil {
+		t.Fatalf("NewCELMapper: %v", err)
+	}
+
+	bop, err := datasource.NewStaticDataSource("bop", map[string]any{
+		"error": "user_not_found",
+	})
+	if err != nil {
+		t.Fatalf("NewStaticDataSource: %v", err)
+	}
+
+	registry := service.NewDataSourceRegistry()
+	registry.Register(bop)
+
+	subject := &trust.Result{
+		Subject: "redhat:user:sso:99999",
+		Issuer:  trust.UnsignedJSONTokenTypeURN,
+	}
+	result, err := m.Map(context.Background(), &service.MapperInput{
+		Subject:            subject,
+		Actor:              trust.AnonymousResult(),
+		DataSourceRegistry: registry,
+		DataSourceInput:    &service.DataSourceInput{Subject: subject},
+	})
+	if err != nil {
+		t.Fatalf("Map: %v", err)
+	}
+	if result.Decision.Action != service.MappingDeny {
+		t.Fatalf("Action=%q, want deny", result.Decision.Action)
+	}
+	if result.Decision.ExchangeError == nil {
+		t.Fatal("expected ExchangeError")
+	}
+	if result.Decision.Reason != service.AbortReasonInvalidSubject {
+		t.Errorf("Reason=%q, want %q", result.Decision.Reason, service.AbortReasonInvalidSubject)
+	}
+	if result.Decision.Message != "user_not_found" {
+		t.Errorf("Message=%q, want user_not_found", result.Decision.Message)
+	}
+}
+
+func TestRedHatIdentityCEL_UnsignedJSONBOPError(t *testing.T) {
+	script := loadScript(t, "redhat_identity.cel")
+	m, err := mapper.NewCELMapper(script)
+	if err != nil {
+		t.Fatalf("NewCELMapper: %v", err)
+	}
+
+	// No "bop" datasource registered — simulates BOP infrastructure failure
+	registry := service.NewDataSourceRegistry()
+
+	subject := &trust.Result{
+		Subject: "redhat:user:sso:12345",
+		Issuer:  trust.UnsignedJSONTokenTypeURN,
+	}
+	_, err = m.Map(context.Background(), &service.MapperInput{
+		Subject:            subject,
+		Actor:              trust.AnonymousResult(),
+		DataSourceRegistry: registry,
+		DataSourceInput:    &service.DataSourceInput{Subject: subject},
+	})
+	if err == nil {
+		t.Fatal("expected error from fail(), got nil")
+	}
+	var mf *service.MappingFailure
+	if !errors.As(err, &mf) {
+		t.Fatalf("expected MappingFailure, got %T: %v", err, err)
+	}
+	if mf.Message != "bop_enrichment_failed" {
+		t.Errorf("Message=%q, want bop_enrichment_failed", mf.Message)
 	}
 }

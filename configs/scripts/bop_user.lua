@@ -8,8 +8,10 @@
 -- stripped before the lookup so txn-token subs stay namespaced.
 -- Unprefixed subjects are sent as-is.
 --
--- Fail-closed: returns nil on any error so identity is not issued
--- for unenrichable users.
+-- Fail-closed semantics:
+--   nil              → infrastructure error (HTTP failure, decode error, ambiguous match)
+--   {error=...}     → user not found or missing required fields (client error)
+--   {data=..., ...} → enriched user profile
 --
 -- The HTTP client injecting x-rh-clientid and x-rh-apitoken headers is
 -- configured at the http_clients level via http_auth.type: headers.
@@ -68,15 +70,31 @@ function fetch(input)
     return nil
   end
 
+  if type(users) ~= "table" then
+    return nil
+  end
+
   -- BOP returns a JSON array; we require exactly one match.
-  if type(users) ~= "table" or #users ~= 1 then
+  -- Distinguish "user not found" from infrastructure errors so callers
+  -- can return an appropriate OAuth error code.
+  if #users == 0 then
+    return {
+      data = json.encode({ error = "user_not_found" }),
+      content_type = "application/json"
+    }
+  end
+
+  if #users ~= 1 then
     return nil
   end
 
   local user = users[1]
 
-  if user.org_id == nil or user.id == nil then
-    return nil
+  if user.org_id == nil or user.id == nil or user.is_active == nil then
+    return {
+      data = json.encode({ error = "user_not_found" }),
+      content_type = "application/json"
+    }
   end
 
   local result = {

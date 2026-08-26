@@ -48,7 +48,7 @@ has(subject.issuer) && subject.issuer.startsWith("x509://") ? {
 // Result.Subject keeps the namespaced id; BOP strips the prefix for lookup.
 has(subject.issuer) && subject.issuer == "urn:ietf:params:oauth:token-type:unsigned_json" ? (
   has(subject.subject) && subject.subject.startsWith("redhat:user:sso:") ? (
-    datasource("bop") != null ?
+    datasource("bop") != null && !has(datasource("bop").error) ?
     {
       "identity": {
         "account_number": has(datasource("bop").account_number) ? datasource("bop").account_number : "",
@@ -60,7 +60,7 @@ has(subject.issuer) && subject.issuer == "urn:ietf:params:oauth:token-type:unsig
           "email": has(datasource("bop").email) ? datasource("bop").email : "",
           "first_name": has(datasource("bop").first_name) ? datasource("bop").first_name : "",
           "last_name": has(datasource("bop").last_name) ? datasource("bop").last_name : "",
-          "is_active": has(datasource("bop").is_active) ? datasource("bop").is_active : true,
+          "is_active": has(datasource("bop").is_active) ? datasource("bop").is_active : false,
           "is_org_admin": has(datasource("bop").is_org_admin) ? datasource("bop").is_org_admin : false,
           "is_internal": has(datasource("bop").is_internal) ? datasource("bop").is_internal : false,
           "locale": has(datasource("bop").locale) ? datasource("bop").locale : "",
@@ -70,9 +70,12 @@ has(subject.issuer) && subject.issuer == "urn:ietf:params:oauth:token-type:unsig
           "org_id": safeToString(datasource("bop").org_id),
           "cross_access": false
         }
-      }
+      },
+      "entitlements": {}
     }
-    : fail("bop_enrichment_failed")
+    : (datasource("bop") != null && has(datasource("bop").error)
+       ? invalidSubject(datasource("bop").error)
+       : fail("bop_enrichment_failed"))
   ) : invalidSubject("unsupported unsigned_json subject namespace")
 ) : (
 has(subject.issuer) && subject.issuer.contains("container-registry-authorizer") && subject.issuer.contains("api.redhat.com") ? {
@@ -231,6 +234,7 @@ isServiceAccountToken(subject.claims) ? {
       } : unsupportedTokenType("unsupported_token_type")
     )
   )
+)
 )
 )
 )

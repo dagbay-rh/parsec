@@ -56,11 +56,11 @@ trust_store:
 #
 # Prerequisites for live BOP:
 #   - PARSEC_BOP_CLIENT_ID, PARSEC_BOP_TOKEN
-#   - CA bundle at ./local/it-ca-bundle.crt
+#   - CA bundle mounted by deployment (ca_cert field below)
 http_clients:
   - name: backoffice-proxy
     timeout: "30s"
-    ca_cert: "./local/it-ca-bundle.crt"
+    # ca_cert: provided by deployment secret; omit for hermetic/dev use.
     http_auth:
       type: headers
       headers:

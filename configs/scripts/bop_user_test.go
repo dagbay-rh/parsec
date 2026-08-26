@@ -222,8 +222,11 @@ func TestBOPUser_EmptyArray(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	if result != nil {
-		t.Fatalf("expected nil result for empty array, got %+v", result)
+	if result == nil {
+		t.Fatal("expected error sentinel result for empty array, got nil")
+	}
+	if !strings.Contains(string(result.Data), `"error":"user_not_found"`) {
+		t.Fatalf("expected user_not_found error sentinel, got %s", string(result.Data))
 	}
 }
 
@@ -290,8 +293,11 @@ func TestBOPUser_MissingOrgId(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	if result != nil {
-		t.Fatalf("expected nil result when org_id is missing, got %+v", result)
+	if result == nil {
+		t.Fatal("expected error sentinel result when org_id is missing, got nil")
+	}
+	if !strings.Contains(string(result.Data), `"error":"user_not_found"`) {
+		t.Fatalf("expected user_not_found error sentinel, got %s", string(result.Data))
 	}
 }
 
@@ -324,8 +330,11 @@ func TestBOPUser_MissingId(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	if result != nil {
-		t.Fatalf("expected nil result when id is missing, got %+v", result)
+	if result == nil {
+		t.Fatal("expected error sentinel result when id is missing, got nil")
+	}
+	if !strings.Contains(string(result.Data), `"error":"user_not_found"`) {
+		t.Fatalf("expected user_not_found error sentinel, got %s", string(result.Data))
 	}
 }
 
