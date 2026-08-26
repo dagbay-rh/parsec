@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"strings"
 	"time"
 
 	"github.com/project-kessel/parsec/internal/claims"
@@ -150,9 +149,6 @@ func newUnsignedJSONValidator(name string, cfg ValidatorConfig, store TrustStore
 	if cfg.TrustDomain == "" {
 		return nil, fmt.Errorf("unsigned_json_validator requires trust_domain")
 	}
-	if err := requireUnsignedJSONActorGate(store, name); err != nil {
-		return nil, err
-	}
 
 	var opts []trust.UnsignedJSONValidatorOption
 	if cfg.Issuer != "" {
@@ -160,60 +156,6 @@ func newUnsignedJSONValidator(name string, cfg ValidatorConfig, store TrustStore
 	}
 
 	return trust.NewUnsignedJSONValidator(cfg.TrustDomain, opts...)
-}
-
-// requireUnsignedJSONActorGate rejects unsigned JSON unless ForActor can hide it
-// from everyone except trusted actors. stub_store and passthrough filters are
-// impersonation: any caller who can reach exchange can assert any sub.
-func requireUnsignedJSONActorGate(store TrustStoreConfig, validatorName string) error {
-	if validatorName == "" {
-		return fmt.Errorf("unsigned_json_validator requires a validator name for ForActor filtering")
-	}
-	if store.Type != "filtered_store" {
-		return fmt.Errorf("unsigned_json_validator requires trust_store.type=filtered_store with a ForActor filter")
-	}
-	if store.Filter == nil {
-		return fmt.Errorf("unsigned_json_validator requires trust_store.filter ForActor policy")
-	}
-	return requireFilterGatesUnsignedJSON(*store.Filter, validatorName)
-}
-
-func requireFilterGatesUnsignedJSON(filter ValidatorFilterConfig, validatorName string) error {
-	switch filter.Type {
-	case "", "passthrough":
-		return fmt.Errorf("unsigned_json_validator rejects passthrough ForActor filter; use cel that names %q for trusted actors", validatorName)
-	case "cel":
-		if filter.Script == "" {
-			return fmt.Errorf("cel filter requires script")
-		}
-		if !strings.Contains(filter.Script, validatorName) {
-			return fmt.Errorf("unsigned_json_validator requires ForActor CEL to name %q so only trusted actors can use it", validatorName)
-		}
-		if !strings.Contains(filter.Script, "actor") {
-			return fmt.Errorf("unsigned_json_validator requires ForActor CEL to constrain %q by actor", validatorName)
-		}
-		return nil
-	case "any":
-		if len(filter.Filters) == 0 {
-			return fmt.Errorf("any filter requires at least one sub-filter")
-		}
-		var named bool
-		for i, sub := range filter.Filters {
-			if err := requireFilterGatesUnsignedJSON(sub, validatorName); err != nil {
-				if strings.Contains(err.Error(), "rejects passthrough") {
-					return fmt.Errorf("unsigned_json_validator sub-filter %d: %w", i, err)
-				}
-				continue
-			}
-			named = true
-		}
-		if !named {
-			return fmt.Errorf("unsigned_json_validator requires a ForActor CEL sub-filter that names %q", validatorName)
-		}
-		return nil
-	default:
-		return fmt.Errorf("unknown validator filter type: %s (supported: cel, any, passthrough)", filter.Type)
-	}
 }
 
 func newLuaValidator(name string, cfg ValidatorConfig, httpRegistry *httpclient.Registry, trustObs trust.TrustObserver) (trust.Validator, error) {

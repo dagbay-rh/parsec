@@ -2,100 +2,27 @@ package config
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/project-kessel/parsec/internal/observer"
 	"github.com/project-kessel/parsec/internal/trust"
 )
 
-func schedulerForActorStore(validatorName string) TrustStoreConfig {
-	return TrustStoreConfig{
-		Type: "filtered_store",
-		Filter: &ValidatorFilterConfig{
-			Type: "cel",
-			Script: `validator_name != "` + validatorName + `" || (` +
-				`has(actor.issuer) && actor.issuer.contains("scheduler"))`,
-		},
-	}
-}
-
 func TestNewUnsignedJSONValidator_RequiresTrustDomain(t *testing.T) {
-	_, err := newUnsignedJSONValidator("unsigned-json", ValidatorConfig{Type: "unsigned_json_validator"}, schedulerForActorStore("unsigned-json"))
+	_, err := newUnsignedJSONValidator("unsigned-json", ValidatorConfig{Type: "unsigned_json_validator"}, TrustStoreConfig{Type: "stub_store"})
 	if err == nil {
 		t.Fatal("expected error when trust_domain is absent")
 	}
-	if !strings.Contains(err.Error(), "unsigned_json_validator requires trust_domain") {
-		t.Fatalf("err=%q, want containing trust_domain requirement", err.Error())
+	if err.Error() != "unsigned_json_validator requires trust_domain" {
+		t.Fatalf("err=%q, want trust_domain requirement", err.Error())
 	}
-}
-
-func TestNewUnsignedJSONValidator_RequiresActorGate(t *testing.T) {
-	cfg := ValidatorConfig{Type: "unsigned_json_validator", TrustDomain: "parsec.example.com"}
-
-	t.Run("missing name", func(t *testing.T) {
-		_, err := newUnsignedJSONValidator("", cfg, schedulerForActorStore("unsigned-json"))
-		if err == nil || !strings.Contains(err.Error(), "validator name") {
-			t.Fatalf("err=%v, want validator name requirement", err)
-		}
-	})
-
-	t.Run("stub_store", func(t *testing.T) {
-		_, err := newUnsignedJSONValidator("unsigned-json", cfg, TrustStoreConfig{Type: "stub_store"})
-		if err == nil || !strings.Contains(err.Error(), "filtered_store") {
-			t.Fatalf("err=%v, want filtered_store requirement", err)
-		}
-	})
-
-	t.Run("filtered_store without filter", func(t *testing.T) {
-		_, err := newUnsignedJSONValidator("unsigned-json", cfg, TrustStoreConfig{Type: "filtered_store"})
-		if err == nil || !strings.Contains(err.Error(), "trust_store.filter") {
-			t.Fatalf("err=%v, want filter requirement", err)
-		}
-	})
-
-	t.Run("passthrough filter", func(t *testing.T) {
-		_, err := newUnsignedJSONValidator("unsigned-json", cfg, TrustStoreConfig{
-			Type:   "filtered_store",
-			Filter: &ValidatorFilterConfig{Type: "passthrough"},
-		})
-		if err == nil || !strings.Contains(err.Error(), "passthrough") {
-			t.Fatalf("err=%v, want passthrough rejection", err)
-		}
-	})
-
-	t.Run("cel without validator name", func(t *testing.T) {
-		_, err := newUnsignedJSONValidator("unsigned-json", cfg, TrustStoreConfig{
-			Type: "filtered_store",
-			Filter: &ValidatorFilterConfig{
-				Type:   "cel",
-				Script: `has(actor.issuer) && actor.issuer.contains("scheduler")`,
-			},
-		})
-		if err == nil || !strings.Contains(err.Error(), "name") {
-			t.Fatalf("err=%v, want CEL to name the validator", err)
-		}
-	})
-
-	t.Run("cel without actor", func(t *testing.T) {
-		_, err := newUnsignedJSONValidator("unsigned-json", cfg, TrustStoreConfig{
-			Type: "filtered_store",
-			Filter: &ValidatorFilterConfig{
-				Type:   "cel",
-				Script: `validator_name == "unsigned-json"`,
-			},
-		})
-		if err == nil || !strings.Contains(err.Error(), "actor") {
-			t.Fatalf("err=%v, want CEL to constrain by actor", err)
-		}
-	})
 }
 
 func TestNewUnsignedJSONValidator_DefaultIssuer(t *testing.T) {
 	v, err := newUnsignedJSONValidator("unsigned-json", ValidatorConfig{
 		Type:        "unsigned_json_validator",
 		TrustDomain: "parsec.example.com",
-	}, schedulerForActorStore("unsigned-json"))
+	}, TrustStoreConfig{Type: "stub_store"})
 	if err != nil {
 		t.Fatalf("newUnsignedJSONValidator: %v", err)
 	}
@@ -119,7 +46,7 @@ func TestNewUnsignedJSONValidator_IssuerOverride(t *testing.T) {
 		Type:        "unsigned_json_validator",
 		TrustDomain: "parsec.example.com",
 		Issuer:      "https://scheduler.example.com",
-	}, schedulerForActorStore("unsigned-json"))
+	}, TrustStoreConfig{Type: "stub_store"})
 	if err != nil {
 		t.Fatalf("newUnsignedJSONValidator: %v", err)
 	}
@@ -135,7 +62,7 @@ func TestNewUnsignedJSONValidator_IssuerOverride(t *testing.T) {
 	}
 }
 
-func TestNewTrustStore_UnsignedJSONRequiresActorGate(t *testing.T) {
+func TestNewTrustStore_UnsignedJSONInStubStore(t *testing.T) {
 	cfg := TrustStoreConfig{
 		Type: "stub_store",
 		Validators: []NamedValidatorConfig{
@@ -148,48 +75,22 @@ func TestNewTrustStore_UnsignedJSONRequiresActorGate(t *testing.T) {
 			},
 		},
 	}
-	_, err := NewTrustStore(cfg, testHTTPRegistry(t), observer.NoOp())
-	if err == nil || !strings.Contains(err.Error(), "filtered_store") {
-		t.Fatalf("err=%v, want stub_store rejected", err)
-	}
-}
-
-func TestNewTrustStore_UnsignedJSONWithSchedulerFilter(t *testing.T) {
-	storeCfg := schedulerForActorStore("unsigned-json")
-	storeCfg.Validators = []NamedValidatorConfig{
-		{
-			Name: "unsigned-json",
-			ValidatorConfig: ValidatorConfig{
-				Type:        "unsigned_json_validator",
-				TrustDomain: "parsec.example.com",
-			},
-		},
-	}
-	store, err := NewTrustStore(storeCfg, testHTTPRegistry(t), observer.NoOp())
+	store, err := NewTrustStore(cfg, testHTTPRegistry(t), observer.NoOp())
 	if err != nil {
 		t.Fatalf("NewTrustStore: %v", err)
 	}
 
-	filtered, err := store.ForActor(context.Background(), &trust.Result{
-		Issuer: "https://scheduler.example.com",
-	}, nil)
-	if err != nil {
-		t.Fatalf("ForActor: %v", err)
-	}
-	if _, err := filtered.Validate(context.Background(), &trust.JSONCredential{
+	result, err := store.Validate(context.Background(), &trust.JSONCredential{
 		RawJSON: []byte(`{"sub":"alice"}`),
-	}); err != nil {
-		t.Fatalf("scheduler actor should use unsigned-json: %v", err)
-	}
-
-	denied, err := store.ForActor(context.Background(), trust.AnonymousResult(), nil)
+	})
 	if err != nil {
-		t.Fatalf("ForActor anonymous: %v", err)
+		t.Fatalf("Validate: %v", err)
 	}
-	if _, err := denied.Validate(context.Background(), &trust.JSONCredential{
-		RawJSON: []byte(`{"sub":"alice"}`),
-	}); err == nil {
-		t.Fatal("anonymous actor should not use unsigned-json")
+	if result.Subject != "alice" {
+		t.Errorf("Subject=%q, want alice", result.Subject)
+	}
+	if result.Issuer != trust.UnsignedJSONTokenTypeURN {
+		t.Errorf("Issuer=%q, want %q", result.Issuer, trust.UnsignedJSONTokenTypeURN)
 	}
 }
 

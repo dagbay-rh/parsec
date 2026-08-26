@@ -6,10 +6,9 @@
 # Usage:
 #   ./bin/parsec serve --config ./configs/examples/parsec-bop-unsigned-json-hermetic.yaml
 #
-# Token exchange (form-encoded). ForActor requires a scheduler actor
-# (Authorization: Bearer; stub validator accepts any non-empty token).
+# Token exchange (form-encoded). Phase 1: no actor authentication required;
+# access control via network policy, on par with 3scale internal API.
 #   curl -s -X POST http://localhost:8080/v1/token \
-#     -H "Authorization: Bearer hermetic-scheduler" \
 #     -H "Content-Type: application/x-www-form-urlencoded" \
 #     -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
 #     -d 'subject_token={"sub":"redhat:user:sso:98765"}' \
@@ -18,7 +17,6 @@
 #
 # Token exchange (JSON). subject_token is a string containing the JSON object:
 #   curl -s -X POST http://localhost:8080/v1/token \
-#     -H "Authorization: Bearer hermetic-scheduler" \
 #     -H "Content-Type: application/json" \
 #     -d '{
 #       "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
@@ -33,9 +31,6 @@
 #
 # Captured live curl/grpcurl output:
 #   docs/unsigned-json-exchange-verification.md
-#
-# ForActor allows unsigned-json only when the authenticated actor's issuer
-# identifies a scheduler. Anonymous curl cannot assert a sub.
 
 server:
   grpc_port: 9090
@@ -94,25 +89,11 @@ fixtures:
         ]
 
 trust_store:
-  type: filtered_store
+  type: stub_store
   validators:
     - name: unsigned-json
       type: unsigned_json_validator
       trust_domain: "parsec.example.com"
-    # Hermetic stand-in for the scheduler's actor credential. Production uses
-    # a real JWT; stub accepts any non-empty Bearer and stamps a scheduler issuer
-    # so ForActor can allow unsigned-json.
-    - name: scheduler-actor
-      type: stub_validator
-      credential_types: ["bearer"]
-      issuer: "https://scheduler.example.com"
-      trust_domain: "scheduler.example.com"
-  filter:
-    type: cel
-    script: |
-      validator_name != "unsigned-json" || (
-        has(actor.issuer) && actor.issuer.contains("scheduler")
-      )
 
 data_sources:
   - name: identity-policy

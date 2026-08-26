@@ -28,7 +28,7 @@ exchange_server:
 
 # Trust store configuration
 trust_store:
-  type: filtered_store
+  type: stub_store
   validators:
     - name: redhat-sso
       type: jwt_validator
@@ -39,17 +39,11 @@ trust_store:
       audiences: ["rhsm-api", "customer-portal", "api.console", ""]
 
     # IETF unsigned JSON subject tokens (draft-ietf-oauth-transaction-tokens).
-    # ForActor below hides this validator unless the actor issuer identifies
-    # a trusted scheduler. stub_store / passthrough is rejected at config load.
+    # Phase 1: no actor authentication; access control via network policy,
+    # on par with 3scale internal API.
     - name: unsigned-json
       type: unsigned_json_validator
       trust_domain: "parsec.example.com"
-  filter:
-    type: cel
-    script: |
-      validator_name != "unsigned-json" || (
-        has(actor.issuer) && actor.issuer.contains("scheduler")
-      )
 
 # Named HTTP clients. BOP credentials are injected here (http_auth.headers),
 # not in the Lua script.
