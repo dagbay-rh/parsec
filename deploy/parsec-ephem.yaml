@@ -362,9 +362,9 @@ parameters:
   - description: Name of the K8s secret containing the BOP certauth proxy proof secret
     name: BOP_CERTAUTH_SECRET
     value: backoffice-proxy-config
-  - description: Name of the K8s secret containing BOP client-id and token
+  - description: Name of the K8s secret containing BOP client-id and token. This is separate from above secret because bop creates and manages this secret for us in its own vault dir.
     name: BOP_CLIENT_SECRET
-    value: parsec
+    value: backoffice-proxy-creds
   - description: Name of the K8s secret containing the forwarded client cert auth Lua script
     name: FORWARDED_CLIENT_CERT_AUTH_SECRET
     value: forwarded-client-cert-auth

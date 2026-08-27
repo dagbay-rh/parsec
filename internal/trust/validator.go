@@ -155,9 +155,9 @@ func (c *MTLSCredential) Type() CredentialType {
 	return CredentialTypeMTLS
 }
 
-// JSONCredential represents an unsigned JSON credential with a well-defined structure
-// This is used for pre-validated or self-asserted credentials where the structure
-// follows the Result format
+// JSONCredential represents unsigned JSON credential material. Validators
+// interpret the JSON shape: JSONValidator expects a Result document;
+// UnsignedJSONValidator expects an IETF unsigned JSON object ({"sub": "..."}).
 type JSONCredential struct {
 	// RawJSON is the raw JSON bytes
 	RawJSON []byte

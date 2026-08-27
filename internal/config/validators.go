@@ -32,7 +32,7 @@ func newStubStore(cfg TrustStoreConfig, httpRegistry *httpclient.Registry, trust
 
 	// Add validators
 	for _, validatorCfg := range cfg.Validators {
-		validator, err := newValidator(validatorCfg.Name, validatorCfg.ValidatorConfig, httpRegistry, trustObs)
+		validator, err := newValidator(validatorCfg.Name, validatorCfg.ValidatorConfig, cfg, httpRegistry, trustObs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create validator: %w", err)
 		}
@@ -68,7 +68,7 @@ func newFilteredStore(cfg TrustStoreConfig, httpRegistry *httpclient.Registry, t
 			return nil, fmt.Errorf("validator name is required for filtered store")
 		}
 
-		validator, err := newValidator(validatorCfg.Name, validatorCfg.ValidatorConfig, httpRegistry, trustObs)
+		validator, err := newValidator(validatorCfg.Name, validatorCfg.ValidatorConfig, cfg, httpRegistry, trustObs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create validator %s: %w", validatorCfg.Name, err)
 		}
@@ -80,18 +80,20 @@ func newFilteredStore(cfg TrustStoreConfig, httpRegistry *httpclient.Registry, t
 }
 
 // newValidator creates a validator from configuration
-func newValidator(name string, cfg ValidatorConfig, httpRegistry *httpclient.Registry, trustObs trust.TrustObserver) (trust.Validator, error) {
+func newValidator(name string, cfg ValidatorConfig, store TrustStoreConfig, httpRegistry *httpclient.Registry, trustObs trust.TrustObserver) (trust.Validator, error) {
 	switch cfg.Type {
 	case "jwt_validator":
 		return newJWTValidator(cfg, httpRegistry, trustObs)
 	case "json_validator":
 		return newJSONValidator(cfg)
+	case "unsigned_json_validator":
+		return newUnsignedJSONValidator(name, cfg, store)
 	case "lua_validator":
 		return newLuaValidator(name, cfg, httpRegistry, trustObs)
 	case "stub_validator":
 		return newStubValidator(cfg)
 	default:
-		return nil, fmt.Errorf("unknown validator type: %s (supported: jwt_validator, json_validator, lua_validator, stub_validator)", cfg.Type)
+		return nil, fmt.Errorf("unknown validator type: %s (supported: jwt_validator, json_validator, unsigned_json_validator, lua_validator, stub_validator)", cfg.Type)
 	}
 }
 
@@ -141,6 +143,19 @@ func newJSONValidator(cfg ValidatorConfig) (trust.Validator, error) {
 	return trust.NewJSONValidator(
 		trust.WithTrustDomain(cfg.TrustDomain),
 	), nil
+}
+
+func newUnsignedJSONValidator(name string, cfg ValidatorConfig, store TrustStoreConfig) (trust.Validator, error) {
+	if cfg.TrustDomain == "" {
+		return nil, fmt.Errorf("unsigned_json_validator requires trust_domain")
+	}
+
+	var opts []trust.UnsignedJSONValidatorOption
+	if cfg.Issuer != "" {
+		opts = append(opts, trust.WithUnsignedJSONIssuer(cfg.Issuer))
+	}
+
+	return trust.NewUnsignedJSONValidator(cfg.TrustDomain, opts...)
 }
 
 func newLuaValidator(name string, cfg ValidatorConfig, httpRegistry *httpclient.Registry, trustObs trust.TrustObserver) (trust.Validator, error) {
@@ -256,7 +271,7 @@ func newStubValidator(cfg ValidatorConfig) (trust.Validator, error) {
 	}
 
 	validator := trust.NewStubValidator(credTypes...)
-	if len(cfg.Claims) == 0 {
+	if len(cfg.Claims) == 0 && cfg.Issuer == "" && cfg.TrustDomain == "" {
 		return validator, nil
 	}
 
@@ -264,12 +279,16 @@ func newStubValidator(cfg ValidatorConfig) (trust.Validator, error) {
 	if trustDomain == "" {
 		trustDomain = "test-domain"
 	}
+	issuerURL := cfg.Issuer
+	if issuerURL == "" {
+		issuerURL = "https://test-issuer.example.com"
+	}
 
 	clk := clock.NewSystemClock()
 	stubClaims := claims.Claims(maps.Clone(cfg.Claims))
 	result := &trust.Result{
 		Subject:     "test-subject",
-		Issuer:      "https://test-issuer.example.com",
+		Issuer:      issuerURL,
 		TrustDomain: trustDomain,
 		Claims:      stubClaims,
 		ExpiresAt:   clk.Now().Add(time.Hour),

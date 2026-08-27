@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/cel-go/cel"
+	"cel.dev/cel-go/cel"
 
 	celhelpers "github.com/project-kessel/parsec/internal/cel"
 	"github.com/project-kessel/parsec/internal/claims"

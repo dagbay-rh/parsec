@@ -112,13 +112,7 @@ func (s *ExchangeServer) Exchange(ctx context.Context, req *parsecv1.ExchangeReq
 	}
 
 	// 5. Validate subject_token
-	// Create strongly-typed credential based on token type
-	// In production, we'd parse the token_type to determine the specific credential type
-	// For now, we'll treat all as bearer tokens
-	// TODO: Parse subject_token_type to determine specific credential type (JWT, OIDC, etc.)
-	cred := &trust.BearerCredential{
-		Token: req.SubjectToken,
-	}
+	cred := subjectCredential(req.SubjectToken, req.SubjectTokenType)
 
 	// Validate subject credential against filtered trust store
 	result, err := filteredStore.Validate(ctx, cred)

@@ -38,6 +38,31 @@ trust_store:
       refresh_interval: "15m"
       audiences: ["rhsm-api", "customer-portal", "api.console", ""]
 
+    # IETF unsigned JSON subject tokens (draft-ietf-oauth-transaction-tokens).
+    # Phase 1: no actor authentication; access control via network policy,
+    # on par with 3scale internal API.
+    - name: unsigned-json
+      type: unsigned_json_validator
+      trust_domain: "parsec.example.com"
+
+# Named HTTP clients. BOP credentials are injected here (http_auth.headers),
+# not in the Lua script.
+#
+# Prerequisites for live BOP:
+#   - PARSEC_BOP_CLIENT_ID, PARSEC_BOP_TOKEN
+#   - CA bundle mounted by deployment (ca_cert field below)
+http_clients:
+  - name: backoffice-proxy
+    timeout: "30s"
+    # ca_cert: provided by deployment secret; omit for hermetic/dev use.
+    http_auth:
+      type: headers
+      headers:
+        x-rh-clientid:
+          env: PARSEC_BOP_CLIENT_ID
+        x-rh-apitoken:
+          env: PARSEC_BOP_TOKEN
+
 # Data sources for token enrichment
 data_sources:
   - name: identity-policy
@@ -61,6 +86,18 @@ data_sources:
       type: in_memory
       ttl: 24h
       group_name: compliance-cache
+
+  - name: bop-user
+    type: lua
+    script_file: ./configs/scripts/bop_user.lua
+    http_client: backoffice-proxy
+    config:
+      bop_url: "https://backoffice-proxy.apps.ext.spoke.preprod.us-west-2.aws.paas.redhat.com"
+      users_path: "/v1/users"
+      bop_env: "stage"
+    caching:
+      type: in_memory
+      ttl: 5m
 
 # Token issuers
 #

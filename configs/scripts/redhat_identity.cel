@@ -22,6 +22,9 @@
 // Reserve fail() for true mapping/system failures (Internal), not policy.
 //
 // Supports:
+//   - Certificate auth tokens (issuer starts with "x509://")
+//   - Unsigned JSON subject tokens (issuer is "urn:ietf:params:oauth:token-type:unsigned_json",
+//     sub prefixed "redhat:user:sso:{user_id}", enriched via BOP)
 //   - Registry Auth tokens (issuer is "container-registry-authorizer(.stage).api.redhat.com")
 //   - Service Account tokens (preferred_username starts with "service-account-")
 //   - Console API tokens (scope contains "api.console")
@@ -53,6 +56,40 @@ has(subject.issuer) && subject.issuer.startsWith("x509://") ? {
   },
   "entitlements": {}
 } : (
+// Unsigned JSON path: IETF unsigned_json subject token, enriched via BOP.
+// Result.Subject keeps the namespaced id; BOP strips the prefix for lookup.
+has(subject.issuer) && subject.issuer == "urn:ietf:params:oauth:token-type:unsigned_json" ? (
+  has(subject.subject) && subject.subject.startsWith("redhat:user:sso:") ? (
+    datasource("bop-user") != null && !has(datasource("bop-user").error) ?
+    {
+      "identity": {
+        "account_number": has(datasource("bop-user").account_number) ? datasource("bop-user").account_number : "",
+        "org_id": safeToString(datasource("bop-user").org_id),
+        "type": "User",
+        "auth_type": "jwt-auth",
+        "user": {
+          "username": has(datasource("bop-user").username) ? datasource("bop-user").username : "",
+          "email": has(datasource("bop-user").email) ? datasource("bop-user").email : "",
+          "first_name": has(datasource("bop-user").first_name) ? datasource("bop-user").first_name : "",
+          "last_name": has(datasource("bop-user").last_name) ? datasource("bop-user").last_name : "",
+          "is_active": has(datasource("bop-user").is_active) ? datasource("bop-user").is_active : false,
+          "is_org_admin": has(datasource("bop-user").is_org_admin) ? datasource("bop-user").is_org_admin : false,
+          "is_internal": has(datasource("bop-user").is_internal) ? datasource("bop-user").is_internal : false,
+          "locale": has(datasource("bop-user").locale) ? datasource("bop-user").locale : "",
+          "user_id": safeToString(datasource("bop-user").user_id)
+        },
+        "internal": {
+          "org_id": safeToString(datasource("bop-user").org_id),
+          "cross_access": false
+        }
+      },
+      "entitlements": {}
+    }
+    : (datasource("bop-user") != null && has(datasource("bop-user").error)
+       ? invalidSubject(datasource("bop-user").error)
+       : fail("bop_enrichment_failed"))
+  ) : invalidSubject("unsupported unsigned_json subject namespace")
+) : (
 has(subject.issuer) && subject.issuer.contains("container-registry-authorizer") && subject.issuer.contains("api.redhat.com") ? {
   "identity": {
     "auth_type": "registry-auth",
@@ -227,6 +264,7 @@ isServiceAccountToken(subject.claims) ? {
       ) : unsupportedTokenType("unsupported_token_type")
     )
   )
+)
 )
 )
 )

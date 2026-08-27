@@ -47,6 +47,20 @@ func TestFormMarshaler_Unmarshal(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "unsigned_json subject token is URL-decoded JSON",
+			data: "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange" +
+				"&subject_token=%7B%22sub%22%3A%22redhat%3Auser%3Asso%3A123%22%7D" +
+				"&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aunsigned_json" +
+				"&requested_token_type=urn%3Aredhat%3Aparams%3Aoauth%3Atoken-type%3Arh-identity",
+			want: &parsecv1.ExchangeRequest{
+				GrantType:          "urn:ietf:params:oauth:grant-type:token-exchange",
+				SubjectToken:       `{"sub":"redhat:user:sso:123"}`,
+				SubjectTokenType:   "urn:ietf:params:oauth:token-type:unsigned_json",
+				RequestedTokenType: "urn:redhat:params:oauth:token-type:rh-identity",
+			},
+			wantErr: false,
+		},
+		{
 			name:    "invalid form data",
 			data:    "%ZZ%invalid",
 			want:    &parsecv1.ExchangeRequest{},
@@ -85,6 +99,9 @@ func TestFormMarshaler_Unmarshal(t *testing.T) {
 			}
 			if got.Scope != tt.want.Scope {
 				t.Errorf("Scope = %v, want %v", got.Scope, tt.want.Scope)
+			}
+			if got.RequestedTokenType != tt.want.RequestedTokenType {
+				t.Errorf("RequestedTokenType = %v, want %v", got.RequestedTokenType, tt.want.RequestedTokenType)
 			}
 		})
 	}

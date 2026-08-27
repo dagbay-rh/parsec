@@ -78,7 +78,20 @@ curl -X POST http://localhost:8080/v1/token \
   }'
 ```
 
-Both produce the same JSON response:
+**Unsigned JSON subject token** (`draft-ietf-oauth-transaction-tokens` §11.2.2). `subject_token` is the JSON object as a form string (percent-encode `{…}` in production clients):
+
+```bash
+curl -X POST http://localhost:8080/v1/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
+  -d 'subject_token={"sub":"redhat:user:sso:123"}' \
+  -d "subject_token_type=urn:ietf:params:oauth:token-type:unsigned_json" \
+  -d "requested_token_type=urn:redhat:params:oauth:token-type:rh-identity"
+```
+
+Meaning of `sub` is issuance policy (CEL), not the token type. Production must ForActor-filter the `unsigned_json_validator` so only trusted actors can use it.
+
+Both JWT and unsigned JSON produce a JSON response:
 ```json
 {
   "access_token": "...",

@@ -1,0 +1,123 @@
+# parsec Configuration - BOP Unsigned JSON Hermetic Testing
+#
+# For testing the BOP user enrichment flow (RHCLOUD-49474 + RHCLOUD-49475)
+# without external dependencies. All HTTP calls are stubbed with fixtures.
+#
+# Usage:
+#   ./bin/parsec serve --config ./configs/examples/parsec-bop-unsigned-json-hermetic.yaml
+#
+# Token exchange (form-encoded). Phase 1: no actor authentication required;
+# access control via network policy, on par with 3scale internal API.
+#   curl -s -X POST http://localhost:8080/v1/token \
+#     -H "Content-Type: application/x-www-form-urlencoded" \
+#     -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
+#     -d 'subject_token={"sub":"redhat:user:sso:98765"}' \
+#     -d "subject_token_type=urn:ietf:params:oauth:token-type:unsigned_json" \
+#     -d "requested_token_type=urn:redhat:params:oauth:token-type:rh-identity"
+#
+# Token exchange (JSON). subject_token is a string containing the JSON object:
+#   curl -s -X POST http://localhost:8080/v1/token \
+#     -H "Content-Type: application/json" \
+#     -d '{
+#       "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+#       "subject_token": "{\"sub\":\"redhat:user:sso:98765\"}",
+#       "subject_token_type": "urn:ietf:params:oauth:token-type:unsigned_json",
+#       "requested_token_type": "urn:redhat:params:oauth:token-type:rh-identity"
+#     }'
+#
+# Decode the x-rh-identity envelope (form response uses access_token;
+# JSON/gRPC responses use accessToken):
+#   curl -s ... | jq -r '.access_token // .accessToken' | base64 -d | jq .
+#
+# Captured live curl/grpcurl output:
+#   docs/unsigned-json-exchange-verification.md
+
+server:
+  grpc_port: 9090
+  http_port: 8080
+
+observability:
+  type: logging
+  log_level: debug
+  log_format: json
+
+trust_domain: "parsec.example.com"
+
+exchange_server:
+  claims_filter:
+    type: stub
+
+# Named HTTP client matching cert-auth: credentials on the client, not in Lua.
+# Static header values so hermetic tests do not require env vars. Fixtures
+# replace the transport, so ca_cert is omitted.
+http_clients:
+  - name: backoffice-proxy
+    timeout: "30s"
+    http_auth:
+      type: headers
+      headers:
+        x-rh-clientid: hermetic-test-client
+        x-rh-apitoken: hermetic-test-token
+
+# Fixtures replace real HTTP calls with canned BOP responses
+fixtures:
+  # BOP /v1/users fixture — returns a single user for any POST
+  - type: http_rule
+    request:
+      method: POST
+      url: "https://backoffice-proxy.example.com/v1/users.*"
+      url_type: pattern
+    response:
+      status: 200
+      headers:
+        Content-Type: application/json
+      body: |
+        [
+          {
+            "org_id": 54321,
+            "id": 98765,
+            "account_number": "540155",
+            "email": "testuser@redhat.com",
+            "first_name": "Test",
+            "last_name": "User",
+            "is_org_admin": true,
+            "is_internal": false,
+            "is_active": true,
+            "locale": "en_US",
+            "username": "testuser"
+          }
+        ]
+
+trust_store:
+  type: stub_store
+  validators:
+    - name: unsigned-json
+      type: unsigned_json_validator
+      trust_domain: "parsec.example.com"
+
+data_sources:
+  - name: identity-policy
+    type: static
+    data:
+      internal_idp_target: "https://sso.redhat.com/auth/realms/internal"
+      role_fallback_enabled: true
+
+  - name: bop-user
+    type: lua
+    script_file: ./configs/scripts/bop_user.lua
+    http_client: backoffice-proxy
+    config:
+      bop_url: "https://backoffice-proxy.example.com"
+      users_path: "/v1/users"
+      bop_env: "stage"
+    caching:
+      type: in_memory
+      ttl: 5m
+
+issuers:
+  - token_type: "urn:redhat:params:oauth:token-type:rh-identity"
+    type: unsigned
+    claim_mappers:
+      - type: cel
+        name: redhat-identity-mapper
+        script_file: ./configs/scripts/redhat_identity.cel
