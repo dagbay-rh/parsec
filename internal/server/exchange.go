@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
@@ -63,16 +62,9 @@ func (s *ExchangeServer) Exchange(ctx context.Context, req *parsecv1.ExchangeReq
 	// 3. Parse and filter client-provided request_context claims
 	var reqAttrs *request.RequestAttributes
 	if req.RequestContext != "" {
-		// Decode base64-encoded request_context (per transaction token spec)
-		decodedJSON, err := base64.StdEncoding.DecodeString(req.RequestContext)
-		if err != nil {
-			p.RequestContextParseFailed(err)
-			return nil, fmt.Errorf("failed to decode request_context base64: %w", err)
-		}
-
-		// Parse request_context JSON
+		// Parse request_context JSON (plain JSON per transaction token spec §11.1)
 		var requestContextClaims claims.Claims
-		if err := json.Unmarshal(decodedJSON, &requestContextClaims); err != nil {
+		if err := json.Unmarshal([]byte(req.RequestContext), &requestContextClaims); err != nil {
 			p.RequestContextParseFailed(err)
 			return nil, fmt.Errorf("failed to parse request_context JSON: %w", err)
 		}

@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -526,14 +525,11 @@ func TestExchangeServer_RequestContextFiltering(t *testing.T) {
 			"custom_claim": "custom_value"
 		}`
 
-		// Base64-encode the request context (per transaction token spec)
-		requestContextBase64 := base64.StdEncoding.EncodeToString([]byte(requestContextJSON))
-
 		req := &parsecv1.ExchangeRequest{
 			GrantType:      "urn:ietf:params:oauth:grant-type:token-exchange",
 			SubjectToken:   "test-token",
 			Audience:       "parsec.test",
-			RequestContext: requestContextBase64,
+			RequestContext: requestContextJSON,
 		}
 
 		resp, err := exchangeServer.Exchange(ctx, req)
@@ -596,14 +592,11 @@ func TestExchangeServer_RequestContextFiltering(t *testing.T) {
 			"custom_claim": "custom_value"
 		}`
 
-		// Base64-encode the request context (per transaction token spec)
-		requestContextBase64 := base64.StdEncoding.EncodeToString([]byte(requestContextJSON))
-
 		req := &parsecv1.ExchangeRequest{
 			GrantType:      "urn:ietf:params:oauth:grant-type:token-exchange",
 			SubjectToken:   "test-token",
 			Audience:       "parsec.test",
-			RequestContext: requestContextBase64,
+			RequestContext: requestContextJSON,
 		}
 
 		resp, err := exchangeServer.Exchange(ctx, req)
@@ -663,7 +656,7 @@ func TestExchangeServer_RequestContextFiltering(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid base64 in request_context returns error", func(t *testing.T) {
+	t.Run("invalid JSON in request_context returns error", func(t *testing.T) {
 		claimsFilterRegistry := NewStubClaimsFilterRegistry()
 		exchangeServer := NewExchangeServer(store, tokenService, claimsFilterRegistry, DefaultCredentialSources(), nil)
 
@@ -671,32 +664,7 @@ func TestExchangeServer_RequestContextFiltering(t *testing.T) {
 			GrantType:      "urn:ietf:params:oauth:grant-type:token-exchange",
 			SubjectToken:   "test-token",
 			Audience:       "parsec.test",
-			RequestContext: "not-valid-base64!@#$",
-		}
-
-		_, err := exchangeServer.Exchange(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for invalid base64, got nil")
-		}
-
-		if !strings.Contains(err.Error(), "failed to decode request_context base64") {
-			t.Errorf("expected 'failed to decode request_context base64' in error, got: %v", err)
-		}
-	})
-
-	t.Run("invalid JSON in decoded request_context returns error", func(t *testing.T) {
-		claimsFilterRegistry := NewStubClaimsFilterRegistry()
-		exchangeServer := NewExchangeServer(store, tokenService, claimsFilterRegistry, DefaultCredentialSources(), nil)
-
-		// Base64-encode invalid JSON
-		invalidJSON := "not valid json at all"
-		requestContextBase64 := base64.StdEncoding.EncodeToString([]byte(invalidJSON))
-
-		req := &parsecv1.ExchangeRequest{
-			GrantType:      "urn:ietf:params:oauth:grant-type:token-exchange",
-			SubjectToken:   "test-token",
-			Audience:       "parsec.test",
-			RequestContext: requestContextBase64,
+			RequestContext: "not valid json at all",
 		}
 
 		_, err := exchangeServer.Exchange(ctx, req)
@@ -841,7 +809,7 @@ func TestExchangeServer_Exchange_Observability(t *testing.T) {
 			GrantType:      "urn:ietf:params:oauth:grant-type:token-exchange",
 			SubjectToken:   "token",
 			Audience:       "parsec.test",
-			RequestContext: "not-valid-base64!@#$",
+			RequestContext: "not valid json at all",
 		}
 
 		_, err := exchangeServer.Exchange(ctx, req)
