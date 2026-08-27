@@ -218,6 +218,29 @@ func TestNewHTTPClientRegistry_HeadersAuth_NonStringHeaderErrors(t *testing.T) {
 	}
 }
 
+func TestResolveClientSpec_CACertSetsRootCAPath(t *testing.T) {
+	spec, err := resolveClientSpec(HTTPClientSpec{CACert: "/tmp/ca.pem"})
+	if err != nil {
+		t.Fatalf("resolveClientSpec() error: %v", err)
+	}
+	if spec.RootCAPath != "/tmp/ca.pem" {
+		t.Errorf("RootCAPath = %q, want /tmp/ca.pem", spec.RootCAPath)
+	}
+}
+
+func TestResolveClientSpec_AbsentCACertEmptyRootCAPath(t *testing.T) {
+	spec, err := resolveClientSpec(HTTPClientSpec{})
+	if err != nil {
+		t.Fatalf("resolveClientSpec() error: %v", err)
+	}
+	if spec.RootCAPath != "" {
+		t.Errorf("RootCAPath = %q, want empty when ca_cert is absent", spec.RootCAPath)
+	}
+	if spec.TransportMiddleware != nil {
+		t.Error("absent http_auth should leave TransportMiddleware nil")
+	}
+}
+
 func TestResolveConfigValues_EnvVar(t *testing.T) {
 	t.Setenv("TEST_SECRET", "resolved-secret")
 

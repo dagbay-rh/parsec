@@ -44,6 +44,110 @@ func TestBearerTransport_InjectsAuthHeader(t *testing.T) {
 	}
 }
 
+func TestHeadersTransport_InjectsHeaders(t *testing.T) {
+	var capturedClientID, capturedToken string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedClientID = r.Header.Get("x-rh-clientid")
+		capturedToken = r.Header.Get("x-rh-apitoken")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	ht := &HeadersTransport{
+		Headers: map[string]string{
+			"x-rh-clientid": "my-client-id",
+			"x-rh-apitoken": "my-api-token",
+		},
+		Base: http.DefaultTransport,
+	}
+
+	req, _ := http.NewRequest("GET", server.URL, nil)
+	resp, err := ht.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip failed: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if capturedClientID != "my-client-id" {
+		t.Errorf("x-rh-clientid = %q, want %q", capturedClientID, "my-client-id")
+	}
+	if capturedToken != "my-api-token" {
+		t.Errorf("x-rh-apitoken = %q, want %q", capturedToken, "my-api-token")
+	}
+}
+
+func TestHeadersTransport_DoesNotMutateOriginalRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	ht := &HeadersTransport{
+		Headers: map[string]string{"x-rh-apitoken": "secret"},
+		Base:    http.DefaultTransport,
+	}
+
+	req, _ := http.NewRequest("GET", server.URL, nil)
+	req.Header.Set("X-Original", "keep-me")
+
+	resp, err := ht.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip failed: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	if req.Header.Get("x-rh-apitoken") != "" {
+		t.Error("original request should not have injected headers")
+	}
+	if req.Header.Get("X-Original") != "keep-me" {
+		t.Error("original request headers should be preserved")
+	}
+}
+
+func TestRegistry_RootCAPathLoadsCA(t *testing.T) {
+	certDir := t.TempDir()
+	certPath, _ := generateSelfSignedCert(t, certDir)
+
+	r := NewRegistry(nil)
+	client, err := r.Build(ClientSpec{
+		Timeout:    5 * time.Second,
+		RootCAPath: certPath,
+	})
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("Transport type = %T, want *http.Transport", client.Transport)
+	}
+	if transport.TLSClientConfig == nil || transport.TLSClientConfig.RootCAs == nil {
+		t.Fatal("expected TLSClientConfig.RootCAs to be set")
+	}
+}
+
+func TestRegistry_RootCAPathMissingFileErrors(t *testing.T) {
+	r := NewRegistry(nil)
+	_, err := r.Build(ClientSpec{
+		Timeout:    5 * time.Second,
+		RootCAPath: filepath.Join(t.TempDir(), "does-not-exist.pem"),
+	})
+	if err == nil {
+		t.Fatal("expected error for missing CA file")
+	}
+}
+
+func TestRegistry_EmptyRootCAPathUsesDefaultTransport(t *testing.T) {
+	r := NewRegistry(nil)
+	client, err := r.Build(ClientSpec{Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+	if client.Transport != http.DefaultTransport {
+		t.Error("empty RootCAPath should share http.DefaultTransport")
+	}
+}
+
 func TestBearerTransport_DoesNotMutateOriginalRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -274,65 +378,6 @@ func TestFileCertSource_InvalidPathErrors(t *testing.T) {
 	_, err := cs.Certificate()
 	if err == nil {
 		t.Fatal("expected error for invalid paths")
-	}
-}
-
-func TestHeadersTransport_InjectsHeaders(t *testing.T) {
-	var capturedHeaders http.Header
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedHeaders = r.Header.Clone()
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	ht := &HeadersTransport{
-		Headers: map[string]string{
-			"X-Custom-Id":    "my-client",
-			"X-Custom-Token": "my-token",
-		},
-		Base: http.DefaultTransport,
-	}
-
-	req, _ := http.NewRequest("GET", server.URL, nil)
-	resp, err := ht.RoundTrip(req)
-	if err != nil {
-		t.Fatalf("RoundTrip failed: %v", err)
-	}
-	_ = resp.Body.Close()
-
-	if capturedHeaders.Get("X-Custom-Id") != "my-client" {
-		t.Errorf("X-Custom-Id = %q, want %q", capturedHeaders.Get("X-Custom-Id"), "my-client")
-	}
-	if capturedHeaders.Get("X-Custom-Token") != "my-token" {
-		t.Errorf("X-Custom-Token = %q, want %q", capturedHeaders.Get("X-Custom-Token"), "my-token")
-	}
-}
-
-func TestHeadersTransport_DoesNotMutateOriginalRequest(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	ht := &HeadersTransport{
-		Headers: map[string]string{"X-Injected": "secret"},
-		Base:    http.DefaultTransport,
-	}
-
-	req, _ := http.NewRequest("GET", server.URL, nil)
-	req.Header.Set("X-Original", "keep-me")
-
-	resp, err := ht.RoundTrip(req)
-	if err != nil {
-		t.Fatalf("RoundTrip failed: %v", err)
-	}
-	_ = resp.Body.Close()
-
-	if req.Header.Get("X-Injected") != "" {
-		t.Error("original request should not have X-Injected header")
-	}
-	if req.Header.Get("X-Original") != "keep-me" {
-		t.Error("original request headers should be preserved")
 	}
 }
 

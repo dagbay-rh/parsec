@@ -102,7 +102,7 @@ func startTestServer(t *testing.T, cfg Config) *testEnv {
 func setupStubDependencies() (trust.Store, *service.TokenService, service.Registry) {
 	trustStore := trust.NewStubStore()
 
-	stubValidator := trust.NewStubValidator(trust.CredentialTypeBearer)
+	stubValidator := trust.NewStubValidator(trust.CredentialTypeBearer, trust.CredentialTypeJWT)
 	trustStore.AddValidator(stubValidator)
 
 	dataSourceRegistry := service.NewDataSourceRegistry()
