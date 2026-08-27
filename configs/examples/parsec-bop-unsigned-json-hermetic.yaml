@@ -102,7 +102,7 @@ data_sources:
       internal_idp_target: "https://sso.redhat.com/auth/realms/internal"
       role_fallback_enabled: true
 
-  - name: bop
+  - name: bop-user
     type: lua
     script_file: ./configs/scripts/bop_user.lua
     http_client: backoffice-proxy

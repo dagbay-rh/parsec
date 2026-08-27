@@ -69,7 +69,7 @@ func TestBOPUser_HappyPath(t *testing.T) {
 	})
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:         "bop",
+		Name:         "bop-user",
 		Script:       script,
 		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
 		HTTPClient:   bopFixtureClient(provider),
@@ -142,7 +142,7 @@ func TestBOPUser_EmptyUsername(t *testing.T) {
 	script := loadScript(t, "bop_user.lua")
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:         "bop",
+		Name:         "bop-user",
 		Script:       script,
 		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
 	})
@@ -171,7 +171,7 @@ func TestBOPUser_Non200Response(t *testing.T) {
 	})
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:         "bop",
+		Name:         "bop-user",
 		Script:       script,
 		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
 		HTTPClient:   bopFixtureClient(provider),
@@ -205,7 +205,7 @@ func TestBOPUser_EmptyArray(t *testing.T) {
 	})
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:         "bop",
+		Name:         "bop-user",
 		Script:       script,
 		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
 		HTTPClient:   bopFixtureClient(provider),
@@ -242,7 +242,7 @@ func TestBOPUser_MultipleUsers(t *testing.T) {
 	})
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:         "bop",
+		Name:         "bop-user",
 		Script:       script,
 		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
 		HTTPClient:   bopFixtureClient(provider),
@@ -276,7 +276,7 @@ func TestBOPUser_MissingOrgId(t *testing.T) {
 	})
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:         "bop",
+		Name:         "bop-user",
 		Script:       script,
 		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
 		HTTPClient:   bopFixtureClient(provider),
@@ -313,7 +313,7 @@ func TestBOPUser_MissingId(t *testing.T) {
 	})
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:         "bop",
+		Name:         "bop-user",
 		Script:       script,
 		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
 		HTTPClient:   bopFixtureClient(provider),
@@ -363,7 +363,7 @@ func TestBOPUser_VerifiesRequestHeaders(t *testing.T) {
 	})
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:   "bop",
+		Name:   "bop-user",
 		Script: script,
 		ConfigSource: luaservices.NewMapConfigSource(map[string]any{
 			"bop_url":    "https://backoffice-proxy.example.com",
@@ -447,7 +447,7 @@ func TestBOPUser_HTTPClientInjectsAuthHeaders(t *testing.T) {
 	}
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:         "bop",
+		Name:         "bop-user",
 		Script:       script,
 		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
 		HTTPClient:   client,
@@ -492,7 +492,7 @@ func TestBOPUser_StripsSSOPrefix(t *testing.T) {
 	})
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:         "bop",
+		Name:         "bop-user",
 		Script:       script,
 		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
 		HTTPClient:   bopFixtureClient(provider),
@@ -530,7 +530,7 @@ func TestBOPUser_EmptyPrefixRemainder(t *testing.T) {
 	script := loadScript(t, "bop_user.lua")
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:         "bop",
+		Name:         "bop-user",
 		Script:       script,
 		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
 	})
@@ -566,7 +566,7 @@ func TestBOPUser_CacheKey(t *testing.T) {
 	})
 
 	ds, err := datasource.NewCacheableLuaDataSource(datasource.CacheableLuaDataSourceConfig{
-		Name:         "bop",
+		Name:         "bop-user",
 		Script:       script,
 		ConfigSource: luaservices.NewMapConfigSource(bopLuaConfig()),
 		HTTPClient:   bopFixtureClient(provider),

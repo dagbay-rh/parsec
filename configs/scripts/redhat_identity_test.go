@@ -25,7 +25,7 @@ func TestRedHatIdentityCEL_UnsignedJSONSSO(t *testing.T) {
 		t.Fatalf("NewCELMapper: %v", err)
 	}
 
-	bop, err := datasource.NewStaticDataSource("bop", map[string]any{
+	bop, err := datasource.NewStaticDataSource("bop-user", map[string]any{
 		"account_number": "540155",
 		"org_id":         "54321",
 		"username":       "testuser",
@@ -127,7 +127,7 @@ func TestRedHatIdentityCEL_UnsignedJSONUserNotFound(t *testing.T) {
 		t.Fatalf("NewCELMapper: %v", err)
 	}
 
-	bop, err := datasource.NewStaticDataSource("bop", map[string]any{
+	bop, err := datasource.NewStaticDataSource("bop-user", map[string]any{
 		"error": "user_not_found",
 	})
 	if err != nil {
@@ -171,7 +171,7 @@ func TestRedHatIdentityCEL_UnsignedJSONBOPError(t *testing.T) {
 		t.Fatalf("NewCELMapper: %v", err)
 	}
 
-	// No "bop" datasource registered — simulates BOP infrastructure failure
+	// No "bop-user" datasource registered — simulates BOP infrastructure failure
 	registry := service.NewDataSourceRegistry()
 
 	subject := &trust.Result{

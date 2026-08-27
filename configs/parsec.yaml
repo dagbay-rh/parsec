@@ -72,7 +72,7 @@ data_sources:
       role_fallback_enabled: true
       enforce_idp_auth: false
 
-  - name: bop
+  - name: bop-user
     type: lua
     script_file: ./configs/scripts/bop_user.lua
     http_client: backoffice-proxy
