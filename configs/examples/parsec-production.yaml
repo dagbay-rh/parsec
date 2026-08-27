@@ -62,13 +62,14 @@ data_sources:
   # Export compliance check (RHCLOUD-49359).
   # Opt-out via Envoy context_extensions.export_compliance=false.
   # Default (absent/"true"): check on, consistent with auth_sso_jwt.
-  # Fail-open: any error allows through. Override URL via namespace var
-  # (RHCLOUD-50414), e.g. PARSEC_DATA_SOURCES__1__CONFIG__COMPLIANCE_API
+  # Fail-open: any error allows through. URL from namespace var
+  # (RHCLOUD-50414): PARSEC_COMPLIANCE_API.
   - name: export_compliance
     type: lua
     script_file: /etc/parsec/scripts/export_compliance.lua
     config:
-      compliance_api: "inject-via-env-var"
+      compliance_api:
+        env: "PARSEC_COMPLIANCE_API"
     http:
       timeout: 5s
     caching:
