@@ -6,10 +6,12 @@
   },
   "tags": [
     {
-      "name": "JWKSService"
+      "name": "JWKSService",
+      "description": "JWKS provides JSON Web Key Set discovery per RFC 7517.\nhttps://www.rfc-editor.org/rfc/rfc7517.html"
     },
     {
-      "name": "TokenExchangeService"
+      "name": "TokenExchangeService",
+      "description": "TokenExchange implements RFC 8693 OAuth 2.0 Token Exchange.\nhttps://datatracker.ietf.org/doc/html/rfc8693"
     }
   ],
   "consumes": [
@@ -169,7 +171,7 @@
         },
         "requestContext": {
           "type": "string",
-          "description": "OPTIONAL. Base64-encoded JSON object containing request context claims\nthat the client wants to include in the issued token (per transaction\ntoken spec). These claims will be filtered based on the actor's permissions."
+          "description": "OPTIONAL. Plain JSON object containing request context claims\nthat the client wants to include in the issued token\n(draft-ietf-oauth-transaction-tokens-11 §11.1). These claims will be\nfiltered based on the actor's permissions."
         }
       },
       "title": "ExchangeRequest follows RFC 8693 Section 2.1"
