@@ -63,18 +63,12 @@ func (s *ExchangeServer) Exchange(ctx context.Context, req *parsecv1.ExchangeReq
 	// 3. Parse and filter client-provided request_context claims
 	var reqAttrs *request.RequestAttributes
 	if req.RequestContext != "" {
-		// Decode base64-encoded request_context (per transaction token spec)
-		decodedJSON, err := base64.StdEncoding.DecodeString(req.RequestContext)
+		// Parse request_context JSON (plain JSON per transaction token spec §11.1).
+		// Legacy parsec clients may still send base64-encoded JSON; parseRequestContextClaims accepts both.
+		requestContextClaims, err := parseRequestContextClaims(req.RequestContext)
 		if err != nil {
 			p.RequestContextParseFailed(err)
-			return nil, fmt.Errorf("failed to decode request_context base64: %w", err)
-		}
-
-		// Parse request_context JSON
-		var requestContextClaims claims.Claims
-		if err := json.Unmarshal(decodedJSON, &requestContextClaims); err != nil {
-			p.RequestContextParseFailed(err)
-			return nil, fmt.Errorf("failed to parse request_context JSON: %w", err)
+			return nil, err
 		}
 
 		// Get the claims filter for this actor
@@ -168,4 +162,43 @@ func (s *ExchangeServer) Exchange(ctx context.Context, req *parsecv1.ExchangeReq
 		ExpiresIn:       int64(r.Token.ExpiresAt.Sub(r.Token.IssuedAt).Seconds()),
 		Scope:           req.Scope,
 	}, nil
+}
+
+// parseRequestContextClaims parses request_context claims.
+//
+// Supported formats (in order):
+//  1. Plain JSON (draft-ietf-oauth-transaction-tokens-11 §11.1)
+//  2. Legacy base64-wrapped JSON: standard (padded/unpadded) and base64url (padded/unpadded),
+//     for parsec clients and draft-02–06 transaction-token encodings.
+func parseRequestContextClaims(raw string) (claims.Claims, error) {
+	var requestContextClaims claims.Claims
+	if err := json.Unmarshal([]byte(raw), &requestContextClaims); err == nil {
+		return requestContextClaims, nil
+	}
+
+	decodedJSON, err := decodeLegacyRequestContext(raw)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse request_context JSON: %w", err)
+	}
+	if err := json.Unmarshal(decodedJSON, &requestContextClaims); err != nil {
+		return nil, fmt.Errorf("failed to parse request_context JSON: %w", err)
+	}
+	return requestContextClaims, nil
+}
+
+var legacyRequestContextEncodings = []*base64.Encoding{
+	base64.StdEncoding,
+	base64.RawStdEncoding,
+	base64.RawURLEncoding,
+	base64.URLEncoding,
+}
+
+func decodeLegacyRequestContext(raw string) ([]byte, error) {
+	for _, enc := range legacyRequestContextEncodings {
+		decoded, err := enc.DecodeString(raw)
+		if err == nil {
+			return decoded, nil
+		}
+	}
+	return nil, fmt.Errorf("request_context is neither valid JSON nor a supported legacy base64 encoding")
 }

@@ -469,6 +469,66 @@ func TestExchangeServer_ActorPassedToTokenIssuance(t *testing.T) {
 	})
 }
 
+func TestParseRequestContextClaims(t *testing.T) {
+	// Length not divisible by 3 (padding) and bytes that encode to +/ in standard base64.
+	jsonPayload := `{"method":"GET","path":"/api/users","m":"???"}`
+
+	stdPadded := base64.StdEncoding.EncodeToString([]byte(jsonPayload))
+	stdUnpadded := base64.RawStdEncoding.EncodeToString([]byte(jsonPayload))
+	urlPadded := base64.URLEncoding.EncodeToString([]byte(jsonPayload))
+	urlUnpadded := base64.RawURLEncoding.EncodeToString([]byte(jsonPayload))
+
+	for _, tc := range []struct {
+		name string
+		a, b string
+	}{
+		{name: "padded vs unpadded standard", a: stdPadded, b: stdUnpadded},
+		{name: "standard vs base64url", a: stdPadded, b: urlPadded},
+		{name: "padded vs unpadded base64url", a: urlPadded, b: urlUnpadded},
+	} {
+		if tc.a == tc.b {
+			t.Fatalf("%s: encodings must differ (%q)", tc.name, tc.a)
+		}
+	}
+	if !strings.ContainsAny(stdPadded, "+/") {
+		t.Fatalf("standard encoding must include + or / to exercise alphabet differences: %q", stdPadded)
+	}
+
+	tests := []struct {
+		name    string
+		raw     string
+		wantErr bool
+	}{
+		{name: "plain JSON", raw: jsonPayload},
+		{name: "standard base64 padded", raw: stdPadded},
+		{name: "standard base64 unpadded", raw: stdUnpadded},
+		{name: "base64url unpadded", raw: urlUnpadded},
+		{name: "base64url padded", raw: urlPadded},
+		{name: "invalid", raw: "not valid json at all", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseRequestContextClaims(tt.raw)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got.GetString("method") != "GET" {
+				t.Errorf("method = %q, want GET", got.GetString("method"))
+			}
+			if got.GetString("path") != "/api/users" {
+				t.Errorf("path = %q, want /api/users", got.GetString("path"))
+			}
+		})
+	}
+}
+
 func TestExchangeServer_RequestContextFiltering(t *testing.T) {
 	ctx := context.Background()
 
@@ -526,14 +586,11 @@ func TestExchangeServer_RequestContextFiltering(t *testing.T) {
 			"custom_claim": "custom_value"
 		}`
 
-		// Base64-encode the request context (per transaction token spec)
-		requestContextBase64 := base64.StdEncoding.EncodeToString([]byte(requestContextJSON))
-
 		req := &parsecv1.ExchangeRequest{
 			GrantType:      "urn:ietf:params:oauth:grant-type:token-exchange",
 			SubjectToken:   "test-token",
 			Audience:       "parsec.test",
-			RequestContext: requestContextBase64,
+			RequestContext: requestContextJSON,
 		}
 
 		resp, err := exchangeServer.Exchange(ctx, req)
@@ -596,14 +653,11 @@ func TestExchangeServer_RequestContextFiltering(t *testing.T) {
 			"custom_claim": "custom_value"
 		}`
 
-		// Base64-encode the request context (per transaction token spec)
-		requestContextBase64 := base64.StdEncoding.EncodeToString([]byte(requestContextJSON))
-
 		req := &parsecv1.ExchangeRequest{
 			GrantType:      "urn:ietf:params:oauth:grant-type:token-exchange",
 			SubjectToken:   "test-token",
 			Audience:       "parsec.test",
-			RequestContext: requestContextBase64,
+			RequestContext: requestContextJSON,
 		}
 
 		resp, err := exchangeServer.Exchange(ctx, req)
@@ -663,40 +717,39 @@ func TestExchangeServer_RequestContextFiltering(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid base64 in request_context returns error", func(t *testing.T) {
+	t.Run("legacy base64-encoded request_context is accepted", func(t *testing.T) {
 		claimsFilterRegistry := NewStubClaimsFilterRegistry()
 		exchangeServer := NewExchangeServer(store, tokenService, claimsFilterRegistry, DefaultCredentialSources(), nil)
 
-		req := &parsecv1.ExchangeRequest{
-			GrantType:      "urn:ietf:params:oauth:grant-type:token-exchange",
-			SubjectToken:   "test-token",
-			Audience:       "parsec.test",
-			RequestContext: "not-valid-base64!@#$",
-		}
-
-		_, err := exchangeServer.Exchange(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for invalid base64, got nil")
-		}
-
-		if !strings.Contains(err.Error(), "failed to decode request_context base64") {
-			t.Errorf("expected 'failed to decode request_context base64' in error, got: %v", err)
-		}
-	})
-
-	t.Run("invalid JSON in decoded request_context returns error", func(t *testing.T) {
-		claimsFilterRegistry := NewStubClaimsFilterRegistry()
-		exchangeServer := NewExchangeServer(store, tokenService, claimsFilterRegistry, DefaultCredentialSources(), nil)
-
-		// Base64-encode invalid JSON
-		invalidJSON := "not valid json at all"
-		requestContextBase64 := base64.StdEncoding.EncodeToString([]byte(invalidJSON))
+		requestContextJSON := `{"method":"GET","path":"/api/users"}`
+		requestContextBase64 := base64.StdEncoding.EncodeToString([]byte(requestContextJSON))
 
 		req := &parsecv1.ExchangeRequest{
 			GrantType:      "urn:ietf:params:oauth:grant-type:token-exchange",
 			SubjectToken:   "test-token",
 			Audience:       "parsec.test",
 			RequestContext: requestContextBase64,
+		}
+
+		resp, err := exchangeServer.Exchange(ctx, req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if resp.AccessToken == "" {
+			t.Error("expected access token, got empty string")
+		}
+	})
+
+	t.Run("invalid JSON in request_context returns error", func(t *testing.T) {
+		claimsFilterRegistry := NewStubClaimsFilterRegistry()
+		exchangeServer := NewExchangeServer(store, tokenService, claimsFilterRegistry, DefaultCredentialSources(), nil)
+
+		req := &parsecv1.ExchangeRequest{
+			GrantType:      "urn:ietf:params:oauth:grant-type:token-exchange",
+			SubjectToken:   "test-token",
+			Audience:       "parsec.test",
+			RequestContext: "not valid json at all",
 		}
 
 		_, err := exchangeServer.Exchange(ctx, req)
@@ -841,7 +894,7 @@ func TestExchangeServer_Exchange_Observability(t *testing.T) {
 			GrantType:      "urn:ietf:params:oauth:grant-type:token-exchange",
 			SubjectToken:   "token",
 			Audience:       "parsec.test",
-			RequestContext: "not-valid-base64!@#$",
+			RequestContext: "not valid json at all",
 		}
 
 		_, err := exchangeServer.Exchange(ctx, req)

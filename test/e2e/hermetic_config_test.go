@@ -342,7 +342,6 @@ end`,
 			"ip":     "192.168.1.100",
 		}
 		requestContextJSON, _ := json.Marshal(requestContextClaims)
-		requestContextB64 := base64.StdEncoding.EncodeToString(requestContextJSON)
 
 		ctx := metadata.NewIncomingContext(
 			context.Background(),
@@ -356,7 +355,7 @@ end`,
 			RequestedTokenType: string(service.TokenTypeTransactionToken),
 			SubjectToken:       subjectToken,
 			SubjectTokenType:   "urn:ietf:params:oauth:token-type:jwt",
-			RequestContext:     requestContextB64,
+			RequestContext:     string(requestContextJSON),
 		})
 
 		// THEN: Exchange should succeed

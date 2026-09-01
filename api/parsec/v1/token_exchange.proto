@@ -56,9 +56,10 @@ message ExchangeRequest {
   // actor_token parameter.
   string actor_token_type = 9;
 
-  // OPTIONAL. Base64-encoded JSON object containing request context claims
-  // that the client wants to include in the issued token (per transaction
-  // token spec). These claims will be filtered based on the actor's permissions.
+  // OPTIONAL. Plain JSON object containing request context claims
+  // that the client wants to include in the issued token
+  // (draft-ietf-oauth-transaction-tokens-11 §11.1). These claims will be
+  // filtered based on the actor's permissions.
   string request_context = 10;
 }
 
