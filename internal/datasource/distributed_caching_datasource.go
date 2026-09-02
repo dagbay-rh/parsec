@@ -3,6 +3,7 @@ package datasource
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,6 +11,10 @@ import (
 	"github.com/project-kessel/parsec/internal/clock"
 	"github.com/project-kessel/parsec/internal/service"
 )
+
+// errUncachedNil is returned from the groupcache fill path when Fetch yields
+// (nil, nil). Groupcache must not store that; callers map it back to a nil result.
+var errUncachedNil = errors.New("data source returned nil result")
 
 // DistributedCachingDataSource wraps a cacheable data source with groupcache
 // for distributed caching across multiple servers
@@ -75,7 +80,7 @@ func NewDistributedCachingDataSource(source service.DataSource, config Distribut
 				return nil, fmt.Errorf("data source fetch failed: %w", err)
 			}
 			if result == nil {
-				return nil, fmt.Errorf("data source returned nil result")
+				return nil, errUncachedNil
 			}
 			return &cachedEntry{
 				Data:        result.Data,
@@ -120,10 +125,16 @@ func (c *DistributedCachingDataSource) Name() string {
 
 // Fetch checks the distributed cache first, then fetches from source on miss
 func (c *DistributedCachingDataSource) Fetch(ctx context.Context, input *service.DataSourceInput) (*service.DataSourceResult, error) {
-	maskedInput := c.cacheable.CacheKey(input)
+	maskedInput, useCache := c.cacheable.CacheKey(input)
+	if !useCache {
+		return c.source.Fetch(ctx, input)
+	}
 
 	entry, err := c.adapter.Get(ctx, &maskedInput)
 	if err != nil {
+		if errors.Is(err, errUncachedNil) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("groupcache fetch failed: %w", err)
 	}
 

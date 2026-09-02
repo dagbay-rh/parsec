@@ -206,6 +206,7 @@ This function:
 - Returns a modified input with only fields that affect the result
 - Determines what gets cached and the cache key
 - Must include all data needed for `fetch` to work
+- Return `nil` to skip the cache for that request (no read, no write)
 
 ## Available Services
 
@@ -418,6 +419,15 @@ end
 6. **Performance**: Minimize the number of HTTP calls per fetch
 7. **Security**: Store sensitive values (API keys) in config, not in scripts
 8. **Testing**: Test your Lua scripts thoroughly before deployment
+
+## Shipped scripts
+
+[`configs/scripts/export_compliance.lua`](../../configs/scripts/export_compliance.lua)
+builds a minimal `x-rh-identity` and GETs a configured compliance URL. Wire it
+from CEL with `datasource("export_compliance")`, gated on
+`request.additional.context_extensions.export_compliance` (opt-out: skip only
+when the value is `"false"`; absent key means on). `datasource()` is null when
+the source is not registered, so missing config is fail-safe.
 
 ## Integration with Caching
 

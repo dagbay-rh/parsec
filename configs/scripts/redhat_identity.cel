@@ -3,6 +3,18 @@
 // Transforms JWT claims into a complete x-rh-identity envelope:
 //   { "identity": { ... }, "entitlements": {} }
 //
+// Export Compliance (RHCLOUD-49359): for User jwt-auth branches, unless
+// request.additional.context_extensions.export_compliance == "false",
+// call datasource("export_compliance") and deny with HTTP 403 if result_code
+// matches a configured error code (fail-open: any error allows through).
+// Schema default is true (same as auth_sso_jwt). Absent key → check on.
+// Missing DS → datasource() is null → skip (fail-safe until app-interface
+// registers the source). The check runs BEFORE any cross-account identity
+// swap (AC9). cert-auth, registry-auth, and ServiceAccount are exempt (AC1).
+//
+// Compliance error codes (AC10):
+//   "ERROR_T5", "ERROR_EXPORT_CONTROL", "ERROR_OFAC"
+//
 // Policy guards (3scale parity) use Layer B CEL aborts:
 //   - impersonated tokens → invalidSubject() → OAuth invalid_request
 //   - console API tokens missing idp → invalidSubject() → OAuth invalid_request
@@ -123,7 +135,12 @@ isServiceAccountToken(subject.claims) ? {
   // Policy: require IdP claim for console API tokens (3scale APICAST_ENFORCE_IDP_AUTH)
   datasource("identity-policy").enforce_idp_auth && has(subject.claims) && isConsoleApiToken(subject.claims) && !has(subject.claims.idp)
     ? invalidSubject("claim 'idp' is required")
-  : has(subject.claims) && isConsoleApiToken(subject.claims) ? {
+  : has(subject.claims) && isConsoleApiToken(subject.claims) ? (
+    !(has(request.additional.context_extensions) && "export_compliance" in request.additional.context_extensions && request.additional.context_extensions.export_compliance == "false")
+    && datasource("export_compliance") != null
+    && datasource("export_compliance").result_code in ["ERROR_T5", "ERROR_EXPORT_CONTROL", "ERROR_OFAC"]
+      ? accessDenied("export compliance check failed")
+      : {
     "identity": {
       "auth_type": "jwt-auth",
       "account_number": has(subject.claims.organization) && has(subject.claims.organization.account_number) ?
@@ -153,8 +170,14 @@ isServiceAccountToken(subject.claims) ? {
       }
     },
     "entitlements": {}
-  } : (
-    has(subject.audience) && "rhsm-api" in subject.audience ? {
+  }
+  ) : (
+    has(subject.audience) && "rhsm-api" in subject.audience ? (
+      !(has(request.additional.context_extensions) && "export_compliance" in request.additional.context_extensions && request.additional.context_extensions.export_compliance == "false")
+      && datasource("export_compliance") != null
+      && datasource("export_compliance").result_code in ["ERROR_T5", "ERROR_EXPORT_CONTROL", "ERROR_OFAC"]
+        ? accessDenied("export compliance check failed")
+        : {
       "identity": {
         "auth_type": "jwt-auth",
         "account_number": has(subject.claims.account_id) ? safeToString(subject.claims.account_id) : "",
@@ -192,8 +215,14 @@ isServiceAccountToken(subject.claims) ? {
         }
       },
       "entitlements": {}
-    } : (
-      has(subject.audience) && "customer-portal" in subject.audience ? {
+    }
+    ) : (
+      has(subject.audience) && "customer-portal" in subject.audience ? (
+        !(has(request.additional.context_extensions) && "export_compliance" in request.additional.context_extensions && request.additional.context_extensions.export_compliance == "false")
+        && datasource("export_compliance") != null
+        && datasource("export_compliance").result_code in ["ERROR_T5", "ERROR_EXPORT_CONTROL", "ERROR_OFAC"]
+          ? accessDenied("export compliance check failed")
+          : {
         "identity": {
           "auth_type": "jwt-auth",
           "account_number": has(subject.claims.account_number) ? safeToString(subject.claims.account_number) :
@@ -231,7 +260,8 @@ isServiceAccountToken(subject.claims) ? {
           }
         },
         "entitlements": {}
-      } : unsupportedTokenType("unsupported_token_type")
+      }
+      ) : unsupportedTokenType("unsupported_token_type")
     )
   )
 )

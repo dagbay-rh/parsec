@@ -473,7 +473,10 @@ end
 	}
 
 	// Test cache key function
-	maskedInput := ds.CacheKey(input)
+	maskedInput, useCache := ds.CacheKey(input)
+	if !useCache {
+		t.Fatal("expected cacheable key")
+	}
 	if maskedInput.Subject.Subject != "alice" {
 		t.Errorf("cache key subject = %q, want %q", maskedInput.Subject.Subject, "alice")
 	}

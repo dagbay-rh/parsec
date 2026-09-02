@@ -91,7 +91,7 @@ func newLoader(configPath string, flags *pflag.FlagSet) (*Loader, error) {
 		TransformFunc: func(k, v string) (string, any) {
 			return envTransform(k), v
 		},
-	}), nil); err != nil {
+	}), nil, koanf.WithMergeFunc(mergeEnvOverrides)); err != nil {
 		return nil, fmt.Errorf("failed to load environment variables: %w", err)
 	}
 

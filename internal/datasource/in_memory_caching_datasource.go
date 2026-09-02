@@ -85,8 +85,10 @@ func (c *InMemoryCachingDataSource) Fetch(ctx context.Context, input *service.Da
 	ctx, p := c.observer.CacheFetchStarted(ctx, c.source.Name())
 	defer p.End()
 
-	// Get the cache key (which is the masked input with only relevant fields)
-	maskedInput := c.cacheable.CacheKey(input)
+	maskedInput, useCache := c.cacheable.CacheKey(input)
+	if !useCache {
+		return c.source.Fetch(ctx, input)
+	}
 
 	// Serialize the masked input into a cache key string
 	cacheKeyStr, err := serializeInput(&maskedInput)

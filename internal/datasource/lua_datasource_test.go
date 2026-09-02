@@ -476,7 +476,10 @@ end
 		},
 	}
 
-	maskedInput := ds.CacheKey(input)
+	maskedInput, useCache := ds.CacheKey(input)
+	if !useCache {
+		t.Fatal("expected cacheable key")
+	}
 
 	// Check that only subject.subject is preserved
 	if maskedInput.Subject == nil {
@@ -672,7 +675,10 @@ end
 	}
 
 	// Test CacheKey
-	maskedInput := ds.CacheKey(input)
+	maskedInput, useCache := ds.CacheKey(input)
+	if !useCache {
+		t.Fatal("expected cacheable key")
+	}
 	if maskedInput.Subject.Subject != "alice" {
 		t.Errorf("masked subject = %q, want %q", maskedInput.Subject.Subject, "alice")
 	}
@@ -700,7 +706,10 @@ end
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	result := ds.CacheKey(nil)
+	result, useCache := ds.CacheKey(nil)
+	if useCache {
+		t.Fatal("nil input must skip cache")
+	}
 
 	// Nil input should return a zero-value DataSourceInput, not panic
 	if result.Subject != nil {
@@ -711,6 +720,33 @@ end
 	}
 	if result.RequestAttributes != nil {
 		t.Errorf("expected nil request_attributes, got %+v", result.RequestAttributes)
+	}
+}
+
+func TestCacheableLuaDataSource_CacheKey_LuaNilSkips(t *testing.T) {
+	script := `
+function fetch(input)
+	return {data = '{}', content_type = 'application/json'}
+end
+
+function fetch_cache_key(input)
+	return nil
+end
+`
+
+	ds, err := NewCacheableLuaDataSource(CacheableLuaDataSourceConfig{
+		Name:   "test",
+		Script: script,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	_, useCache := ds.CacheKey(&service.DataSourceInput{
+		Subject: &trust.Result{Subject: "alice"},
+	})
+	if useCache {
+		t.Fatal("Lua nil from fetch_cache_key must skip cache")
 	}
 }
 
