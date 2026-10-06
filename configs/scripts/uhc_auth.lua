@@ -79,7 +79,11 @@ function validate(input)
     return nil
   end
 
-  local cluster_id = parse_cluster_id(headers["user-agent"])
+  -- A distributed cache fills from the cache key alone, so validate also has
+  -- to accept the key's shape, which carries the cluster id directly. The
+  -- header credential source only captures the headers named in its config,
+  -- so a cluster_id sent by a client never reaches here.
+  local cluster_id = headers["cluster_id"] or parse_cluster_id(headers["user-agent"])
   if cluster_id == nil then
     return nil
   end
@@ -146,7 +150,7 @@ function validate_cache_key(input)
       type = input.credential.type,
       headers = {
         ["authorization"] = headers["authorization"],
-        ["user-agent"] = headers["user-agent"],
+        ["cluster_id"] = parse_cluster_id(headers["user-agent"]),
       }
     }
   }

@@ -301,4 +301,39 @@ func TestUHCAuth_CacheKey(t *testing.T) {
 	if other := keyFor(t, "insights-operator/abcdef cluster/1234321", "Bearer other-token"); other == base {
 		t.Error("key must vary with the token")
 	}
+	if other := keyFor(t, "cost-mgmt-operator/abcdef cluster/1234321", "Bearer ocm-token"); other != base {
+		t.Errorf("key must not vary with the operator: %q vs %q", base, other)
+	}
+	if other := keyFor(t, "insights-operator/999999 cluster/1234321", "Bearer ocm-token"); other != base {
+		t.Errorf("key must not vary with the operator version: %q vs %q", base, other)
+	}
+}
+
+// A distributed cache fills from the cache key alone, so the key must still be
+// a credential validate() accepts, yielding the same result.
+func TestUHCAuth_CacheKeyCredentialStillValidates(t *testing.T) {
+	v := uhcValidator(t, uhcOKProvider(t, map[string]any{"external_id": "12345"}))
+	cred := uhcCredential("insights-operator/abcdef cluster/1234321", "Bearer ocm-token")
+
+	want, err := v.Validate(context.Background(), cred)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+
+	input, err := v.CacheKey(cred)
+	if err != nil {
+		t.Fatalf("CacheKey: %v", err)
+	}
+
+	got, err := v.Validate(context.Background(), input.Credential)
+	if err != nil {
+		t.Fatalf("Validate(cache key credential): %v", err)
+	}
+
+	if got.Subject != want.Subject || got.Issuer != want.Issuer || got.TrustDomain != want.TrustDomain {
+		t.Errorf("cache key credential validated differently: got %+v, want %+v", got, want)
+	}
+	if fmt.Sprint(got.Claims) != fmt.Sprint(want.Claims) {
+		t.Errorf("claims = %v, want %v", got.Claims, want.Claims)
+	}
 }
